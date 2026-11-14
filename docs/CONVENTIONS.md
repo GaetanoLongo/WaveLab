@@ -120,3 +120,12 @@ These rules are part of the file format: changing them later needs a schema migr
   IEEE 802.3 (0 = high→low, 1 = low→high at mid-bit; G. E. Thomas uses the opposite). Idle level outside a
   non-repeating frame: low.
 - For fitting the view, exponential and damped signals report a region of interest of 5τ after the start.
+
+## Spectrum
+- Window [t0, t0 + N/f1]; bin k = harmonic order k/N. Amplitudes are one-sided peak values (DC = mean);
+  RMS of a harmonic = peak/√2. Phase φ refers to cos(2π·h·f1·(t − t0) + φ) (a sine starting at t0 shows −90°).
+- Linear stretches use exact closed forms; smooth stretches adaptive Gauss–Legendre (≥ 6 panels per
+  wavelength of the highest order); impulses from deriv() are included exactly.
+- THD = √(RMS² − DC² − V1²/2) / (V1/√2), with the exact RMS of the window.
+- If the window is not a whole number of the signal's periods (or the signal is aperiodic) the result is the
+  Fourier series of the window repeated, which spreads energy into neighbouring orders — flagged in the dialog.

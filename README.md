@@ -30,6 +30,7 @@ npm run e2e        # browser end-to-end checks: editor, snapping, files & export
 | M10 | Exponential, damped sine, piecewise, bit sequences (NRZ/RZ/Manchester) | ✅ |
 | M11 | Signal groups and multiple figures | ✅ |
 | — | Grid of figures (matrix view, linked time axes, grid export) | ✅ |
+| M12 | Exact harmonic spectrum, THD, CSV export (harmonics and samples) | ✅ |
 
 See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the mathematical conventions.
 
@@ -59,6 +60,16 @@ from samples. Cursors are saved in the project file and are left out of exports 
   plus overrides for background, plot area, grid colour/opacity, minor grid, font (sans/serif/mono) and size,
   legend position (corners, outside right, hidden), margins and a line-width multiplier. Saved in the project;
   applied on screen and in exports. Only Inter is embedded in PDFs.
+
+## Spectrum and CSV
+- **Spectrum** (toolbar, "⋯" menu on phones, or the measurement panel): exact Fourier series of any signal
+  over N periods of a chosen fundamental (automatic from the signal's period) — no FFT, no leakage for
+  periodic signals. Bar chart and table in peak, RMS, % of fundamental or dB; DC, fundamental, RMS and THD
+  (from the exact RMS, independent of the number of harmonics shown). A warning appears when the window is not
+  a whole number of periods. Harmonics export to CSV. Method adapted from
+  [ModulationToy](https://github.com/GaetanoLongo/ModulationToy) (same author, MIT).
+- **CSV samples** (Export → CSV): the visible signals over the visible time range on a uniform grid,
+  optionally with the exact edge times (a jump gives two rows: before and after).
 
 ## Phones and tablets
 Below 760 px wide the plot sits on top with a tab bar (Add / Signals / Properties) underneath; the toolbar

@@ -106,12 +106,14 @@ function Dialog() {
                 ? `${Math.round(o.width * o.scale)} × ${Math.round(o.height * o.scale)} px`
                 : o.format === 'pdf'
                   ? `page ${ptToMm(pw)} × ${ptToMm(ph)} mm`
-                  : `${o.width} × ${o.height} (vector)`}
+                  : o.format === 'csv'
+                    ? `${o.csvSamples} samples${o.csvEdges ? ' + edges' : ''}`
+                    : `${o.width} × ${o.height} (vector)`}
             </span>
           </div>
           <div className="options">
             <div className="seg fmt" role="group" aria-label="Format">
-              {(['png', 'svg', 'pdf'] as ExportFormat[]).map((f) => (
+              {(['png', 'svg', 'pdf', 'csv'] as ExportFormat[]).map((f) => (
                 <button key={f} className={o.format === f ? 'on' : ''} onClick={() => set({ format: f })}>
                   {f.toUpperCase()}
                 </button>
@@ -121,6 +123,7 @@ function Dialog() {
               {o.format === 'png' && 'Raster image for slides and documents. Fonts are embedded.'}
               {o.format === 'svg' && 'True vector with editable text and paths. Text uses the Inter font if installed, otherwise a system sans-serif.'}
               {o.format === 'pdf' && 'Vector PDF with the Inter font embedded (Greek letters and symbols included).'}
+              {o.format === 'csv' && 'Numerical samples of the visible signals over the visible time range (one column per signal).'}
             </p>
 
             <h3>Figure</h3>
@@ -175,6 +178,16 @@ function Dialog() {
             <NumberField label="Width" unit="px" plain min={200} max={8000} value={o.width} onCommit={(v) => set({ width: Math.round(v) })} />
             <NumberField label="Height" unit="px" plain min={150} max={8000} value={o.height} onCommit={(v) => set({ height: Math.round(v) })} />
 
+            {o.format === 'csv' && (
+              <>
+                <h3>CSV</h3>
+                <NumberField label="Samples" plain min={2} max={1000000} value={o.csvSamples} onCommit={(v) => set({ csvSamples: Math.round(v) })} />
+                <label className="check" title="Adds the exact edge and corner times; a jump gives two rows (value before and after)">
+                  <input type="checkbox" checked={o.csvEdges} onChange={(e) => set({ csvEdges: e.target.checked })} />
+                  Include exact edge times
+                </label>
+              </>
+            )}
             {o.format === 'png' && (
               <>
                 <h3>PNG</h3>

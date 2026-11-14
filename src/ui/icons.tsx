@@ -89,6 +89,7 @@ const P: Record<string, ReactNode> = {
   zoomIn: <path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.3-4.3M11 8v6M8 11h6" />,
   zoomOut: <path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.3-4.3M8 11h6" />,
   fit: <path d="M3 8V3h5M21 8V3h-5M3 16v5h5M21 16v5h-5" />,
+  spectrum: <path d="M4 20h17M6 20v-4M10 20V8M14 20v-7M18 20v-3" />,
   axes: <path d="M4 3v17h17M8 16l4-5 3 3 5-7" />,
   magnet: <path d="M6 3v8a6 6 0 0 0 12 0V3M6 7h4M14 7h4" />,
   export: (

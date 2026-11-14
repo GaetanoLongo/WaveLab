@@ -12,7 +12,7 @@ import { gridColumns } from '../../core/model/project';
 import { composeScenes } from '../../core/plot/scene';
 import { downloadBlob } from '../fileio';
 
-export type ExportFormat = 'png' | 'svg' | 'pdf';
+export type ExportFormat = 'png' | 'svg' | 'pdf' | 'csv';
 export type PageSize = 'plot' | 'A4' | 'A3' | 'Letter' | 'custom';
 
 export interface ExportOptions {
@@ -34,6 +34,10 @@ export interface ExportOptions {
   includeCursors: boolean;
   /** The current figure, or all figures as a grid (one image). */
   content: 'figure' | 'grid';
+  /** CSV: number of uniformly spaced samples over the visible time range. */
+  csvSamples: number;
+  /** CSV: add the exact edge/corner times of all signals (a jump gives two rows: before and after). */
+  csvEdges: boolean;
 }
 
 export const DEFAULT_EXPORT: Omit<ExportOptions, 'fileName'> = {
@@ -49,6 +53,8 @@ export const DEFAULT_EXPORT: Omit<ExportOptions, 'fileName'> = {
   fit: true,
   includeCursors: false,
   content: 'figure',
+  csvSamples: 1001,
+  csvEdges: true,
 };
 
 const PAGE_MM: Record<'A4' | 'A3' | 'Letter', [number, number]> = {
@@ -253,7 +259,41 @@ export async function exportPdf(o: ExportOptions): Promise<void> {
   downloadBlob(await renderPdf(o), `${o.fileName}.pdf`);
 }
 
+/**
+ * Samples of the current figure's visible signals over the visible time range:
+ * a uniform grid plus (optionally) the exact feature times, where jumps produce two
+ * rows with the same time (left limit, then right limit).
+ */
+export function csvString(o: ExportOptions): string {
+  const st = editor.getState();
+  const sigs = orderedSignals(st.project).filter((s) => s.style.visible);
+  const evs = sigs.map((s) => compiled(s, st.project));
+  const [a, b] = st.view.xRange;
+  const n = Math.max(2, Math.min(1_000_000, Math.round(o.csvSamples)));
+  const times = new Map<number, boolean>(); // t → has a jump (needs left/right rows)
+  for (let i = 0; i < n; i++) times.set(a + ((b - a) * i) / (n - 1), false);
+  if (o.csvEdges) {
+    for (const s of evs) {
+      const q = s.features(a, b, 200_000);
+      if (q.truncated) continue;
+      for (const f of q.features) times.set(f.t, (times.get(f.t) ?? false) || f.kind === 'jump');
+    }
+  }
+  const esc = (x: string) => (/[",\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x);
+  const lines = [['t [s]', ...sigs.map((s) => esc(`${s.name}${s.unit ? ` [${s.unit}]` : ''}`))].join(',')];
+  const num = (v: number) => (Number.isFinite(v) ? String(Number(v.toPrecision(12))) : '');
+  for (const t of [...times.keys()].sort((x, y) => x - y)) {
+    if (times.get(t)) lines.push([num(t), ...evs.map((s) => num(s.left ? s.left(t) : s.value(t)))].join(','));
+    lines.push([num(t), ...evs.map((s) => num(s.value(t)))].join(','));
+  }
+  return lines.join('\n') + '\n';
+}
+
 export async function runExport(o: ExportOptions): Promise<void> {
+  if (o.format === 'csv') {
+    downloadBlob(new Blob([csvString(o)], { type: 'text/csv' }), `${o.fileName}.csv`);
+    return;
+  }
   if (o.format === 'svg') return exportSvg(o);
   if (o.format === 'png') return exportPng(o);
   return exportPdf(o);

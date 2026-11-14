@@ -3,6 +3,7 @@ import { zoomRange } from '../core/plot/viewport';
 import { actions, canRedo, canUndo, editor, isDirty, useActiveFigure, useEditor } from '../state/store';
 import { Icon, type IconName } from './icons';
 import { SnapMenu } from './panels/SnapMenu';
+import { openSpectrum } from './panels/SpectrumDialog';
 import { openExportDialog } from './export/ExportDialog';
 import { openAxes, openSettings } from './Modal';
 import { forgetFileHandle, openProject, saveProject } from './fileio';
@@ -128,6 +129,7 @@ function CompactToolbar() {
             {item('fit', 'Auto vertical scale', actions.resetYRanges)}
             <hr />
             {item('axes', 'Axes…', () => openAxes('all'))}
+            {item('spectrum', 'Spectrum…', openSpectrum)}
             {item('settings', 'Figure settings…', openSettings)}
           </div>
         )}
@@ -173,6 +175,7 @@ export function Toolbar({ compact = false }: { compact?: boolean }) {
           Auto Y
         </button>
         <Btn icon="axes" label="Axes: time range, titles, ticks, log scale" onClick={() => openAxes('all')} />
+        <Btn icon="spectrum" label="Spectrum: harmonics and THD" onClick={openSpectrum} />
       </div>
       <div className="seg" role="group" aria-label="Plot mode">
         <button className={mode === 'overlay' ? 'on' : ''} onClick={() => actions.setMode('overlay')} title="All signals on one plot">

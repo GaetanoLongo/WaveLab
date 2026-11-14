@@ -10,6 +10,7 @@ import { compiled } from '../../state/compiled';
 import { actions, findSignal, orderedSignals, useEditor } from '../../state/store';
 import { NumberField } from '../fields/NumberField';
 import { MathLabel } from '../MathLabel';
+import { openSpectrum } from './SpectrumDialog';
 
 const fmt = (v: number, unit: string, digits = 5, scale = 0) =>
   Number.isFinite(v) ? formatSI(Math.abs(v) <= 1e-9 * scale ? 0 : v, unit, digits) : '—';
@@ -61,6 +62,9 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
       </button>
       <button className={`toggle${levelOn ? ' on' : ''}`} onClick={actions.toggleLevelCursors} title="Show/hide level cursors A and B in the measured signal's panel">
         Level cursors
+      </button>
+      <button onClick={openSpectrum} title="Harmonic spectrum and THD of the measured signal">
+        Spectrum…
       </button>
     </div>
   );
