@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { parseProjectFile, serializeProject } from '../core/io/project-file';
 import type { DerivedSignalDef, GeneratorSignalDef } from '../core/model/project';
 import { compiled } from './compiled';
-import { actions, canRedo, editor, exprToDisplay, findSignal, isDirty, orderedSignals } from './store';
+import { actions, canRedo, editor, exprToDisplay, figureGroups, findSignal, isDirty, orderedSignals } from './store';
 
 const st = () => editor.getState();
 const g = (id: string | null) => findSignal(st().project, id) as GeneratorSignalDef;
@@ -333,3 +333,107 @@ describe('measurement cursors (M8)', () => {
     expect(st().view.cursors.t).toEqual([null, null]);
   });
 });
+
+describe('groups and figures (M11)', () => {
+  it('addGroup moves the selected signal into a new named group; moveSignal reorders across groups', () => {
+    const a = actions.addSignal('sine');
+    const b = actions.addSignal('square');
+    actions.select(b);
+    const g = actions.addGroup();
+    const groups = figureGroups(st().project);
+    expect(groups.map((x) => [x.group.name, x.signals.map((s) => s.name)])).toEqual([
+      ['Signals', ['Sine']],
+      ['Group 1', ['Square']],
+    ]);
+    actions.moveSignal(a, g, 0); // Sine to the top of Group 1 (the default group becomes empty)
+    expect(figureGroups(st().project).map((x) => x.signals.map((s) => s.name))).toEqual([[], ['Sine', 'Square']]);
+    // New signals go into the selected signal's group.
+    actions.select(a);
+    actions.addSignal('triangle');
+    expect(figureGroups(st().project)[1]!.signals.map((s) => s.name)).toEqual(['Sine', 'Square', 'Triangle']);
+  });
+
+  it('group show/hide and lock apply to all members; deleting a group keeps its signals', () => {
+    actions.addSignal('sine');
+    const b = actions.addSignal('square');
+    actions.select(b);
+    const g = actions.addGroup();
+    actions.setGroupSignals(g, { visible: false, locked: true });
+    expect(g_(b).style.visible).toBe(false);
+    expect(g_(b).locked).toBe(true);
+    actions.deleteGroup(g);
+    expect(figureGroups(st().project)).toHaveLength(1);
+    expect(orderedSignals(st().project).map((s) => s.id)).toContain(b);
+  });
+
+  it('shared groups become one stacked panel', async () => {
+    const { panelsForGroups } = await import('../core/plot/layout');
+    const ids = panelsForGroups(
+      'stacked',
+      [
+        { id: 'g1', name: 'Phases', share: true, traces: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] },
+        { id: 'g2', traces: [{ id: 'c', name: 'C' }] },
+      ],
+      {},
+    ).map((p) => p.id);
+    expect(ids).toEqual(['group-g1', 'stack-c']);
+  });
+
+  it('figures have their own signal selection, zoom and cursors; signals are shared', () => {
+    const a = actions.addSignal('sine');
+    const f1 = st().activeFigureId;
+    actions.setXRange([0, 0.01]);
+    actions.setCursor('t', 0, 0.002);
+    const f2 = actions.addFigure();
+    expect(st().activeFigureId).toBe(f2);
+    expect(orderedSignals(st().project)).toHaveLength(0);
+    expect(st().view.cursors.t).toEqual([null, null]);
+    actions.addToFigure(a);
+    actions.setXRange([0, 0.1]);
+    actions.switchFigure(f1);
+    expect(st().view.xRange).toEqual([0, 0.01]);
+    expect(st().view.cursors.t).toEqual([0.002, null]);
+    actions.switchFigure(f2);
+    expect(st().view.xRange).toEqual([0, 0.1]);
+    actions.removeFromFigure(a);
+    expect(orderedSignals(st().project)).toHaveLength(0);
+    expect(findSignal(st().project, a)).toBeDefined(); // still in the project
+  });
+
+  it('deleting a signal removes it from every figure; deleting a figure is undoable', () => {
+    const a = actions.addSignal('sine');
+    const f2 = actions.addFigure();
+    actions.addToFigure(a);
+    actions.deleteSignal(a);
+    expect(st().project.figures.every((f) => f.panels.every((g) => g.traces.length === 0))).toBe(true);
+    actions.undo();
+    actions.deleteFigure(f2);
+    expect(st().project.figures).toHaveLength(1);
+    expect(st().activeFigureId).toBe(st().project.figures[0]!.id);
+    actions.undo();
+    expect(st().project.figures).toHaveLength(2);
+  });
+
+  it('duplicate figure copies groups and view; everything survives save and reopen', () => {
+    const a = actions.addSignal('sine');
+    actions.select(a);
+    const g = actions.addGroup();
+    actions.updateGroup(g, { share: true });
+    actions.setXRange([0, 0.02]);
+    const f2 = actions.duplicateFigure();
+    expect(st().project.figures).toHaveLength(2);
+    expect(figureGroups(st().project, f2).map((x) => x.group.name)).toEqual(['Signals', 'Group 1']);
+    actions.setXRange([0, 0.005]);
+    const text = serializeProject(st().project, actions.savedView());
+    const { project, view } = parseProjectFile(text);
+    actions.newProject();
+    actions.loadProject(project, view);
+    expect(st().activeFigureId).toBe(f2);
+    expect(st().view.xRange).toEqual([0, 0.005]);
+    expect(figureGroups(st().project).find((x) => x.group.name === 'Group 1')!.group.share).toBe(true);
+    actions.switchFigure(st().project.figures[0]!.id);
+    expect(st().view.xRange).toEqual([0, 0.02]);
+  });
+});
+
+const g_ = (id: string) => findSignal(editor.getState().project, id)!;

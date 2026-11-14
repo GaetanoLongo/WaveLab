@@ -92,10 +92,15 @@ function readProject(v: unknown): Project {
   });
   const figures = arr(p.figures, 'project.figures').map((f, i) => readFigure(f, `figures[${i}]`, ids));
   if (figures.length === 0) throw new ProjectFileError('project.figures must contain at least one figure.');
-  // Every signal must appear exactly once in the first figure's order list.
-  const fig = figures[0]!;
-  const listed = new Set(fig.panels.flatMap((pa) => pa.traces.map((t) => t.signalId)));
-  for (const s of signals) if (!listed.has(s.id)) fig.panels[0]!.traces.push({ signalId: s.id });
+  // A signal may appear in any figure; signals shown in none are added to the first figure.
+  const listed = new Set(figures.flatMap((f) => f.panels.flatMap((pa) => pa.traces.map((t) => t.signalId))));
+  const first = figures[0]!;
+  for (const s of signals) if (!listed.has(s.id)) first.panels[first.panels.length - 1]!.traces.push({ signalId: s.id });
+  const figIds = new Set<string>();
+  for (const f of figures) {
+    if (figIds.has(f.id)) throw new ProjectFileError(`Duplicate figure id "${f.id}".`);
+    figIds.add(f.id);
+  }
   return {
     schemaVersion: SCHEMA_VERSION,
     appVersion: __APP_VERSION__,
@@ -282,7 +287,14 @@ function readFigure(v: unknown, path: string, ids: Set<string>): Figure {
       .map((tv, j) => ({ signalId: str(obj(tv, `${path}.panels[${i}].traces[${j}]`).signalId, `${path}.panels[${i}].traces[${j}].signalId`) }))
       // Drop references to missing signals and duplicates instead of failing.
       .filter((t) => ids.has(t.signalId) && !seen.has(t.signalId) && (seen.add(t.signalId), true));
-    return { id: pp.id === undefined ? `panel-${i + 1}` : str(pp.id, `${path}.panels[${i}].id`), traces, yAxis: autoAxis('') };
+    return {
+      id: pp.id === undefined ? `panel-${i + 1}` : str(pp.id, `${path}.panels[${i}].id`),
+      traces,
+      yAxis: autoAxis(''),
+      ...(pp.name !== undefined ? { name: str(pp.name, `${path}.panels[${i}].name`) } : {}),
+      ...(pp.share !== undefined ? { share: bool(pp.share, `${path}.panels[${i}].share`) } : {}),
+      ...(pp.collapsed !== undefined ? { collapsed: bool(pp.collapsed, `${path}.panels[${i}].collapsed`) } : {}),
+    };
   });
   if (panels.length === 0) panels.push({ id: 'panel-1', traces: [], yAxis: autoAxis('') });
   return {
@@ -328,7 +340,16 @@ function readView(v: unknown, path: string): SavedView {
       target: c.target === null || c.target === undefined ? null : str(c.target, `${path}.cursors.target`),
     };
   }
-  return { xRange: range(w.xRange, `${path}.xRange`), yRanges, ...(cursors ? { cursors } : {}) };
+  const out: SavedView = { xRange: range(w.xRange, `${path}.xRange`), yRanges, ...(cursors ? { cursors } : {}) };
+  if (w.activeFigure !== undefined) out.activeFigure = str(w.activeFigure, `${path}.activeFigure`);
+  if (w.byFigure !== undefined) {
+    out.byFigure = {};
+    for (const [id, v] of Object.entries(obj(w.byFigure, `${path}.byFigure`))) {
+      const sub = readView(v, `${path}.byFigure.${id}`);
+      out.byFigure[id] = { xRange: sub.xRange, yRanges: sub.yRanges, ...(sub.cursors ? { cursors: sub.cursors } : {}) };
+    }
+  }
+  return out;
 }
 
 // --- primitive readers -------------------------------------------------------

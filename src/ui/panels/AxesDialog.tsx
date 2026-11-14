@@ -1,9 +1,9 @@
 /** Axis settings: visible time range (zoom to interval), titles, ticks, decimals, vertical ranges, log scale. */
 
 import { useEffect, useRef } from 'react';
-import { autoLogRange, type AxisStyle } from '../../core/plot/layout';
+import { autoLogRange, panelsForGroups, type AxisStyle } from '../../core/plot/layout';
 import { compiled } from '../../state/compiled';
-import { actions, orderedSignals, useEditor } from '../../state/store';
+import { actions, figureGroups, useActiveFigure, useEditor } from '../../state/store';
 import { NumberField } from '../fields/NumberField';
 import { MathLabel } from '../MathLabel';
 import { Modal, useDialogs } from '../Modal';
@@ -19,13 +19,20 @@ export function AxesDialog() {
 function Dialog({ focus }: { focus: string }) {
   const project = useEditor((s) => s.project);
   const view = useEditor((s) => s.view);
-  const fig = project.figures[0]!;
+  const fig = useActiveFigure();
   const ref = useRef<HTMLDivElement>(null);
-  const visible = orderedSignals(project).filter((s) => s.style.visible);
-  const panels =
-    fig.mode === 'overlay'
-      ? [{ id: 'overlay', name: 'All signals (overlay)', sigs: visible }]
-      : visible.map((s) => ({ id: `stack-${s.id}`, name: s.name, sigs: [s] }));
+  // Same panel ids as the renderer (overlay / shared groups / one panel per signal).
+  const groups = figureGroups(project, fig.id).map(({ group, signals }) => ({
+    id: group.id,
+    name: group.name,
+    share: group.share,
+    traces: signals.filter((s) => s.style.visible),
+  }));
+  const panels = panelsForGroups(fig.mode, groups, {}).map((p) => ({
+    id: p.id,
+    name: fig.mode === 'overlay' ? 'All signals (overlay)' : p.title || p.traces.map((t) => t.name).join(', '),
+    sigs: p.traces,
+  }));
 
   useEffect(() => {
     ref.current?.querySelector(`[data-axis="${CSS.escape(focus)}"]`)?.scrollIntoView({ block: 'nearest' });

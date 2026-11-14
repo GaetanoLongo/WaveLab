@@ -28,6 +28,7 @@ npm run e2e        # browser end-to-end checks: editor, snapping, files & export
 | M8 | Cursors and measurements | ✅ |
 | M9 | Axes, styles and figure settings | ✅ |
 | M10 | Exponential, damped sine, piecewise, bit sequences (NRZ/RZ/Manchester) | ✅ |
+| M11 | Signal groups and multiple figures | ✅ |
 
 See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the mathematical conventions.
 
@@ -37,6 +38,14 @@ Drag them in the plot (they snap to edges, peaks and zero crossings; Alt = free)
 The panel shows values at the cursors, Δt, 1/Δt, ΔY, ΔAB, and for the interval between cursors 1–2 (or the
 visible window): max, min, peak-to-peak, mean, RMS, duty cycle and frequency — all computed exactly, not
 from samples. Cursors are saved in the project file and are left out of exports unless requested.
+
+## Groups and figures
+- **Groups** ("+ Group" in the signal list): named blocks such as "Phase A/B/C" or "Gate signals". Collapse,
+  rename (double-click), show/hide or lock all, reorder, delete (signals move to the group above), and drag
+  signals between groups. "Share one panel" overlays a group's signals in one stacked panel with its own legend.
+- **Figures** (tabs above the plot): each has its own signals and groups, overlay/stacked mode, style, axes,
+  zoom and cursors. Signals belong to the project and can appear in several figures ("Not in this figure" lists
+  the others; ⊖ removes a signal from the current figure only). Export applies to the current figure.
 
 ## Axes and figure style
 - **Axes** (toolbar button, click the time range in the status bar, or double-click an axis): exact visible

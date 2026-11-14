@@ -288,11 +288,11 @@ export function marginsFor(theme: PlotTheme, legendWidth = 0) {
 
 const LEGEND_ROW = (fs: number) => fs + 6;
 
-function legendEntries(input: FigureInput): TraceInput[] {
-  if (input.theme.legend === 'none' || !input.showLegend) return [];
-  const all = input.panels.flatMap((p) => p.traces).filter((t) => t.showInLegend !== false);
-  // Overlay: legend when more than one trace. Stacked: panels carry their own titles.
-  return input.panels.length === 1 && all.length > 1 ? all : [];
+/** Legend entries of one panel: shown when the panel holds more than one signal. */
+function legendEntries(input: FigureInput, panel: PanelInput | undefined): TraceInput[] {
+  if (!panel || input.theme.legend === 'none' || !input.showLegend) return [];
+  const all = panel.traces.filter((t) => t.showInLegend !== false);
+  return panel.traces.length > 1 && all.length > 0 ? all : [];
 }
 
 function legendSize(entries: TraceInput[], fs: number) {
@@ -313,20 +313,52 @@ export function panelsForMode(
   traces: TraceInput[],
   yRanges: Record<string, Range | null | undefined>,
 ): PanelInput[] {
+  return panelsForGroups(mode, [{ id: 'all', traces }], yRanges);
+}
+
+export interface GroupInput<T> {
+  id: string;
+  name?: string;
+  share?: boolean;
+  traces: T[];
+}
+
+/**
+ * Panels for a figure. Overlay: one panel ("overlay"). Stacked: one panel per signal
+ * ("stack-<signal id>"), except groups with `share`, drawn as one panel ("group-<group id>").
+ * Generic so dialogs can compute the same panel ids from signal definitions.
+ */
+export function panelsForGroups<T extends { id: string; name: string }>(
+  mode: 'overlay' | 'stacked',
+  groups: Array<GroupInput<T>>,
+  yRanges: Record<string, Range | null | undefined>,
+): Array<{ id: string; traces: T[]; yRange: Range | null; title?: string }> {
   if (mode === 'overlay') {
-    return [{ id: 'overlay', traces, yRange: yRanges['overlay'] ?? null }];
+    return [{ id: 'overlay', traces: groups.flatMap((g) => g.traces), yRange: yRanges['overlay'] ?? null }];
   }
-  return traces.map((t) => {
-    const id = `stack-${t.id}`;
-    return { id, traces: [t], yRange: yRanges[id] ?? null, title: t.name };
-  });
+  const out: Array<{ id: string; traces: T[]; yRange: Range | null; title?: string }> = [];
+  for (const g of groups) {
+    if (g.share && g.traces.length > 1) {
+      const id = `group-${g.id}`;
+      out.push({ id, traces: g.traces, yRange: yRanges[id] ?? null, title: g.name ?? '' });
+    } else {
+      for (const t of g.traces) {
+        const id = `stack-${t.id}`;
+        out.push({ id, traces: [t], yRange: yRanges[id] ?? null, title: t.name });
+      }
+    }
+  }
+  return out;
 }
 
 export function computeLayout(input: FigureInput): FigureLayout {
   const { width, height } = input;
   const th = input.theme;
-  const entries = legendEntries(input);
-  const outside = th.legend === 'outside-right' && entries.length > 0 ? legendSize(entries, th.fontSize).w + 12 : 0;
+  const widest = Math.max(0, ...input.panels.map((p) => {
+    const e = legendEntries(input, p);
+    return e.length ? legendSize(e, th.fontSize).w : 0;
+  }));
+  const outside = th.legend === 'outside-right' && widest > 0 ? widest + 12 : 0;
   const M = marginsFor(th, outside);
   const plotX = M.left;
   const plotW = Math.max(10, width - M.left - M.right);
@@ -489,8 +521,8 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
     }
 
     // Legend (overlay mode): corner inside the panel, or outside on the right.
-    const entries = legendEntries(input);
-    if (entries.length > 0 && idx === 0) {
+    const entries = legendEntries(input, pin);
+    if (entries.length > 0) {
       const rowH = LEGEND_ROW(fs);
       const { w: boxW, h: boxH } = legendSize(entries, fs);
       const pos = th.legend;

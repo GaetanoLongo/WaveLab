@@ -16,7 +16,8 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 're
 import {
   buildFigure,
   panelAt,
-  panelsForMode,
+  panelsForGroups,
+  type GroupInput,
   pxToT,
   pxToY,
   timeTicks,
@@ -50,7 +51,10 @@ export interface TimingInfo {
 }
 
 export interface PlotViewProps {
+  /** Visible traces (flat, for hit-testing and snapping). */
   traces: TraceInput[];
+  /** Groups of the figure (decide the stacked panels); defaults to one group with all traces. */
+  groups?: Array<GroupInput<TraceInput>>;
   mode: 'overlay' | 'stacked';
   xRange: Range;
   onXRangeChange(r: Range): void;
@@ -130,8 +134,8 @@ export function PlotView(props: PlotViewProps) {
   }, []);
 
   const panels = useMemo(
-    () => panelsForMode(props.mode, props.traces, props.yRanges),
-    [props.mode, props.traces, props.yRanges],
+    () => panelsForGroups(props.mode, props.groups ?? [{ id: 'all', traces: props.traces }], props.yRanges),
+    [props.mode, props.traces, props.groups, props.yRanges],
   );
 
   const { scene, layout } = useMemo(

@@ -10,7 +10,8 @@ import { loadFile } from './fileio';
 import { formatSI } from '../core/units/si';
 import { compiled } from '../state/compiled';
 import { useSettings } from '../state/settings';
-import { actions, editor, findSignal, isDirty, orderedSignals, useEditor } from '../state/store';
+import { actions, editor, figureGroups, findSignal, isDirty, orderedSignals, useActiveFigure, useEditor } from '../state/store';
+import { FigureTabs } from './panels/FigureTabs';
 import { PropertiesPanel } from './panels/PropertiesPanel';
 import { MeasurePanel } from './panels/MeasurePanel';
 import { SignalList } from './panels/SignalList';
@@ -130,7 +131,8 @@ function PlotArea() {
   const selectedId = useEditor((s) => s.selectedId);
   const view = useEditor((s) => s.view);
   const notice = useEditor((s) => s.notice);
-  const mode = project.figures[0]!.mode;
+  const fig = useActiveFigure();
+  const mode = fig.mode;
   const [cursor, setCursor] = useState<CursorInfo | null>(null);
   const snap = useSettings((s) => s.snap);
   const visibleIds = orderedSignals(project).filter((s) => s.style.visible).map((s) => s.id);
@@ -139,33 +141,36 @@ function PlotArea() {
     (selectedId && visibleIds.includes(selectedId) ? selectedId : null) ??
     visibleIds[0] ??
     null;
-  const fig = project.figures[0]!;
   const theme = useMemo(() => resolveTheme(fig.stylePreset, fig.style), [fig.stylePreset, fig.style]);
   const cursorSpec = useMemo(
     () => ({ t: view.cursors.t, y: view.cursors.y, yTraceId }),
     [view.cursors.t, view.cursors.y, yTraceId],
   );
 
-  const traces = useMemo<TraceInput[]>(
-    () =>
-      orderedSignals(project)
-        .filter((s) => s.style.visible)
-        .map((s) => ({
-          id: s.id,
-          name: s.name,
-          signal: compiled(s, project),
-          color: s.style.color,
-          lineWidth: s.style.lineWidth,
-          dash: s.style.dash,
-          unit: s.unit,
-          showInLegend: s.style.showInLegend,
-          highlight: s.id === selectedId,
-        })),
-    [project, selectedId],
-  );
+  const groups = useMemo(() => {
+    const toTrace = (s: (typeof project.signals)[number]): TraceInput => ({
+      id: s.id,
+      name: s.name,
+      signal: compiled(s, project),
+      color: s.style.color,
+      lineWidth: s.style.lineWidth,
+      dash: s.style.dash,
+      unit: s.unit,
+      showInLegend: s.style.showInLegend,
+      highlight: s.id === selectedId,
+    });
+    return figureGroups(project, fig.id).map(({ group, signals }) => ({
+      id: group.id,
+      name: group.name,
+      share: group.share,
+      traces: signals.filter((s) => s.style.visible).map(toTrace),
+    }));
+  }, [project, fig.id, selectedId]);
+  const traces = useMemo(() => groups.flatMap((g) => g.traces), [groups]);
 
   return (
     <main className="plot-column">
+      <FigureTabs />
       <div className="plot-area">
         <PlotView
           traces={traces}
@@ -176,8 +181,9 @@ function PlotArea() {
           onYRangeChange={actions.setYRange}
           onFit={actions.fitAll}
           theme={theme}
-          axes={project.figures[0]!.axes}
-          showLegend={project.figures[0]!.showLegend}
+          axes={fig.axes}
+          showLegend={fig.showLegend}
+          groups={groups}
           onCursor={setCursor}
           onSelect={actions.select}
           snap={snap}
@@ -195,7 +201,9 @@ function PlotArea() {
           onCursorMove={actions.setCursor}
           onAxisDoubleClick={openAxes}
           emptyMessage={
-            project.signals.length === 0
+            project.signals.length > 0 && orderedSignals(project, fig.id).length === 0
+              ? 'This figure is empty: add a waveform, or add existing signals from the signal list.'
+              : project.signals.length === 0
               ? phoneLayout
                 ? 'Add a waveform from the “Add” tab below.'
                 : 'Add a waveform from the toolbox on the left.'

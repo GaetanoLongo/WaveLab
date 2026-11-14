@@ -1,7 +1,7 @@
 /** Figure style settings: preset + overrides (colours, text, legend, layout). Stored in the project. */
 
 import { resolveTheme, THEMES, type LegendPosition, type StyleOverrides } from '../../core/plot/layout';
-import { actions, useEditor } from '../../state/store';
+import { actions, useActiveFigure } from '../../state/store';
 import { NumberField } from '../fields/NumberField';
 import { Modal, useDialogs } from '../Modal';
 
@@ -13,7 +13,7 @@ export function FigureSettingsDialog() {
 }
 
 function Dialog() {
-  const fig = useEditor((s) => s.project.figures[0]!);
+  const fig = useActiveFigure();
   const o: StyleOverrides = fig.style ?? {};
   const th = resolveTheme(fig.stylePreset, o);
   const set = (patch: StyleOverrides, key?: string) => actions.setStyle(patch, key);

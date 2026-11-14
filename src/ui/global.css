@@ -369,3 +369,25 @@ table.points td { padding: 1px 2px; }
 table.points .field { grid-template-columns: 0 minmax(0, 1fr); gap: 0; }
 table.points .field label { display: none; }
 table.points td:last-child { width: 28px; }
+
+/* ---------- M11: figures & groups ---------- */
+.figure-tabs { display: flex; align-items: flex-end; gap: 2px; padding: 6px 10px 0; overflow-x: auto; scrollbar-width: thin; }
+.fig-tab { display: flex; align-items: center; border: 1px solid var(--border); border-bottom: 0; border-radius: 6px 6px 0 0; background: var(--panel-2); white-space: nowrap; }
+.fig-tab.on { background: var(--panel); border-color: var(--accent); box-shadow: inset 0 2px 0 var(--accent); }
+.fig-tab input { width: 120px; margin: 2px 4px; }
+.fig-name { border: 0; background: transparent; padding: 4px 10px; font-weight: 500; }
+.fig-tab.on .fig-name { color: var(--accent); }
+.fig-act { padding: 2px 4px; font-size: 12px; }
+.fig-add { border: 1px dashed var(--border); border-radius: 6px 6px 0 0; padding: 3px 10px; background: transparent; }
+.phone-workspace .figure-tabs { padding: 4px 6px 0; }
+.signal-list h2 .group-add { margin-left: auto; font-size: 11px; padding: 1px 8px; text-transform: none; letter-spacing: 0; }
+.group-head { display: flex; align-items: center; gap: 4px; padding: 3px 6px 3px 2px; background: var(--panel-2); border-top: 1px solid var(--border); }
+.group-head .chev { width: 22px; padding: 2px; }
+.group-name { flex: 1; min-width: 0; font-weight: 600; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-head .row-actions button { padding: 2px 4px; font-size: 12px; }
+.sig-group.drop-into > .group-head { box-shadow: inset 0 -2px 0 var(--accent); }
+.group-empty { color: var(--faint); font-size: 12px; padding: 6px 12px; border: 1px dashed var(--border); margin: 4px 8px; border-radius: 4px; list-style: none; }
+.others summary { cursor: pointer; padding: 6px 12px; color: var(--muted); font-size: 12px; }
+.others ul { list-style: none; margin: 0; padding: 0 0 6px; }
+.row.other { cursor: default; }
+.swatch.static { cursor: default; }

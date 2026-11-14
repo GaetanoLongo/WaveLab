@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { THEMES } from '../../core/plot/layout';
 import { sceneToSvg } from '../../core/plot/svg';
-import { actions, useEditor } from '../../state/store';
+import { actions, useActiveFigure, useEditor } from '../../state/store';
 import { NumberField } from '../fields/NumberField';
 import { safeFileName } from '../fileio';
 import { buildExportScene, DEFAULT_EXPORT, pageSizePt, runExport, type ExportFormat, type ExportOptions, type PageSize } from './exporters';
@@ -40,7 +40,7 @@ export function ExportDialog() {
 
 function Dialog() {
   const projectName = useEditor((s) => s.project.name);
-  const fig = useEditor((s) => s.project.figures[0]!);
+  const fig = useActiveFigure();
   const project = useEditor((s) => s.project);
   const view = useEditor((s) => s.view);
   const [o, setO] = useState<Omit<ExportOptions, 'fileName'>>(loadOptions);

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { zoomRange } from '../core/plot/viewport';
-import { actions, canRedo, canUndo, editor, isDirty, useEditor } from '../state/store';
+import { actions, canRedo, canUndo, editor, isDirty, useActiveFigure, useEditor } from '../state/store';
 import { Icon, type IconName } from './icons';
 import { SnapMenu } from './panels/SnapMenu';
 import { openExportDialog } from './export/ExportDialog';
@@ -70,7 +70,7 @@ function CompactToolbar() {
   const redo = useEditor(canRedo);
   const hasSel = useEditor((s) => s.selectedId !== null);
   const hasClip = useEditor((s) => s.clipboard !== null);
-  const mode = useEditor((s) => s.project.figures[0]!.mode);
+  const mode = useActiveFigure().mode;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -141,7 +141,7 @@ export function Toolbar({ compact = false }: { compact?: boolean }) {
   const redo = useEditor(canRedo);
   const hasSel = useEditor((s) => s.selectedId !== null);
   const hasClip = useEditor((s) => s.clipboard !== null);
-  const mode = useEditor((s) => s.project.figures[0]!.mode);
+  const mode = useActiveFigure().mode;
   if (compact) return <CompactToolbar />;
 
   return (

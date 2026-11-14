@@ -63,10 +63,20 @@ export interface Trace {
   signalId: string;
 }
 
+/**
+ * A group of signals in a figure (shown as a named block in the signal list).
+ * In stacked mode a group with `share` is drawn as one panel with all its signals.
+ */
 export interface Panel {
   id: string;
   traces: Trace[];
   yAxis: AxisConfig;
+  /** Group name; undefined for the default unnamed group. */
+  name?: string;
+  /** Stacked mode: overlay this group's signals in one shared panel. */
+  share?: boolean;
+  /** Collapsed in the signal list (UI only, saved for convenience). */
+  collapsed?: boolean;
 }
 
 export interface Figure {
@@ -101,6 +111,10 @@ export interface SavedView {
   /** Manual vertical ranges by panel id (absent = automatic). */
   yRanges: Record<string, [number, number]>;
   cursors?: Cursors;
+  /** Views of the other figures, by figure id (zoom and cursors are per figure). */
+  byFigure?: Record<string, { xRange: [number, number]; yRanges: Record<string, [number, number]>; cursors?: Cursors }>;
+  /** Figure shown when the project was saved. */
+  activeFigure?: string;
 }
 
 export interface Project {

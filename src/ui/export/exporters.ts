@@ -4,10 +4,10 @@
  */
 
 import type { Scene } from '../../core/plot/scene';
-import { buildFigure, panelsForMode, resolveTheme, type PlotTheme, type TraceInput } from '../../core/plot/layout';
+import { buildFigure, panelsForGroups, resolveTheme, type PlotTheme, type TraceInput } from '../../core/plot/layout';
 import { sceneToSvg } from '../../core/plot/svg';
 import { compiled } from '../../state/compiled';
-import { actions, editor, orderedSignals } from '../../state/store';
+import { actions, activeFigure, editor, figureGroups } from '../../state/store';
 import { downloadBlob } from '../fileio';
 
 export type ExportFormat = 'png' | 'svg' | 'pdf';
@@ -58,25 +58,32 @@ const MARGIN_MM = 10;
 /** Scene of the current project at the export size (no selection halo). */
 export function buildExportScene(width: number, height: number, transparent: boolean, includeCursors = false): Scene {
   const st = editor.getState();
-  const fig = st.project.figures[0]!;
+  const fig = activeFigure(st.project, st.activeFigureId);
   const base: PlotTheme = resolveTheme(fig.stylePreset, fig.style);
   const theme: PlotTheme = transparent ? { ...base, background: null, plotBackground: 'none' } : base;
-  const traces: TraceInput[] = orderedSignals(st.project)
-    .filter((s) => s.style.visible)
-    .map((s) => ({
-      id: s.id,
-      name: s.name,
-      signal: compiled(s, st.project),
-      color: s.style.color,
-      lineWidth: s.style.lineWidth,
-      dash: s.style.dash,
-      unit: s.unit,
-      showInLegend: s.style.showInLegend,
-    }));
+  const groups = figureGroups(st.project, fig.id).map(({ group, signals }) => ({
+    id: group.id,
+    name: group.name,
+    share: group.share,
+    traces: signals
+      .filter((s) => s.style.visible)
+      .map(
+        (s): TraceInput => ({
+          id: s.id,
+          name: s.name,
+          signal: compiled(s, st.project),
+          color: s.style.color,
+          lineWidth: s.style.lineWidth,
+          dash: s.style.dash,
+          unit: s.unit,
+          showInLegend: s.style.showInLegend,
+        }),
+      ),
+  }));
   return buildFigure({
     width,
     height,
-    panels: panelsForMode(fig.mode, traces, st.view.yRanges),
+    panels: panelsForGroups(fig.mode, groups, st.view.yRanges),
     xRange: st.view.xRange,
     xTitle: 'Time',
     showLegend: fig.showLegend,

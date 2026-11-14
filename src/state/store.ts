@@ -17,6 +17,8 @@ import {
   type Cursors,
   emptyProject,
   type DerivedSignalDef,
+  type Figure,
+  type Panel,
   type GeneratorSignalDef,
   type Project,
   type SavedView,
@@ -51,7 +53,12 @@ export interface EditorState {
   lastEdit: { key: string; at: number } | null;
   selectedId: string | null;
   clipboard: SignalDef | null;
+  /** View of the active figure. */
   view: ViewState;
+  /** Figure shown in the plot (tabs). */
+  activeFigureId: string;
+  /** Saved views of the other figures (zoom and cursors are per figure). */
+  views: Record<string, ViewState>;
   /** Short message shown in the status bar (e.g. "Signal is locked"). */
   notice: string | null;
 }
@@ -80,6 +87,8 @@ function initialState(project = emptyProject()): EditorState {
     selectedId: null,
     clipboard: null,
     view: { xRange: [0, 0.04], yRanges: {}, cursors: NO_CURSORS },
+    activeFigureId: project.figures[0]!.id,
+    views: {},
     notice: null,
   };
 }
@@ -91,6 +100,11 @@ export function useEditor<T>(selector: (s: EditorState) => T): T {
 }
 
 export const isDirty = (s: EditorState) => s.project !== s.savedProject;
+
+/** The figure shown in the plot (re-renders when it or the selection of figures changes). */
+export function useActiveFigure(): Figure {
+  return useStore(editor, (s) => s.project.figures.find((f) => f.id === s.activeFigureId) ?? s.project.figures[0]!);
+}
 export const canUndo = (s: EditorState) => s.past.length > 0;
 export const canRedo = (s: EditorState) => s.future.length > 0;
 
@@ -106,16 +120,43 @@ export function newId(prefix = 's'): string {
   return `${prefix}-${Date.now().toString(36)}${idCounter.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
-/** Ordered trace list of the (single, for now) figure. */
-function order(p: Project | Draft<Project>) {
-  return p.figures[0]!.panels[0]!.traces;
+/** The figure shown in the plot (falls back to the first one). */
+export function activeFigure<P extends Project | Draft<Project>>(p: P, id = get().activeFigureId): P['figures'][number] {
+  return (p.figures.find((f) => f.id === id) ?? p.figures[0]!) as P['figures'][number];
 }
 
-export function orderedSignals(p: Project): SignalDef[] {
+/** Group that receives new signals: the selected signal's group, else the last group. */
+function targetGroup(fig: Draft<Figure>) {
+  const sel = get().selectedId;
+  return fig.panels.find((g) => g.traces.some((t) => t.signalId === sel)) ?? fig.panels[fig.panels.length - 1]!;
+}
+
+/** Signals of a figure in display order (groups in order, then their members). */
+export function orderedSignals(p: Project, figId?: string): SignalDef[] {
   const byId = new Map(p.signals.map((s) => [s.id, s]));
-  return order(p)
+  return activeFigure(p, figId ?? get().activeFigureId)
+    .panels.flatMap((g) => g.traces)
     .map((t) => byId.get(t.signalId))
     .filter((s): s is SignalDef => s !== undefined);
+}
+
+/** Groups of a figure with their (existing) signals. */
+export function figureGroups(p: Project, figId?: string): Array<{ group: Panel; signals: SignalDef[] }> {
+  const byId = new Map(p.signals.map((s) => [s.id, s]));
+  return activeFigure(p, figId ?? get().activeFigureId).panels.map((group) => ({
+    group,
+    signals: group.traces.map((t) => byId.get(t.signalId)).filter((s): s is SignalDef => s !== undefined),
+  }));
+}
+
+function groupName(fig: Figure | Draft<Figure>): string {
+  const names = new Set(fig.panels.map((g) => g.name));
+  for (let i = 1; ; i++) if (!names.has(`Group ${i}`)) return `Group ${i}`;
+}
+
+function defaultView(p: Project, figId: string): ViewState {
+  const visible = orderedSignals(p, figId).filter((s) => s.style.visible);
+  return { xRange: visible.length ? fitTimeRange(visible.map((s) => compiled(s, p))) : [0, 0.04], yRanges: {}, cursors: NO_CURSORS };
 }
 
 export function findSignal(p: Project, id: string | null): SignalDef | undefined {
@@ -132,6 +173,13 @@ function nextColor(p: Project): string {
   const used = new Set(p.signals.map((s) => s.style.color.toLowerCase()));
   for (let i = 0; i < 8; i++) if (!used.has(paletteColor(i).toLowerCase())) return paletteColor(i);
   return paletteColor(p.signals.length);
+}
+
+/** After undo/redo the active figure may no longer exist: fall back to the first one. */
+function validFigure(p: Project, s: EditorState): Partial<EditorState> {
+  if (p.figures.some((f) => f.id === s.activeFigureId)) return {};
+  const id = p.figures[0]!.id;
+  return { activeFigureId: id, view: s.views[id] ?? defaultView(p, id) };
 }
 
 /** Negation that never produces −0 (which would display as "-0"). */
@@ -195,6 +243,7 @@ export const actions = {
       future: [s.project, ...s.future],
       lastEdit: null,
       selectedId: findSignal(prev, s.selectedId) ? s.selectedId : null,
+      ...validFigure(prev, s),
     });
   },
 
@@ -208,6 +257,7 @@ export const actions = {
       future: s.future.slice(1),
       lastEdit: null,
       selectedId: findSignal(next, s.selectedId) ? s.selectedId : null,
+      ...validFigure(next, s),
     });
   },
 
@@ -218,7 +268,16 @@ export const actions = {
   /** Replace the whole document (Open) — clears history; restores the saved view if any. */
   loadProject(project: Project, view?: SavedView) {
     set(initialState(project));
-    if (view) set({ view: { xRange: view.xRange, yRanges: { ...view.yRanges }, cursors: view.cursors ?? NO_CURSORS } });
+    const toView = (v: { xRange: [number, number]; yRanges: Record<string, [number, number]>; cursors?: Cursors }): ViewState => ({
+      xRange: v.xRange,
+      yRanges: { ...v.yRanges },
+      cursors: v.cursors ?? NO_CURSORS,
+    });
+    const active = view?.activeFigure && project.figures.some((f) => f.id === view.activeFigure) ? view.activeFigure : project.figures[0]!.id;
+    const views: Record<string, ViewState> = {};
+    for (const [id, v] of Object.entries(view?.byFigure ?? {})) if (id !== active) views[id] = toView(v);
+    set({ activeFigureId: active, views });
+    if (view) set({ view: toView(view) });
     else actions.fitAll();
   },
 
@@ -227,21 +286,33 @@ export const actions = {
     const v = get().view;
     const yRanges: Record<string, [number, number]> = {};
     for (const [k, r] of Object.entries(v.yRanges)) if (r) yRanges[k] = [r[0], r[1]];
-    const c = v.cursors;
-    const any = c.t.some((x) => x !== null) || c.y.some((x) => x !== null) || c.target !== null;
-    return { xRange: [v.xRange[0], v.xRange[1]], yRanges, ...(any ? { cursors: c } : {}) };
+    const pack = (w: ViewState) => {
+      const yr: Record<string, [number, number]> = {};
+      for (const [k, r] of Object.entries(w.yRanges)) if (r) yr[k] = [r[0], r[1]];
+      const c = w.cursors;
+      const any = c.t.some((x) => x !== null) || c.y.some((x) => x !== null) || c.target !== null;
+      return { xRange: [w.xRange[0], w.xRange[1]] as [number, number], yRanges: yr, ...(any ? { cursors: c } : {}) };
+    };
+    const st = get();
+    const others = Object.entries(st.views).filter(([id]) => id !== st.activeFigureId && st.project.figures.some((f) => f.id === id));
+    return {
+      ...pack(v),
+      yRanges,
+      ...(st.project.figures.length > 1 ? { activeFigure: st.activeFigureId } : {}),
+      ...(others.length ? { byFigure: Object.fromEntries(others.map(([id, w]) => [id, pack(w)])) } : {}),
+    };
   },
 
   setStylePreset(id: string) {
     commit((d) => {
-      d.figures[0]!.stylePreset = id;
+      activeFigure(d).stylePreset = id;
     });
   },
 
   /** Merge style overrides (undefined values remove an override). */
   setStyle(patch: StyleOverrides, key?: string) {
     commit((d) => {
-      const fig = d.figures[0]!;
+      const fig = activeFigure(d);
       const next: Record<string, unknown> = { ...(fig.style ?? {}) };
       for (const [k, v] of Object.entries(patch)) {
         if (v === undefined) delete next[k];
@@ -253,14 +324,14 @@ export const actions = {
 
   resetStyle() {
     commit((d) => {
-      delete d.figures[0]!.style;
+      delete activeFigure(d).style;
     });
   },
 
   /** Merge axis options for the time axis ('x') or a panel id. */
   setAxisStyle(axis: string, patch: AxisStyle) {
     commit((d) => {
-      const fig = d.figures[0]!;
+      const fig = activeFigure(d);
       const axes = (fig.axes ??= {});
       if (axis === 'x') axes.x = { ...(axes.x ?? {}), ...patch };
       else {
@@ -272,7 +343,7 @@ export const actions = {
 
   setShowLegend(show: boolean) {
     commit((d) => {
-      d.figures[0]!.showLegend = show;
+      activeFigure(d).showLegend = show;
     });
   },
 
@@ -288,7 +359,7 @@ export const actions = {
 
   setMode(mode: 'overlay' | 'stacked') {
     commit((d) => {
-      d.figures[0]!.mode = mode;
+      activeFigure(d).mode = mode;
     });
   },
 
@@ -312,7 +383,7 @@ export const actions = {
     customize?.(def);
     commit((d) => {
       d.signals.push(def);
-      order(d).push({ signalId: def.id });
+      targetGroup(activeFigure(d)).traces.push({ signalId: def.id });
     });
     set({ selectedId: def.id });
     if (first) actions.fitAll();
@@ -331,9 +402,10 @@ export const actions = {
     copy.style.color = nextColor(p);
     commit((d) => {
       d.signals.push(copy);
-      const tr = order(d);
-      const idx = afterId ? tr.findIndex((t) => t.signalId === afterId) : -1;
-      tr.splice(idx >= 0 ? idx + 1 : tr.length, 0, { signalId: copy.id });
+      const fig = activeFigure(d);
+      const g = fig.panels.find((x) => x.traces.some((t) => t.signalId === afterId)) ?? fig.panels[fig.panels.length - 1]!;
+      const idx = afterId ? g.traces.findIndex((t) => t.signalId === afterId) : -1;
+      g.traces.splice(idx >= 0 ? idx + 1 : g.traces.length, 0, { signalId: copy.id });
     });
     set({ selectedId: copy.id });
     return copy.id;
@@ -371,8 +443,7 @@ export const actions = {
     const idx = ord.findIndex((s) => s.id === sig.id);
     commit((d) => {
       d.signals = d.signals.filter((s) => s.id !== sig.id);
-      const fig = d.figures[0]!;
-      for (const panel of fig.panels) panel.traces = panel.traces.filter((t) => t.signalId !== sig.id);
+      for (const fig of d.figures) for (const panel of fig.panels) panel.traces = panel.traces.filter((t) => t.signalId !== sig.id);
     });
     const remaining = ord.filter((s) => s.id !== sig.id);
     set({ selectedId: remaining[Math.min(idx, remaining.length - 1)]?.id ?? null });
@@ -455,13 +526,188 @@ export const actions = {
 
   /** Move signal `id` to position `toIndex` in the display order. */
   reorder(id: string, toIndex: number) {
+    // Position in the flattened display order; the signal joins the group found there.
+    const fig = activeFigure(get().project);
+    const flat = fig.panels.flatMap((g) => g.traces.map((t) => ({ g: g.id, id: t.signalId }))).filter((x) => x.id !== id);
+    const at = flat[Math.max(0, Math.min(flat.length, toIndex))];
+    if (at) {
+      const g = fig.panels.find((x) => x.id === at.g)!;
+      actions.moveSignal(id, at.g, g.traces.filter((t) => t.signalId !== id).findIndex((t) => t.signalId === at.id));
+    } else {
+      const last = fig.panels[fig.panels.length - 1]!;
+      actions.moveSignal(id, last.id, last.traces.filter((t) => t.signalId !== id).length);
+    }
+  },
+
+  /** Move a signal into group `groupId` at `index` (within the active figure). */
+  moveSignal(id: string, groupId: string, index: number) {
     commit((d) => {
-      const tr = order(d);
-      const from = tr.findIndex((t) => t.signalId === id);
-      if (from < 0) return;
-      const [item] = tr.splice(from, 1);
-      tr.splice(Math.max(0, Math.min(tr.length, toIndex)), 0, item!);
+      const fig = activeFigure(d);
+      const target = fig.panels.find((g) => g.id === groupId);
+      if (!target) return;
+      for (const g of fig.panels) g.traces = g.traces.filter((t) => t.signalId !== id);
+      target.traces.splice(Math.max(0, Math.min(target.traces.length, index)), 0, { signalId: id });
     });
+  },
+
+  // --- groups (active figure) ---
+
+  /** New group at the end; the selected signal (if any) moves into it. */
+  addGroup(): string {
+    const id = newId('g');
+    const sel = get().selectedId;
+    commit((d) => {
+      const fig = activeFigure(d);
+      if (fig.panels.length === 1 && !fig.panels[0]!.name) fig.panels[0]!.name = 'Signals';
+      const g: Panel = { id, name: groupName(fig), traces: [], yAxis: { auto: true, min: -1, max: 1, title: '' } };
+      if (sel && fig.panels.some((x) => x.traces.some((t) => t.signalId === sel))) {
+        for (const x of fig.panels) x.traces = x.traces.filter((t) => t.signalId !== sel);
+        g.traces.push({ signalId: sel });
+      }
+      fig.panels.push(g);
+    });
+    return id;
+  },
+
+  updateGroup(id: string, patch: Partial<Pick<Panel, 'name' | 'share' | 'collapsed'>>) {
+    commit((d) => {
+      const g = activeFigure(d).panels.find((x) => x.id === id);
+      if (g) Object.assign(g, patch);
+    });
+  },
+
+  /** Show/hide or lock/unlock every signal of a group. */
+  setGroupSignals(id: string, patch: { visible?: boolean; locked?: boolean }) {
+    const g = activeFigure(get().project).panels.find((x) => x.id === id);
+    if (!g) return;
+    const ids = new Set(g.traces.map((t) => t.signalId));
+    commit((d) => {
+      for (const s of d.signals) {
+        if (!ids.has(s.id)) continue;
+        if (patch.visible !== undefined) s.style.visible = patch.visible;
+        if (patch.locked !== undefined) s.locked = patch.locked;
+      }
+    });
+  },
+
+  moveGroup(id: string, dir: -1 | 1) {
+    commit((d) => {
+      const panels = activeFigure(d).panels;
+      const i = panels.findIndex((g) => g.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= panels.length) return;
+      [panels[i], panels[j]] = [panels[j]!, panels[i]!];
+    });
+  },
+
+  /** Delete a group; its signals move to the neighbouring group (the last group cannot be deleted). */
+  deleteGroup(id: string) {
+    commit((d) => {
+      const panels = activeFigure(d).panels;
+      if (panels.length <= 1) return;
+      const i = panels.findIndex((g) => g.id === id);
+      if (i < 0) return;
+      const into = panels[i > 0 ? i - 1 : 1]!;
+      into.traces.push(...panels[i]!.traces);
+      panels.splice(i, 1);
+    });
+  },
+
+  // --- figures ---
+
+  switchFigure(id: string) {
+    const st = get();
+    if (id === st.activeFigureId || !st.project.figures.some((f) => f.id === id)) return;
+    const views = { ...st.views, [st.activeFigureId]: st.view };
+    set({ activeFigureId: id, views, view: views[id] ?? defaultView(st.project, id), notice: null });
+  },
+
+  addFigure(): string {
+    const id = newId('f');
+    const cur = activeFigure(get().project);
+    commit((d) => {
+      const names = new Set(d.figures.map((f) => f.name));
+      let n = d.figures.length + 1;
+      while (names.has(`Figure ${n}`)) n++;
+      d.figures.push({
+        id,
+        name: `Figure ${n}`,
+        mode: cur.mode,
+        panels: [{ id: newId('g'), traces: [], yAxis: { auto: true, min: -1, max: 1, title: '' } }],
+        xAxis: { auto: true, min: 0, max: 0.04, title: 'Time' },
+        stylePreset: cur.stylePreset,
+        showLegend: true,
+        ...(cur.style ? { style: structuredClone(cur.style) } : {}),
+      });
+    });
+    actions.switchFigure(id);
+    return id;
+  },
+
+  duplicateFigure(id = get().activeFigureId): string {
+    const src = activeFigure(get().project, id);
+    const nid = newId('f');
+    commit((d) => {
+      const copy = structuredClone(src) as Figure;
+      copy.id = nid;
+      copy.name = `${src.name} copy`;
+      // New group ids; per-panel axis settings keyed by group panels follow them.
+      const ren = new Map<string, string>();
+      for (const g of copy.panels) {
+        const ng = newId('g');
+        ren.set(g.id, ng);
+        g.id = ng;
+      }
+      if (copy.axes?.y) {
+        copy.axes.y = Object.fromEntries(
+          Object.entries(copy.axes.y).map(([k, v]) => [k.startsWith('group-') ? `group-${ren.get(k.slice(6)) ?? k.slice(6)}` : k, v]),
+        );
+      }
+      d.figures.splice(d.figures.findIndex((f) => f.id === id) + 1, 0, copy);
+    });
+    const st = get();
+    const v = id === st.activeFigureId ? st.view : st.views[id];
+    if (v) set({ views: { ...st.views, [nid]: structuredClone(v) } });
+    actions.switchFigure(nid);
+    return nid;
+  },
+
+  renameFigure(id: string, name: string) {
+    commit((d) => {
+      const f = d.figures.find((x) => x.id === id);
+      if (f) f.name = name.trim() || f.name;
+    });
+  },
+
+  deleteFigure(id: string) {
+    const st = get();
+    if (st.project.figures.length <= 1) return notify('A project needs at least one figure.');
+    const idx = st.project.figures.findIndex((f) => f.id === id);
+    if (id === st.activeFigureId) {
+      const next = st.project.figures[idx > 0 ? idx - 1 : 1]!;
+      actions.switchFigure(next.id);
+    }
+    commit((d) => {
+      d.figures = d.figures.filter((f) => f.id !== id);
+    });
+  },
+
+  /** Show an existing project signal in the active figure. */
+  addToFigure(signalId: string) {
+    commit((d) => {
+      const fig = activeFigure(d);
+      if (fig.panels.some((g) => g.traces.some((t) => t.signalId === signalId))) return;
+      fig.panels[fig.panels.length - 1]!.traces.push({ signalId });
+    });
+    set({ selectedId: signalId });
+  },
+
+  /** Remove a signal from the active figure only (it stays in the project). */
+  removeFromFigure(signalId: string) {
+    commit((d) => {
+      for (const g of activeFigure(d).panels) g.traces = g.traces.filter((t) => t.signalId !== signalId);
+    });
+    if (get().selectedId === signalId) set({ selectedId: null });
   },
 
   /** Set a signal's position on the timeline. Use one `key` per drag gesture. */
@@ -524,7 +770,7 @@ export const actions = {
     };
     commit((d) => {
       d.signals.push(def);
-      order(d).push({ signalId: def.id });
+      targetGroup(activeFigure(d)).traces.push({ signalId: def.id });
     });
     set({ selectedId: def.id });
     return def.id;
