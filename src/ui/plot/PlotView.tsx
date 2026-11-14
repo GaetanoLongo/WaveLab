@@ -8,6 +8,7 @@
  *   Shift + wheel     zoom vertical axis of the panel under the pointer
  *   Shift + drag      box zoom (time + vertical range of that panel)
  *   double-click      fit all
+ *   pinch (touch)     zoom time axis around the fingers; two-finger drag pans
  * Guides and the zoom box are drawn in an overlay that is never exported.
  */
 
@@ -71,6 +72,7 @@ export interface PlotViewProps {
 type Drag =
   | { kind: 'pan'; startX: number; startY: number; startRange: Range; moved: boolean }
   | { kind: 'box'; startX: number; startY: number; curX: number; curY: number }
+  | { kind: 'pinch'; startDist: number; startMid: number; startRange: Range }
   | {
       kind: 'move';
       id: string;
@@ -99,6 +101,8 @@ export function PlotView(props: PlotViewProps) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [guide, setGuide] = useState<Guide | null>(null);
   const [hoverMovable, setHoverMovable] = useState(false);
+  /** Active pointers (for multi-touch pinch). */
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
 
   useLayoutEffect(() => {
@@ -211,10 +215,23 @@ export function PlotView(props: PlotViewProps) {
     };
   };
 
+  const startPinch = () => {
+    const [a, b] = [...pointers.current.values()];
+    if (!a || !b) return;
+    setGuide(null);
+    setDrag({ kind: 'pinch', startDist: Math.max(10, Math.abs(a.x - b.x)), startMid: (a.x + b.x) / 2, startRange: props.xRange });
+  };
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     const { x, y } = localPos(e.currentTarget, e);
     e.currentTarget.setPointerCapture(e.pointerId);
+    pointers.current.set(e.pointerId, { x, y });
+    if (pointers.current.size === 2) {
+      startPinch();
+      return;
+    }
+    if (pointers.current.size > 2) return;
     if (e.shiftKey) {
       setDrag({ kind: 'box', startX: x, startY: y, curX: x, curY: y });
       return;
@@ -233,6 +250,21 @@ export function PlotView(props: PlotViewProps) {
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const { x, y } = localPos(e.currentTarget, e);
+    if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, { x, y });
+    if (drag?.kind === 'pinch') {
+      const [a, b] = [...pointers.current.values()];
+      if (!a || !b) return;
+      const dist = Math.max(10, Math.abs(a.x - b.x));
+      const mid = (a.x + b.x) / 2;
+      const r0 = drag.startRange;
+      const span0 = r0[1] - r0[0];
+      // Zoom around the time that was under the fingers' midpoint, then follow the midpoint.
+      const anchor = r0[0] + ((clampX(layout, drag.startMid) - layout.plotX) / layout.plotW) * span0;
+      const zoomed = zoomRange(r0, drag.startDist / dist, anchor);
+      const span1 = zoomed[1] - zoomed[0];
+      props.onXRangeChange(panRange(zoomed, (-(mid - drag.startMid) * span1) / layout.plotW));
+      return;
+    }
     reportCursor(layout, x, y, props);
     if (!drag) {
       const hit = props.onMove ? hitTest(layout, props.traces, x, y) : null;
@@ -268,7 +300,14 @@ export function PlotView(props: PlotViewProps) {
     }
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    pointers.current.delete(e.pointerId);
+    if (drag?.kind === 'pinch') {
+      // Lifting one finger ends the pinch; the remaining finger does nothing until lifted.
+      setDrag(null);
+      return;
+    }
+    if (pointers.current.size > 0) return;
     if (drag?.kind === 'pan' && !drag.moved) {
       props.onSelect?.(hitTest(layout, props.traces, drag.startX, drag.startY));
     }
@@ -303,7 +342,8 @@ export function PlotView(props: PlotViewProps) {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={() => {
+      onPointerCancel={(e) => {
+        pointers.current.delete(e.pointerId);
         setDrag(null);
         setGuide(null);
       }}

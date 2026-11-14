@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { create } from 'zustand';
 import { themeById, type TraceInput } from '../core/plot/layout';
 import { ExportDialog } from './export/ExportDialog';
 import { loadFile } from './fileio';
@@ -12,9 +13,15 @@ import { Toolbox } from './panels/Toolbox';
 import { PlotView, type CursorInfo } from './plot/PlotView';
 import { Toolbar } from './Toolbar';
 import { useShortcuts } from './useShortcuts';
+import { PHONE_QUERY, useMediaQuery } from './useMediaQuery';
+
+type PhoneTab = 'add' | 'signals' | 'props';
+/** Which panel the phone layout shows under the plot. */
+export const usePhoneTab = create<{ tab: PhoneTab }>(() => ({ tab: 'add' }));
 
 export function App() {
   useShortcuts();
+  const phone = useMediaQuery(PHONE_QUERY);
   const [dropping, setDropping] = useState(false);
   const hasFile = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files');
   return (
@@ -43,22 +50,73 @@ export function App() {
       }}
     >
       <ExportDialog />
-      <Toolbar />
-      <div className="workspace">
-        <aside className="toolbox" aria-label="Toolbox">
-          <Toolbox />
-        </aside>
-        <PlotArea />
-        <aside className="inspector">
-          <SignalList />
-          <PropertiesPanel />
-        </aside>
+      <Toolbar compact={phone} />
+      {phone ? (
+        <PhoneWorkspace />
+      ) : (
+        <div className="workspace">
+          <aside className="toolbox" aria-label="Toolbox">
+            <Toolbox />
+          </aside>
+          <PlotArea />
+          <aside className="inspector">
+            <SignalList />
+            <PropertiesPanel />
+          </aside>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const TABS: Array<[PhoneTab, string]> = [
+  ['add', 'Add'],
+  ['signals', 'Signals'],
+  ['props', 'Properties'],
+];
+
+/**
+ * Phone layout: the plot on top, one panel below chosen with a tab bar.
+ * Creating or selecting a signal jumps to its properties.
+ */
+function PhoneWorkspace() {
+  const tab = usePhoneTab((s) => s.tab);
+  const selectedId = useEditor((s) => s.selectedId);
+  const count = useEditor((s) => s.project.signals.length);
+  const prevSel = useRef(selectedId);
+  useEffect(() => {
+    if (selectedId && selectedId !== prevSel.current) usePhoneTab.setState({ tab: 'props' });
+    prevSel.current = selectedId;
+  }, [selectedId]);
+
+  return (
+    <div className="phone-workspace">
+      <PlotArea />
+      <nav className="phone-tabs" role="tablist" aria-label="Panels">
+        {TABS.map(([id, label]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            className={tab === id ? 'on' : ''}
+            onClick={() => usePhoneTab.setState({ tab: id })}
+          >
+            {label}
+            {id === 'signals' && count > 0 && <span className="count">{count}</span>}
+          </button>
+        ))}
+      </nav>
+      <div className="phone-panel" role="tabpanel">
+        {tab === 'add' && <Toolbox />}
+        {tab === 'signals' && <SignalList />}
+        {tab === 'props' && <PropertiesPanel />}
       </div>
     </div>
   );
 }
 
 function PlotArea() {
+  const phoneLayout = useMediaQuery(PHONE_QUERY);
   const project = useEditor((s) => s.project);
   const selectedId = useEditor((s) => s.selectedId);
   const view = useEditor((s) => s.view);
@@ -113,7 +171,9 @@ function PlotArea() {
           onMove={(id, delay, key) => actions.setDelay(id, delay, key)}
           emptyMessage={
             project.signals.length === 0
-              ? 'Add a waveform from the toolbox on the left.'
+              ? phoneLayout
+                ? 'Add a waveform from the “Add” tab below.'
+                : 'Add a waveform from the toolbox on the left.'
               : 'All signals are hidden.'
           }
         />

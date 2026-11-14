@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { zoomRange } from '../core/plot/viewport';
 import { actions, canRedo, canUndo, editor, isDirty, useEditor } from '../state/store';
 import { Icon, type IconName } from './icons';
@@ -22,20 +22,19 @@ export function confirmDiscard(): boolean {
   return !isDirty(editor.getState()) || window.confirm('Discard unsaved changes?');
 }
 
-export function Toolbar() {
+const newProject = () => {
+  if (!confirmDiscard()) return;
+  forgetFileHandle();
+  actions.newProject();
+};
+const zoomBy = (k: number) => actions.setXRange(zoomRange(editor.getState().view.xRange, k));
+
+function ProjectName({ compact }: { compact: boolean }) {
   const name = useEditor((s) => s.project.name);
   const dirty = useEditor(isDirty);
-  const undo = useEditor(canUndo);
-  const redo = useEditor(canRedo);
-  const hasSel = useEditor((s) => s.selectedId !== null);
-  const hasClip = useEditor((s) => s.clipboard !== null);
-  const mode = useEditor((s) => s.project.figures[0]!.mode);
   const [editingName, setEditingName] = useState(false);
-
   return (
-    <header className="toolbar">
-      <strong className="brand">WaveLab</strong>
-      <div className="project-name">
+    <div className="project-name">
         {editingName ? (
           <input
             autoFocus
@@ -56,22 +55,98 @@ export function Toolbar() {
           </button>
         )}
         {dirty && (
-          <span className="dirty" title="Unsaved changes">
-            ● unsaved
+          <span className="dirty" title="Unsaved changes" aria-label="Unsaved changes">
+            {compact ? '●' : '● unsaved'}
           </span>
         )}
+    </div>
+  );
+}
+
+/** Phone toolbar: essentials visible, everything else in a "⋯" menu. */
+function CompactToolbar() {
+  const undo = useEditor(canUndo);
+  const redo = useEditor(canRedo);
+  const hasSel = useEditor((s) => s.selectedId !== null);
+  const hasClip = useEditor((s) => s.clipboard !== null);
+  const mode = useEditor((s) => s.project.figures[0]!.mode);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('pointerdown', onDown);
+    return () => window.removeEventListener('pointerdown', onDown);
+  }, [open]);
+  const item = (icon: IconName, label: string, run: () => void, disabled = false) => (
+    <button
+      role="menuitem"
+      disabled={disabled}
+      onClick={() => {
+        setOpen(false);
+        run();
+      }}
+    >
+      <Icon name={icon} /> {label}
+    </button>
+  );
+  return (
+    <header className="toolbar compact">
+      <ProjectName compact />
+      <div className="sep" />
+      <Btn icon="undo" label="Undo" onClick={actions.undo} disabled={!undo} />
+      <Btn icon="redo" label="Redo" onClick={actions.redo} disabled={!redo} />
+      <Btn icon="fit" label="Fit all signals" onClick={actions.fitAll} />
+      <Btn
+        icon={mode === 'overlay' ? 'stacked' : 'overlay'}
+        label={mode === 'overlay' ? 'Switch to stacked plots' : 'Switch to overlay'}
+        onClick={() => actions.setMode(mode === 'overlay' ? 'stacked' : 'overlay')}
+      />
+      <SnapMenu />
+      <Btn icon="export" label="Export PNG / SVG / PDF" onClick={openExportDialog} />
+      <div className="popover-anchor" ref={ref}>
+        <button className="icon tb more" aria-label="More actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          ⋯
+        </button>
+        {open && (
+          <div className="popover menu" role="menu">
+            {item('newFile', 'New project', newProject)}
+            {item('open', 'Open project…', () => void openProject())}
+            {item('save', 'Save', () => void saveProject(false))}
+            {item('saveAs', 'Save as…', () => void saveProject(true))}
+            <hr />
+            {item('duplicate', 'Duplicate', () => actions.duplicate(), !hasSel)}
+            {item('copy', 'Copy', () => actions.copy(), !hasSel)}
+            {item('paste', 'Paste', actions.paste, !hasClip)}
+            {item('trash', 'Delete', () => actions.deleteSignal(), !hasSel)}
+            <hr />
+            {item('zoomIn', 'Zoom in', () => zoomBy(0.5))}
+            {item('zoomOut', 'Zoom out', () => zoomBy(2))}
+            {item('fit', 'Auto vertical scale', actions.resetYRanges)}
+          </div>
+        )}
       </div>
+    </header>
+  );
+}
+
+export function Toolbar({ compact = false }: { compact?: boolean }) {
+  const undo = useEditor(canUndo);
+  const redo = useEditor(canRedo);
+  const hasSel = useEditor((s) => s.selectedId !== null);
+  const hasClip = useEditor((s) => s.clipboard !== null);
+  const mode = useEditor((s) => s.project.figures[0]!.mode);
+  if (compact) return <CompactToolbar />;
+
+  return (
+    <header className="toolbar">
+      <strong className="brand">WaveLab</strong>
+      <ProjectName compact={false} />
 
       <div className="tb-group">
-        <Btn
-          icon="newFile"
-          label="New project"
-          onClick={() => {
-            if (!confirmDiscard()) return;
-            forgetFileHandle();
-            actions.newProject();
-          }}
-        />
+        <Btn icon="newFile" label="New project" onClick={newProject} />
         <Btn icon="open" label={`Open project (${MOD}O)`} onClick={() => void openProject()} />
         <Btn icon="save" label={`Save (${MOD}S)`} onClick={() => void saveProject(false)} />
         <Btn icon="saveAs" label="Save as…" onClick={() => void saveProject(true)} />
@@ -87,8 +162,8 @@ export function Toolbar() {
         <Btn icon="trash" label="Delete (Del)" onClick={() => actions.deleteSignal()} disabled={!hasSel} />
       </div>
       <div className="tb-group">
-        <Btn icon="zoomIn" label="Zoom in" onClick={() => actions.setXRange(zoomRange(editor.getState().view.xRange, 0.5))} />
-        <Btn icon="zoomOut" label="Zoom out" onClick={() => actions.setXRange(zoomRange(editor.getState().view.xRange, 2))} />
+        <Btn icon="zoomIn" label="Zoom in" onClick={() => zoomBy(0.5)} />
+        <Btn icon="zoomOut" label="Zoom out" onClick={() => zoomBy(2)} />
         <Btn icon="fit" label="Fit all signals (double-click plot)" onClick={actions.fitAll} />
         <button className="tb text" title="Return all vertical axes to automatic scaling" onClick={actions.resetYRanges}>
           Auto Y

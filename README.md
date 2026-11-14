@@ -27,6 +27,11 @@ npm run e2e        # browser end-to-end checks: editor, snapping, files & export
 
 See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the mathematical conventions.
 
+## Phones and tablets
+Below 760 px wide the plot sits on top with a tab bar (Add / Signals / Properties) underneath; the toolbar
+keeps the essentials and moves the rest into a "⋯" menu. On touch screens: pinch to zoom the time axis,
+drag with two fingers to pan, drag a trace with one finger to move it, double-tap to fit.
+
 ## Files and export
 - **Projects** are saved as `.wlab` (readable JSON with the mathematical definitions, never samples).
   Ctrl+S saves, "Save as…" picks a new file, Ctrl+O or drag-and-drop opens one. In Chromium-based

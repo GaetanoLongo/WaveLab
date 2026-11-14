@@ -94,7 +94,7 @@ input.invalid { border-color: var(--danger); background: #fdf1f0; }
 .tool .when { margin-left: auto; font-size: 10px; color: var(--faint); white-space: nowrap; }
 
 /* ---------- inspector ---------- */
-.inspector h2 {
+.inspector h2, .phone-panel h2 {
   margin: 0; padding: 9px 12px 6px; font-size: 12px; text-transform: uppercase;
   letter-spacing: 0.03em; color: var(--muted); display: flex; align-items: center; gap: 8px;
 }
@@ -269,3 +269,58 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 .expr-help p, .expr-help ul { font-size: 12px; color: var(--muted); margin: 4px 0; }
 .expr-help ul { padding-left: 16px; }
 .expr-help code { font-size: 11.5px; background: var(--panel-2); padding: 0 3px; border-radius: 3px; }
+
+/* ---------- Phone layout (≤ 760 px) ---------- */
+.phone-workspace { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.phone-workspace .plot-column { flex: 0 0 auto; height: 52vh; min-height: 260px; }
+.phone-workspace .plot-area { padding: 6px; }
+.phone-tabs {
+  display: flex; background: var(--panel); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 5;
+}
+.phone-tabs button {
+  flex: 1; justify-content: center; border: 0; border-radius: 0; background: transparent;
+  padding: 10px 4px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent;
+}
+.phone-tabs button.on { color: var(--accent); border-bottom-color: var(--accent); background: var(--accent-soft); }
+.phone-tabs .count { margin-left: 6px; font-size: 11px; background: var(--panel-2); border-radius: 8px; padding: 0 6px; color: var(--muted); }
+.phone-panel { flex: 1; min-height: 0; overflow-y: auto; background: var(--panel); -webkit-overflow-scrolling: touch; }
+.phone-panel .signal-list { border-bottom: 0; }
+.phone-panel .signal-list ul { max-height: none; }
+.phone-panel .toolbox-inner .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.phone-panel .tools-hint { margin-top: 0; }
+
+.toolbar.compact { flex-wrap: nowrap; gap: 0; padding: 4px 6px; }
+.toolbar.compact .project-name { min-width: 0; margin-right: 0; flex: 1 1 auto; }
+.toolbar.compact .name-btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.toolbar.compact .project-name input { width: 100%; }
+.toolbar.compact .sep { flex: 0 0 4px; }
+.toolbar.compact .more { font-size: 18px; line-height: 1; width: 36px; justify-content: center; }
+.popover.menu { width: 220px; padding: 6px; display: flex; flex-direction: column; }
+.popover.menu button { justify-content: flex-start; border: 0; background: transparent; padding: 8px 10px; width: 100%; }
+.popover.menu button:hover:not(:disabled) { background: var(--accent-soft); }
+.popover.menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; width: 100%; }
+
+@media (max-width: 760px) {
+  .status { font-size: 11px; gap: 10px; padding: 3px 8px; }
+  .status .hint { display: none; }
+  /* Popovers anchored to the right edge of the screen, never wider than it. */
+  .popover { position: fixed; top: 48px; right: 8px; left: auto; width: min(340px, calc(100vw - 16px)); max-height: calc(100vh - 64px); overflow-y: auto; }
+  .popover.menu { width: min(240px, calc(100vw - 16px)); }
+  .modal-backdrop { padding: 0; }
+  .modal { max-height: 100vh; height: 100%; border-radius: 0; }
+  .field { grid-template-columns: 96px minmax(0, 1fr); }
+  .slider { width: calc(100% - 104px); margin-left: 104px; }
+}
+
+/* ---------- Touch screens ---------- */
+@media (pointer: coarse) {
+  button.icon, .tb { min-width: 38px; min-height: 38px; justify-content: center; }
+  .row { padding-top: 6px; padding-bottom: 6px; }
+  .row-actions { opacity: 1; }
+  .row-actions button.icon { min-width: 34px; min-height: 34px; }
+  .tool { padding: 8px 6px; }
+  /* iOS zooms the page when a focused input has text smaller than 16 px. */
+  input, select, textarea, .expr-input { font-size: 16px; }
+  .swatch { width: 20px; height: 20px; }
+}
