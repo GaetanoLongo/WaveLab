@@ -11,7 +11,7 @@ import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { defaultGenerator } from '../core/model/defaults';
 import { paletteColor } from '../core/model/palette';
-import { emptyProject, type Project, type SignalDef } from '../core/model/project';
+import { emptyProject, type Project, type SavedView, type SignalDef } from '../core/model/project';
 import type { GeneratorKind } from '../core/model/signal-defs';
 import type { Range } from '../core/plot/range';
 import { fitTimeRange } from '../core/plot/viewport';
@@ -197,10 +197,31 @@ export const actions = {
     set(initialState());
   },
 
-  /** Replace the whole document (used by Open in M5) — clears history. */
-  loadProject(project: Project) {
+  /** Replace the whole document (Open) — clears history; restores the saved view if any. */
+  loadProject(project: Project, view?: SavedView) {
     set(initialState(project));
-    actions.fitAll();
+    if (view) set({ view: { xRange: view.xRange, yRanges: { ...view.yRanges } } });
+    else actions.fitAll();
+  },
+
+  /** Current view in the serializable form stored in project files. */
+  savedView(): SavedView {
+    const v = get().view;
+    const yRanges: Record<string, [number, number]> = {};
+    for (const [k, r] of Object.entries(v.yRanges)) if (r) yRanges[k] = [r[0], r[1]];
+    return { xRange: [v.xRange[0], v.xRange[1]], yRanges };
+  },
+
+  setStylePreset(id: string) {
+    commit((d) => {
+      d.figures[0]!.stylePreset = id;
+    });
+  },
+
+  setShowLegend(show: boolean) {
+    commit((d) => {
+      d.figures[0]!.showLegend = show;
+    });
   },
 
   markSaved() {

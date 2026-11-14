@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { SignalDef } from '../../core/model/project';
 import { actions, orderedSignals, useEditor } from '../../state/store';
 import { Icon } from '../icons';
+import { MathLabel } from '../MathLabel';
 
 export function SignalList() {
   const project = useEditor((s) => s.project);
@@ -114,10 +115,10 @@ function Row({ s, selected, dropBefore, dropAfter, onDragStart, onDragOverRow, o
       ) : (
         <span
           className="name"
-          title={s.locked ? s.name : `${s.name} — double-click to rename`}
+          title={s.locked ? s.name : `${s.name} — double-click to rename (supports V_{out}, \\omega, ^2)`}
           onDoubleClick={() => !s.locked && setRenaming(true)}
         >
-          {s.name}
+          <MathLabel text={s.name} />
         </span>
       )}
       <span className="row-actions" onClick={(e) => e.stopPropagation()}>

@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
-import { LIGHT_TECHNICAL, type TraceInput } from '../core/plot/layout';
+import { themeById, type TraceInput } from '../core/plot/layout';
+import { ExportDialog } from './export/ExportDialog';
+import { loadFile } from './fileio';
 import { formatSI } from '../core/units/si';
 import { compiled } from '../state/compiled';
 import { useSettings } from '../state/settings';
-import { actions, editor, findSignal, orderedSignals, useEditor } from '../state/store';
+import { actions, editor, findSignal, isDirty, orderedSignals, useEditor } from '../state/store';
 import { PropertiesPanel } from './panels/PropertiesPanel';
 import { SignalList } from './panels/SignalList';
 import { Toolbox } from './panels/Toolbox';
@@ -13,8 +15,34 @@ import { useShortcuts } from './useShortcuts';
 
 export function App() {
   useShortcuts();
+  const [dropping, setDropping] = useState(false);
+  const hasFile = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files');
   return (
-    <div className="app">
+    <div
+      className={`app${dropping ? ' dropping' : ''}`}
+      onDragOver={(e) => {
+        if (!hasFile(e)) return;
+        e.preventDefault();
+        setDropping(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) setDropping(false);
+      }}
+      onDrop={(e) => {
+        if (!hasFile(e)) return;
+        e.preventDefault();
+        setDropping(false);
+        const f = e.dataTransfer.files[0];
+        if (!f) return;
+        if (!/\.(wlab|json)$/i.test(f.name)) {
+          editor.setState({ notice: `“${f.name}” is not a WaveLab project (.wlab).` });
+          return;
+        }
+        if (isDirty(editor.getState()) && !window.confirm('Discard unsaved changes?')) return;
+        void loadFile(f, null);
+      }}
+    >
+      <ExportDialog />
       <Toolbar />
       <div className="workspace">
         <aside className="toolbox" aria-label="Toolbox">
@@ -68,7 +96,8 @@ function PlotArea() {
           yRanges={view.yRanges}
           onYRangeChange={actions.setYRange}
           onFit={actions.fitAll}
-          theme={LIGHT_TECHNICAL}
+          theme={themeById(project.figures[0]!.stylePreset)}
+          showLegend={project.figures[0]!.showLegend}
           onCursor={setCursor}
           onSelect={actions.select}
           snap={snap}

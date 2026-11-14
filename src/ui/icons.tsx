@@ -20,6 +20,12 @@ const P: Record<string, ReactNode> = {
       <path d="M17 21v-8H7v8M7 3v5h8" />
     </>
   ),
+  saveAs: (
+    <>
+      <path d="M13 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v4" />
+      <path d="M7 3v5h8M7 21v-6h5M18 15v6M15 18h6" />
+    </>
+  ),
   undo: (
     <>
       <path d="M3 7v6h6" />

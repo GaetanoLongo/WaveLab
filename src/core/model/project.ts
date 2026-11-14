@@ -57,6 +57,16 @@ export interface Figure {
   panels: Panel[];
   /** Shared horizontal (time) axis, seconds. */
   xAxis: AxisConfig;
+  /** Style preset id ('light' | 'minimal'; more in M9). Used on screen and for export. */
+  stylePreset: string;
+  showLegend: boolean;
+}
+
+/** Saved view (zoom/pan) so a reopened project looks the same. */
+export interface SavedView {
+  xRange: [number, number];
+  /** Manual vertical ranges by panel id (absent = automatic). */
+  yRanges: Record<string, [number, number]>;
 }
 
 export interface Project {
@@ -80,6 +90,8 @@ export function emptyProject(name = 'Untitled'): Project {
         mode: 'overlay',
         panels: [{ id: 'panel-1', traces: [], yAxis: autoAxis('') }],
         xAxis: { auto: true, min: 0, max: 0.04, title: 'Time' },
+        stylePreset: 'light',
+        showLegend: true,
       },
     ],
   };

@@ -2,6 +2,8 @@
 
 import { useEffect } from 'react';
 import { actions, editor, isDirty } from '../state/store';
+import { openExportDialog, useExportDialog } from './export/ExportDialog';
+import { openProject, saveProject } from './fileio';
 
 function isTyping(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
@@ -16,12 +18,19 @@ export function useShortcuts() {
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
 
-      // Save / Export are intercepted even in fields so the browser dialog never opens.
+      // Save / Export / Open are intercepted even in fields so the browser dialogs never open.
       if (mod && k === 's') {
         e.preventDefault();
-        editor.setState({ notice: e.shiftKey ? 'Export arrives in milestone M5.' : 'Saving arrives in milestone M5.' });
+        if (e.shiftKey) openExportDialog();
+        else void saveProject(false);
         return;
       }
+      if (mod && k === 'o') {
+        e.preventDefault();
+        void openProject();
+        return;
+      }
+      if (useExportDialog.getState().open) return; // the modal handles its own keys
       if (isTyping(e.target)) return;
 
       if (mod && k === 'z' && !e.shiftKey) {

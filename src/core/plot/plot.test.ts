@@ -185,3 +185,23 @@ describe('Acceptance Test 6 — stacked plots share the time axis', () => {
     for (const l of xLabels) if (l.type === 'text') expect(l.y).toBeGreaterThan(bottom.y + bottom.h);
   });
 });
+
+describe('SVG text with math markup', () => {
+  it('renders subscripts as tspans and leaves plain labels untouched', async () => {
+    const { sceneToSvg } = await import('./svg');
+    const svg = sceneToSvg({
+      width: 100,
+      height: 50,
+      background: null,
+      fontFamily: 'Inter',
+      clips: [],
+      items: [
+        { type: 'text', x: 10, y: 20, text: 'V_{out} (V)', size: 12, fill: '#000', anchor: 'start', baseline: 'bottom' },
+        { type: 'text', x: 10, y: 40, text: 'Time (ms)', size: 12, fill: '#000', anchor: 'start', baseline: 'bottom' },
+      ],
+    });
+    expect(svg).toContain('<tspan>V</tspan><tspan dy="3.36" font-size="8.64">out</tspan><tspan dy="-3.36"> (V)</tspan>');
+    expect(svg).toContain('>Time (ms)</text>');
+    expect(svg).not.toContain('dominant-baseline');
+  });
+});

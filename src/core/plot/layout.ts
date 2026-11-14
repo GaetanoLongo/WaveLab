@@ -7,10 +7,13 @@ import type { SignalEval } from '../signals/types';
 import type { Range } from './range';
 import { sampleSignal } from './sampler';
 import type { Dash, Scene, SceneItem } from './scene';
+import { estimateWidth } from './mathtext';
 import { niceTicks } from './ticks';
 import { autoYRange } from './viewport';
 
 export interface PlotTheme {
+  id: string;
+  label: string;
   background: string | null;
   plotBackground: string;
   axisColor: string;
@@ -25,6 +28,8 @@ export interface PlotTheme {
 }
 
 export const LIGHT_TECHNICAL: PlotTheme = {
+  id: 'light',
+  label: 'Light technical',
   background: '#ffffff',
   plotBackground: '#ffffff',
   axisColor: '#2b3340',
@@ -37,6 +42,32 @@ export const LIGHT_TECHNICAL: PlotTheme = {
   fontFamily: 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
   fontSize: 12,
 };
+
+/** Clean look for papers: no minor grid, faint major grid, black text. */
+export const MINIMAL_PUBLICATION: PlotTheme = {
+  id: 'minimal',
+  label: 'Minimal / publication',
+  background: '#ffffff',
+  plotBackground: '#ffffff',
+  axisColor: '#000000',
+  gridMajor: '#000000',
+  gridMajorOpacity: 0.12,
+  gridMinor: '#000000',
+  gridMinorOpacity: 0,
+  text: '#000000',
+  mutedText: '#000000',
+  fontFamily: 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+  fontSize: 12,
+};
+
+export const THEMES: Record<string, PlotTheme> = {
+  light: LIGHT_TECHNICAL,
+  minimal: MINIMAL_PUBLICATION,
+};
+
+export function themeById(id: string | undefined): PlotTheme {
+  return (id && THEMES[id]) || LIGHT_TECHNICAL;
+}
 
 export interface TraceInput {
   id: string;
@@ -187,8 +218,10 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
       const y = yToPx(pl, v);
       items.push({ type: 'line', x1: pl.x, y1: y, x2: pl.x + pl.w, y2: y, stroke: color, width, opacity });
     };
-    for (const t of xt.minor) vline(t, th.gridMinor, th.gridMinorOpacity);
-    for (const v of yt.minor) hline(v, th.gridMinor, th.gridMinorOpacity);
+    if (th.gridMinorOpacity > 0) {
+      for (const t of xt.minor) vline(t, th.gridMinor, th.gridMinorOpacity);
+      for (const v of yt.minor) hline(v, th.gridMinor, th.gridMinorOpacity);
+    }
     for (const t of xt.major) vline(t, th.gridMajor, th.gridMajorOpacity);
     for (const v of yt.major) hline(v, th.gridMajor, th.gridMajorOpacity);
     if (pl.yRange[0] < 0 && pl.yRange[1] > 0) hline(0, th.axisColor, 0.55, 1);
@@ -259,10 +292,10 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
     }
 
     // Overlay legend (top-right, inside).
-    if (input.showLegend && traces.length > 1) {
-      const entries = traces.filter((t) => t.showInLegend !== false);
+    const entries = traces.filter((t) => t.showInLegend !== false);
+    if (input.showLegend && traces.length > 1 && entries.length > 0) {
       const rowH = fs + 6;
-      const textW = Math.max(...entries.map((e) => e.name.length)) * fs * 0.58;
+      const textW = Math.max(...entries.map((e) => estimateWidth(e.name, fs * 0.92)));
       const boxW = 30 + textW + 10;
       const boxH = entries.length * rowH + 8;
       const bx = pl.x + pl.w - boxW - 8;

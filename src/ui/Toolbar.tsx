@@ -3,6 +3,9 @@ import { zoomRange } from '../core/plot/viewport';
 import { actions, canRedo, canUndo, editor, isDirty, useEditor } from '../state/store';
 import { Icon, type IconName } from './icons';
 import { SnapMenu } from './panels/SnapMenu';
+import { openExportDialog } from './export/ExportDialog';
+import { forgetFileHandle, openProject, saveProject } from './fileio';
+import { MathLabel } from './MathLabel';
 
 const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
 
@@ -49,7 +52,7 @@ export function Toolbar() {
           />
         ) : (
           <button className="name-btn" title="Rename project" onClick={() => setEditingName(true)}>
-            {name}
+            <MathLabel text={name} />
           </button>
         )}
         {dirty && (
@@ -60,9 +63,18 @@ export function Toolbar() {
       </div>
 
       <div className="tb-group">
-        <Btn icon="newFile" label="New project" onClick={() => confirmDiscard() && actions.newProject()} />
-        <Btn icon="open" label="Open project" pending="M5" />
-        <Btn icon="save" label={`Save (${MOD}S)`} pending="M5" />
+        <Btn
+          icon="newFile"
+          label="New project"
+          onClick={() => {
+            if (!confirmDiscard()) return;
+            forgetFileHandle();
+            actions.newProject();
+          }}
+        />
+        <Btn icon="open" label={`Open project (${MOD}O)`} onClick={() => void openProject()} />
+        <Btn icon="save" label={`Save (${MOD}S)`} onClick={() => void saveProject(false)} />
+        <Btn icon="saveAs" label="Save as…" onClick={() => void saveProject(true)} />
       </div>
       <div className="tb-group">
         <Btn icon="undo" label={`Undo (${MOD}Z)`} onClick={actions.undo} disabled={!undo} />
@@ -93,7 +105,7 @@ export function Toolbar() {
       <div className="sep" />
       <div className="tb-group">
         <SnapMenu />
-        <Btn icon="export" label={`Export (${MOD}Shift+S)`} pending="M5" />
+        <Btn icon="export" label={`Export PNG / SVG / PDF (${MOD}Shift+S)`} onClick={openExportDialog} />
         <Btn icon="settings" label="Settings" pending="M9" />
       </div>
     </header>

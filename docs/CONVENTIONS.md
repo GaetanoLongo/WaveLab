@@ -63,3 +63,11 @@ These rules are part of the file format: changing them later needs a schema migr
   falling sawtooth 0°, square 90° − 180°·duty, pulse 90° − 360°·(centre/T). The pulse centre
   assumes symmetric edges; with rise ≠ fall it is an approximation.
 - "Set difference" changes the signal's **phase parameter**. The align buttons change its **delay**.
+
+## Math markup in labels
+- `_x` / `_{...}` subscript, `^x` / `^{...}` superscript, `\name` for Greek letters and symbols
+  (LaTeX names: `\phi` = ϕ, `\varphi` = φ, as in LaTeX). `^\circ` gives the degree sign.
+- No nesting: markup inside a sub/superscript group is shown literally (symbols still work).
+- Malformed markup (e.g. an unclosed `{`) is shown as typed, never dropped.
+- A signal name containing `_` is read as a subscript (`V_grid` → V with subscript g, followed by "rid").
+  Use braces for longer subscripts (`V_{grid}`), or `\_` for a literal underscore.

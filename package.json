@@ -11,12 +11,14 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "node e2e/editor.e2e.cjs && node e2e/snap.e2e.cjs"
+    "e2e": "node e2e/editor.e2e.cjs && node e2e/snap.e2e.cjs && node e2e/files.e2e.cjs"
   },
   "dependencies": {
     "immer": "^10.1.1",
+    "jspdf": "^2.5.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "svg2pdf.js": "^2.2.4",
     "zustand": "^4.5.5"
   },
   "devDependencies": {

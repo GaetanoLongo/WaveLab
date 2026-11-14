@@ -55,6 +55,7 @@ export interface PlotViewProps {
   onYRangeChange(panelId: string, r: Range | null): void;
   onFit(): void;
   theme: PlotTheme;
+  showLegend?: boolean;
   onCursor?(info: CursorInfo | null): void;
   /** Click (without dragging) on a trace selects it; on empty space passes null. */
   onSelect?(signalId: string | null): void;
@@ -125,10 +126,10 @@ export function PlotView(props: PlotViewProps) {
         panels,
         xRange: props.xRange,
         xTitle: 'Time',
-        showLegend: true,
+        showLegend: props.showLegend ?? true,
         theme: props.theme,
       }),
-    [size, panels, props.xRange, props.theme],
+    [size, panels, props.xRange, props.theme, props.showLegend],
   );
   const svg = useMemo(() => sceneToSvg(scene, `p${uid}-`), [scene, uid]);
 
