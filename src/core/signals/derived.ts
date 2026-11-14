@@ -445,7 +445,10 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
     impulses: rootImpulses ?? undefined,
     warnings: [...warnings],
     value: (t) => ev(t, false, null),
-    left: (t) => ev(t, true, null),
+    // Left limit: evaluate a hair before t. Inputs' own jumps are handled by their left limits,
+    // but switching instants created *inside* the expression (comparator crossings) are only
+    // known to ~1e-15 by bisection, so evaluating exactly at t could land after the switch.
+    left: (t) => ev(t - Math.max(1e-13, Math.abs(t) * 1e-13), true, null),
     features,
     period,
     scale: spec.resolution !== null ? Math.min(scale ?? Infinity, spec.resolution * SAMPLES_PER_SCALE) : scale,

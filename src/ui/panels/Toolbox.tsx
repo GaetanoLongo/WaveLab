@@ -7,6 +7,7 @@ import type { GeneratorSignalDef } from '../../core/model/project';
 import type { GeneratorKind } from '../../core/model/signal-defs';
 import { siLiteral } from '../../core/units/si';
 import { actions } from '../../state/store';
+import { openPwm } from './PwmDialog';
 import { WaveGlyph } from '../icons';
 
 interface Entry {
@@ -88,10 +89,7 @@ const DIGITAL: Entry[] = [
 ];
 
 const PLANNED_BASIC: string[] = [];
-const PLANNED_DIGITAL: Array<[string, string]> = [
-  ['PWM generator', 'PWM module'],
-  ['PPM', 'PWM module'],
-];
+const PLANNED_DIGITAL: Array<[string, string]> = [['PPM', 'later']];
 type Template = (a: string, b: string, ctx: { periodA?: number }) => string;
 const OPS: Array<[label: string, glyph: string, name: string, arity: 1 | 2, tpl: Template, title: string, unit?: (u: string) => string]> = [
   ['Add', '+', 'Sum', 2, (a, b) => `${a} + ${b}`, 'A + B'],
@@ -160,6 +158,23 @@ export function Toolbox() {
           {PLANNED_DIGITAL.map(([l, w]) => (
             <Planned key={l} label={l} when={w} />
           ))}
+        </div>
+      </details>
+      <details open>
+        <summary>Power electronics</summary>
+        <div className="tools">
+          <button className="tool" title="Carrier-based PWM: half/full bridge (bipolar, unipolar) or three-phase, with optional dead time" onClick={openPwm}>
+            <WaveGlyph kind="bits" variant="PWM" />
+            <span>PWM generator…</span>
+          </button>
+          <button className="tool" title="Three sines 120° apart in a shared panel (uses the selected sine's frequency and amplitude)" onClick={() => actions.addThreePhaseSet()}>
+            <span className="op-glyph">3~</span>
+            <span>Three-phase set</span>
+          </button>
+          <button className="tool" title="Upper/lower gate pair from the selected logic signal, turn-on edges delayed by the dead time" onClick={() => actions.addComplementaryPair()}>
+            <span className="op-glyph">⊓⊔</span>
+            <span>Complementary + dead time</span>
+          </button>
         </div>
       </details>
       <details open>

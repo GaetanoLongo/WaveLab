@@ -31,6 +31,8 @@ import type { GeneratorKind } from '../core/model/signal-defs';
 import type { Range } from '../core/plot/range';
 import { fitTimeRange } from '../core/plot/viewport';
 import { rangeOf } from '../core/plot/range';
+import { formatSI, siLiteral } from '../core/units/si';
+import { buildPwm, type PwmConfig } from './pwm';
 import type { AxisStyle, StyleOverrides } from '../core/plot/layout';
 import { phaseForDifference } from '../core/signals/phase';
 import { snapPoints, zeroCrossings } from '../core/snap/points';
@@ -695,6 +697,100 @@ export const actions = {
     commit((d) => {
       d.figures = d.figures.filter((f) => f.id !== id);
     });
+  },
+
+  /** Create a PWM signal set (carrier, references, gates, voltages) as new groups, in one undo step. */
+  createPwm(config: PwmConfig): void {
+    const p = get().project;
+    const built = buildPwm(config, newId, p.signals.length);
+    // Unique names: the PWM set may be created several times.
+    const names = new Set(p.signals.map((s) => s.name));
+    for (const sig of built.signals) {
+      let n = sig.name;
+      for (let i = 2; names.has(n); i++) n = `${sig.name} ${i}`;
+      sig.name = n;
+      names.add(n);
+    }
+    commit((d) => {
+      d.signals.push(...built.signals);
+      const fig = activeFigure(d);
+      // Replace an empty default group, otherwise append.
+      if (fig.panels.length === 1 && fig.panels[0]!.traces.length === 0) fig.panels = built.groups;
+      else fig.panels.push(...built.groups);
+      fig.mode = 'stacked';
+    });
+    set({ selectedId: built.signals[built.signals.length - 1]!.id });
+    const span = Math.min(2 / config.f1, 1);
+    actions.setXRange([0, span]);
+  },
+
+  /** Three sines 120° apart (same frequency/amplitude as the selection if it is a sine) in a shared group. */
+  addThreePhaseSet(): void {
+    const p = get().project;
+    const sel = findSignal(p, get().selectedId);
+    const base = sel && sel.kind === 'generator' && (sel.generator === 'sine' || sel.generator === 'cosine') ? sel : null;
+    const f = base?.timing.frequency ?? 50;
+    const amp = base && 'amplitude' in base.params ? base.params.amplitude : 1;
+    const unit = base?.unit ?? 'V';
+    const gid = newId('g');
+    const sigs: GeneratorSignalDef[] = [0, -120, 120].map((ph, i) => {
+      const d: GeneratorSignalDef = {
+        id: newId(),
+        name: uniqueName(p, `${['V_a', 'V_b', 'V_c'][i]}`),
+        unit,
+        locked: false,
+        style: { color: ['#0072B2', '#D55E00', '#009E73'][i]!, lineWidth: 1.6, dash: 'solid', visible: true, showInLegend: true },
+        kind: 'generator',
+        ...defaultGenerator('sine'),
+      };
+      d.timing.frequency = f;
+      d.timing.phaseDeg = ph;
+      if (d.generator === 'sine') d.params.amplitude = amp;
+      return d;
+    });
+    commit((d) => {
+      d.signals.push(...sigs);
+      const fig = activeFigure(d);
+      const g: Panel = { id: gid, name: groupName(fig).replace('Group', 'Three-phase'), share: true, traces: sigs.map((x) => ({ signalId: x.id })), yAxis: { auto: true, min: -1, max: 1, title: '' } };
+      if (fig.panels.length === 1 && fig.panels[0]!.traces.length === 0) fig.panels = [g];
+      else fig.panels.push(g);
+    });
+    set({ selectedId: sigs[0]!.id });
+    if (p.signals.length === 0) actions.fitAll();
+  },
+
+  /** Complementary pair with dead time from the selected (logic) signal. */
+  addComplementaryPair(td?: number): void {
+    const p = get().project;
+    const sel = findSignal(p, get().selectedId);
+    if (!sel) return notify('Select the gate (logic) signal to complement first.');
+    const period = compiled(sel, p).period;
+    const dt = td ?? (period ? period / 100 : 1e-6);
+    const lit = siLiteral(dt);
+    const g = `#{${sel.id}}`;
+    const mk = (suffix: string, expr: string): DerivedSignalDef => ({
+      id: newId('d'),
+      name: uniqueName(p, `${sel.name}${suffix}`),
+      unit: sel.unit,
+      locked: false,
+      style: { color: nextColor(p), lineWidth: 1.6, dash: 'solid', visible: true, showInLegend: true },
+      kind: 'derived',
+      expr,
+      logicHigh: 1,
+      logicLow: 0,
+      threshold: 0.5,
+      resolution: null,
+    });
+    const hi = mk(' high', `and(${g}, delay(${g}, ${lit}))`);
+    const lo = mk(' low', `and(!${g}, delay(!${g}, ${lit}))`);
+    lo.style.color = paletteColor((p.signals.length + 1) % 8);
+    commit((d) => {
+      d.signals.push(hi, lo);
+      const grp = targetGroup(activeFigure(d));
+      grp.traces.push({ signalId: hi.id }, { signalId: lo.id });
+    });
+    set({ selectedId: hi.id });
+    notify(`Complementary pair with ${formatSI(dt, 's')} dead time: edit the delay in the expressions.`);
   },
 
   /** Show an existing project signal in the active figure. */

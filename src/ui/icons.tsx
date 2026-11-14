@@ -165,6 +165,7 @@ function glyphDef(kind: GeneratorKind, variant: string) {
         bits: '1011',
         bitTime: 0.35,
         encoding: variant === 'RZ' ? 'rz' : variant === 'Manchester' ? 'manchester' : 'nrz',
+        ...(variant === 'PWM' ? { bits: '110100110', bitTime: 0.15 } : {}),
       };
       break;
   }

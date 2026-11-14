@@ -53,3 +53,25 @@ describe('interval measurements (exact)', () => {
     expect(m.frequency).toBeNaN();
   });
 });
+
+describe('duty on plateaus at the threshold (3-level PWM)', () => {
+  it('counts time above the mid level when the waveform sits on it between pulses', async () => {
+    const { compileGenerator: cg } = await import('../signals/generator');
+    const d = defaultGenerator('piecewise');
+    if (d.generator === 'piecewise') d.params = { points: [[0, 0], [0.002, 0], [0.002, 1], [0.003, 1], [0.003, 0], [0.007, 0], [0.007, -1], [0.008, -1], [0.008, 0], [0.01, 0]], interp: 'linear', repeat: true };
+    const m = measureInterval(cg(d), 0, 0.02);
+    expect(m.threshold).toBe(0);
+    expect(m.duty).toBeCloseTo(0.1, 12); // 1 ms above 0 per 10 ms
+    expect(m.frequency).toBeCloseTo(100, 9);
+  });
+});
+
+describe('duty is exact on repeating knot signals', () => {
+  it('Manchester "1011" repeating frame: exactly 50 %', async () => {
+    const { compileGenerator: cg } = await import('../signals/generator');
+    const d = defaultGenerator('bits');
+    if (d.generator === 'bits') Object.assign(d.params, { bits: '1011', encoding: 'manchester', repeat: true });
+    expect(measureInterval(cg(d), 0, 0.004).duty).toBeCloseTo(0.5, 12);
+    expect(measureInterval(cg(d), 0.004, 0.012).duty).toBeCloseTo(0.5, 12);
+  });
+});

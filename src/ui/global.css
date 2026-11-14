@@ -424,3 +424,5 @@ table.harmonics { width: 100%; border-collapse: collapse; margin-top: 10px; font
 table.harmonics th { text-align: left; color: var(--faint); font-weight: 500; border-bottom: 1px solid var(--border); padding: 3px 6px; }
 table.harmonics td { padding: 2px 6px; border-bottom: 1px solid var(--panel-2); }
 @media (max-width: 760px) { .spectrum-body { grid-template-columns: 1fr; } }
+
+.pwm-dialog { width: min(780px, 100%); }

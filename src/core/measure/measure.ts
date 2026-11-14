@@ -8,7 +8,7 @@
 import { rangeOf } from '../plot/range';
 import { integrateRange, squareOf } from '../signals/operators';
 import type { SignalEval } from '../signals/types';
-import { zeroCrossings } from '../snap/points';
+import { leftValue } from '../signals/scan';
 
 export interface IntervalMeasurements {
   a: number;
@@ -27,18 +27,55 @@ export interface IntervalMeasurements {
   risingCrossings: number;
 }
 
-/** Signal shifted down by `level` (features shifted too), for crossing detection. */
-function shifted(s: SignalEval, level: number): SignalEval {
-  return {
-    value: (t) => s.value(t) - level,
-    left: s.left ? (t) => s.left!(t) - level : undefined,
-    features: (a, b, m) => {
-      const q = s.features(a, b, m);
-      return { truncated: q.truncated, features: q.features.map((f) => ({ ...f, left: f.left - level, right: f.right - level })) };
-    },
-    period: s.period,
-    scale: s.scale,
-  };
+/**
+ * Time above `thr` in [a, b] and the instants where the signal goes above / below it.
+ * Walks the exact segments between features (monotonic by contract): whole stretches
+ * count directly, partial ones are split by bisection, and jumps across the threshold
+ * are transitions. Robust to plateaus that sit exactly on the threshold (e.g. 3-level PWM).
+ */
+function aboveThreshold(s: SignalEval, a: number, b: number, thr: number) {
+  const { features } = s.features(a, b);
+  // Use the features' own left/right limits at their times (re-evaluating exactly at a
+  // feature time can land on the wrong side of it through floating-point rounding).
+  const inner = features.filter((f) => f.t > a && f.t < b);
+  const pts = [a, ...inner.map((f) => f.t), b];
+  const rightAt = [s.value(a), ...inner.map((f) => f.right)];
+  const leftAt = [...inner.map((f) => f.left), leftValue(s, b)];
+  const ups: number[] = [];
+  const downs: number[] = [];
+  let high = 0;
+  const above = (v: number) => v > thr;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const x0 = pts[i]!;
+    const x1 = pts[i + 1]!;
+    if (!(x1 > x0)) continue;
+    const s0 = above(rightAt[i]!);
+    const s1 = above(leftAt[i]!);
+    if (s0 && s1) high += x1 - x0;
+    else if (s0 !== s1) {
+      // Monotonic between features: one crossing, found by bisection strictly inside.
+      let lo = x0;
+      let hi = x1;
+      for (let k = 0; k < 80 && hi - lo > 1e-15 * Math.max(1, Math.abs(hi)); k++) {
+        const m = (lo + hi) / 2;
+        if (above(s.value(m)) === s0) lo = m;
+        else hi = m;
+      }
+      if (s0) {
+        high += hi - x0;
+        downs.push(hi);
+      } else {
+        high += x1 - hi;
+        ups.push(hi);
+      }
+    }
+    // Jump at the end of this segment (an interior feature).
+    if (i + 1 < rightAt.length) {
+      const after = above(rightAt[i + 1]!);
+      if (after !== s1) (after ? ups : downs).push(x1);
+    }
+  }
+  return { high, ups, downs };
 }
 
 export function measureInterval(s: SignalEval, a0: number, b0: number): IntervalMeasurements {
@@ -60,26 +97,11 @@ export function measureInterval(s: SignalEval, a0: number, b0: number): Interval
   let frequency = NaN;
   let rising = 0;
   if (max > min) {
-    const x = shifted(s, threshold);
-    const crossings = zeroCrossings(x, a, b);
-    // Time above the threshold: walk the crossings. The initial state comes from the first
-    // crossing's direction (robust when the interval starts exactly on the threshold).
-    const first = crossings[0];
-    let above = first ? !first.rising : x.value((a + b) / 2) > 0;
-    let last = a;
-    let high = 0;
-    for (const c of crossings) {
-      if (above) high += c.t - last;
-      above = c.rising;
-      last = c.t;
-    }
-    if (above) high += b - last;
-    duty = high / span;
-    // Frequency from same-direction crossings (whichever direction has more of them).
-    const ups = crossings.filter((c) => c.rising).map((c) => c.t);
-    const downs = crossings.filter((c) => !c.rising).map((c) => c.t);
-    rising = ups.length;
-    const use = ups.length >= downs.length ? ups : downs;
+    const r = aboveThreshold(s, a, b, threshold);
+    duty = r.high / span;
+    rising = r.ups.length;
+    // Frequency from same-direction transitions (whichever direction has more of them).
+    const use = r.ups.length >= r.downs.length ? r.ups : r.downs;
     if (use.length >= 2) frequency = (use.length - 1) / (use[use.length - 1]! - use[0]!);
   }
   return { a, b, max, min, peakToPeak: max - min, mean, rms, threshold, duty, frequency, risingCrossings: rising };

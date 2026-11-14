@@ -31,6 +31,7 @@ npm run e2e        # browser end-to-end checks: editor, snapping, files & export
 | M11 | Signal groups and multiple figures | ✅ |
 | — | Grid of figures (matrix view, linked time axes, grid export) | ✅ |
 | M12 | Exact harmonic spectrum, THD, CSV export (harmonics and samples) | ✅ |
+| — | PWM module: generator, three-phase set, complementary pairs with dead time | ✅ |
 
 See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the mathematical conventions.
 
@@ -60,6 +61,16 @@ from samples. Cursors are saved in the project file and are left out of exports 
   plus overrides for background, plot area, grid colour/opacity, minor grid, font (sans/serif/mono) and size,
   legend position (corners, outside right, hidden), margins and a line-width multiplier. Saved in the project;
   applied on screen and in exports. Only Inter is embedded in PDFs.
+
+## Power electronics
+- **PWM generator…**: half bridge, full bridge (bipolar or unipolar) or three-phase; triangle (centre-aligned)
+  or sawtooth carrier; m, f₁, f_c, phase, V_dc; optional complementary gates with dead time. Creates ordinary
+  editable signals in groups (modulation, leg commands, gates, voltages). Conventions as in
+  [ModulationToy](https://github.com/GaetanoLongo/ModulationToy): m = reference peak / carrier peak, dead time =
+  delayed turn-on (`and(G, delay(G, td))`). Output voltages are ideal (they ignore dead time, whose effect
+  depends on the load current).
+- **Three-phase set**: three sines at 0°, −120°, +120° in a shared panel.
+- **Complementary + dead time**: upper/lower pair from the selected logic signal.
 
 ## Spectrum and CSV
 - **Spectrum** (toolbar, "⋯" menu on phones, or the measurement panel): exact Fourier series of any signal

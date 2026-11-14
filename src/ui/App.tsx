@@ -6,6 +6,7 @@ import { ExportDialog } from './export/ExportDialog';
 import { AxesDialog } from './panels/AxesDialog';
 import { FigureSettingsDialog } from './panels/FigureSettings';
 import { SpectrumDialog } from './panels/SpectrumDialog';
+import { PwmDialog } from './panels/PwmDialog';
 import { openAxes } from './Modal';
 import { loadFile } from './fileio';
 import { formatSI } from '../core/units/si';
@@ -60,6 +61,7 @@ export function App() {
       <ExportDialog />
       <FigureSettingsDialog />
       <SpectrumDialog />
+      <PwmDialog />
       <AxesDialog />
       <Toolbar compact={phone} />
       {phone ? (
