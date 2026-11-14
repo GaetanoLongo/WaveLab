@@ -63,6 +63,7 @@ function item(it: SceneItem, idPrefix: string): string {
       ];
       const da = dashArray(it.dash, it.width);
       if (da) a.push(`stroke-dasharray="${da}"`);
+      if (it.opacity !== undefined) a.push(`stroke-opacity="${it.opacity}"`);
       if (it.clipId) a.push(`clip-path="url(#${idPrefix}${it.clipId})"`);
       if (it.dataId) a.push(`data-signal="${esc(it.dataId)}"`);
       return `<path ${a.join(' ')}/>`;

@@ -1,0 +1,459 @@
+/** Contextual parameter editor for the selected signal. Every change applies immediately. */
+
+import { useState, type ReactNode } from 'react';
+import type { LineDash, SignalDef } from '../../core/model/project';
+import { phaseToTime, timeToPhase, type SignalWindow } from '../../core/model/signal-defs';
+import { formatSI } from '../../core/units/si';
+import { actions, findSignal, GENERATOR_LABELS, useEditor } from '../../state/store';
+import { NumberField } from '../fields/NumberField';
+
+type Upd = (recipe: (s: SignalDef) => void, key?: string) => void;
+
+export function PropertiesPanel() {
+  const sig = useEditor((s) => findSignal(s.project, s.selectedId));
+  if (!sig) {
+    return (
+      <section className="properties">
+        <h2>Properties</h2>
+        <p className="empty">Select a signal in the list or click a trace in the plot.</p>
+      </section>
+    );
+  }
+  const upd: Upd = (recipe, key) => actions.updateSignal(sig.id, recipe, key);
+  const dis = sig.locked;
+  const label = sig.generator === 'sawtooth' && sig.params.slope === 'falling' ? 'Inverted sawtooth' : GENERATOR_LABELS[sig.generator];
+
+  return (
+    <section className="properties" aria-label="Properties">
+      <h2>
+        Properties <span className="kind">{label}</span>
+      </h2>
+      {dis && <p className="locked-note">Locked: unlock the signal in the list to edit it.</p>}
+      <fieldset disabled={dis}>
+        <Group title="General">
+          <TextField label="Name" value={sig.name} onCommit={(v) => upd((s) => void (s.name = v))} />
+          <TextField
+            label="Unit"
+            value={sig.unit}
+            list="unit-options"
+            allowEmpty
+            title="Vertical unit, e.g. V, A, W"
+            onCommit={(v) => upd((s) => void (s.unit = v))}
+          />
+          <datalist id="unit-options">
+            <option value="V" />
+            <option value="A" />
+            <option value="W" />
+            <option value="Ω" />
+          </datalist>
+        </Group>
+
+        <WaveformParams sig={sig} upd={upd} disabled={dis} />
+        {sig.generator !== 'dc' && <TimingParams sig={sig} upd={upd} disabled={dis} />}
+        <WindowParams sig={sig} upd={upd} disabled={dis} />
+        <StyleParams sig={sig} upd={upd} disabled={dis} />
+
+        <div className="prop-actions">
+          <button onClick={() => actions.invert(sig.id)} title="Mirror the waveform around zero (y → −y)">
+            Invert
+          </button>
+          <button onClick={() => actions.fitSelected()} title="Zoom the time axis to this signal">
+            Fit to signal
+          </button>
+        </div>
+      </fieldset>
+    </section>
+  );
+}
+
+function Group({ title, children, defaultOpen = true }: { title: string; children: ReactNode; defaultOpen?: boolean }) {
+  return (
+    <details className="group" open={defaultOpen}>
+      <summary>{title}</summary>
+      <div className="group-body">{children}</div>
+    </details>
+  );
+}
+
+function WaveformParams({ sig, upd, disabled }: { sig: SignalDef; upd: Upd; disabled: boolean }) {
+  const u = sig.unit;
+  switch (sig.generator) {
+    case 'sine':
+    case 'cosine':
+    case 'triangle':
+    case 'sawtooth': {
+      const p = sig.params;
+      return (
+        <Group title="Waveform">
+          <NumberField
+            label="Amplitude"
+            title="Zero-to-peak amplitude"
+            unit={u}
+            value={p.amplitude}
+            disabled={disabled}
+            onCommit={(v) => upd((s) => void ('amplitude' in s.params && (s.params.amplitude = v)))}
+          />
+          <NumberField
+            label="Offset"
+            title="DC offset"
+            unit={u}
+            value={p.offset}
+            disabled={disabled}
+            onCommit={(v) => upd((s) => void ('offset' in s.params && (s.params.offset = v)))}
+          />
+          {sig.generator === 'sawtooth' && (
+            <div className="field">
+              <label>Slope</label>
+              <select
+                value={sig.params.slope}
+                onChange={(e) =>
+                  upd((s) => {
+                    if (s.generator === 'sawtooth') s.params.slope = e.target.value as 'rising' | 'falling';
+                  })
+                }
+              >
+                <option value="rising">Rising (ramp up)</option>
+                <option value="falling">Falling (ramp down)</option>
+              </select>
+            </div>
+          )}
+          <Readout items={[['Peak-to-peak', formatSI(2 * Math.abs(p.amplitude), u)], ['RMS (AC part)', formatSI(rmsAc(sig), u)]]} />
+        </Group>
+      );
+    }
+    case 'square': {
+      const p = sig.params;
+      const amp = (p.high - p.low) / 2;
+      const off = (p.high + p.low) / 2;
+      const set = (high: number, low: number) =>
+        upd((s) => {
+          if (s.generator === 'square') Object.assign(s.params, { high, low });
+        });
+      return (
+        <Group title="Waveform">
+          <NumberField label="High level" unit={u} value={p.high} disabled={disabled} onCommit={(v) => set(v, p.low)} />
+          <NumberField label="Low level" unit={u} value={p.low} disabled={disabled} onCommit={(v) => set(p.high, v)} />
+          <NumberField
+            label="Amplitude"
+            title="(high − low) / 2 — editing keeps the offset"
+            unit={u}
+            value={amp}
+            disabled={disabled}
+            onCommit={(v) => set(off + v, off - v)}
+          />
+          <NumberField
+            label="Offset"
+            title="(high + low) / 2 — editing keeps the amplitude"
+            unit={u}
+            value={off}
+            disabled={disabled}
+            onCommit={(v) => set(v + amp, v - amp)}
+          />
+          <NumberField
+            label="Duty cycle"
+            unit="%"
+            plain
+            scale={100}
+            min={0}
+            max={1}
+            value={p.duty}
+            disabled={disabled}
+            onCommit={(v) => upd((s) => void (s.generator === 'square' && (s.params.duty = v)))}
+          />
+          <Slider
+            min={0}
+            max={100}
+            step={0.5}
+            value={p.duty * 100}
+            disabled={disabled}
+            label="Duty cycle slider"
+            onChange={(v) => upd((s) => void (s.generator === 'square' && (s.params.duty = v / 100)), `duty-${sig.id}`)}
+          />
+          <Readout
+            items={[
+              ['High time', formatSI(p.duty / sig.timing.frequency, 's')],
+              ['Low time', formatSI((1 - p.duty) / sig.timing.frequency, 's')],
+            ]}
+          />
+        </Group>
+      );
+    }
+    case 'pulse': {
+      const p = sig.params;
+      const T = 1 / sig.timing.frequency;
+      const overflow = p.rise + p.width + p.fall > T * (1 + 1e-12);
+      const setP = (k: 'high' | 'low' | 'width' | 'rise' | 'fall') => (v: number) =>
+        upd((s) => {
+          if (s.generator === 'pulse') s.params[k] = v;
+        });
+      return (
+        <Group title="Waveform">
+          <NumberField label="High level" unit={u} value={p.high} disabled={disabled} onCommit={setP('high')} />
+          <NumberField label="Low level" unit={u} value={p.low} disabled={disabled} onCommit={setP('low')} />
+          <NumberField label="Pulse width" title="Flat top, excluding rise and fall (SPICE convention)" unit="s" min={0} value={p.width} disabled={disabled} onCommit={setP('width')} />
+          <NumberField label="Rise time" unit="s" min={0} value={p.rise} disabled={disabled} onCommit={setP('rise')} />
+          <NumberField label="Fall time" unit="s" min={0} value={p.fall} disabled={disabled} onCommit={setP('fall')} />
+          {overflow && <p className="warn">Rise + width + fall exceed the period ({formatSI(T, 's')}); the pulse is clipped to the period.</p>}
+          <Readout items={[['Duty (incl. edges)', `${(Math.min(1, (p.rise + p.width + p.fall) / T) * 100).toPrecision(4)} %`]]} />
+        </Group>
+      );
+    }
+    case 'dc':
+      return (
+        <Group title="Waveform">
+          <NumberField
+            label="Level"
+            unit={u}
+            value={sig.params.level}
+            disabled={disabled}
+            onCommit={(v) => upd((s) => void (s.generator === 'dc' && (s.params.level = v)))}
+          />
+        </Group>
+      );
+  }
+}
+
+/** RMS of the AC component (offset excluded) for the shapes with a closed form. */
+function rmsAc(sig: SignalDef): number {
+  if (!('amplitude' in sig.params)) return NaN;
+  const A = Math.abs(sig.params.amplitude);
+  return sig.generator === 'sine' || sig.generator === 'cosine' ? A / Math.SQRT2 : A / Math.sqrt(3);
+}
+
+function TimingParams({ sig, upd, disabled }: { sig: SignalDef; upd: Upd; disabled: boolean }) {
+  const [phaseUnit, setPhaseUnit] = useState<'deg' | 'rad'>('deg');
+  const f = sig.timing.frequency;
+  const setT = (k: 'frequency' | 'phaseDeg' | 'delay', key?: string) => (v: number) =>
+    upd((s) => void (s.timing[k] = v), key);
+  const lead = phaseToTime(sig.timing.phaseDeg, f);
+  const net = sig.timing.delay - lead;
+
+  return (
+    <Group title="Timing">
+      <NumberField label="Frequency" unit="Hz" positive value={f} disabled={disabled} onCommit={setT('frequency')} />
+      <NumberField label="Period" unit="s" positive value={1 / f} disabled={disabled} onCommit={(v) => setT('frequency')(1 / v)} />
+      <div className="field-row">
+        {phaseUnit === 'deg' ? (
+          <NumberField
+            label="Phase"
+            title="+φ leads (the waveform moves earlier)"
+            unit="°"
+            plain
+            value={sig.timing.phaseDeg}
+            disabled={disabled}
+            onCommit={setT('phaseDeg')}
+          />
+        ) : (
+          <NumberField
+            label="Phase"
+            title="+φ leads (the waveform moves earlier)"
+            unit="rad"
+            plain
+            value={(sig.timing.phaseDeg * Math.PI) / 180}
+            disabled={disabled}
+            onCommit={(v) => setT('phaseDeg')((v * 180) / Math.PI)}
+          />
+        )}
+        <select className="unit-select" value={phaseUnit} onChange={(e) => setPhaseUnit(e.target.value as 'deg' | 'rad')} aria-label="Phase unit">
+          <option value="deg">deg</option>
+          <option value="rad">rad</option>
+        </select>
+      </div>
+      <Slider
+        min={-180}
+        max={180}
+        step={1}
+        value={wrap180(sig.timing.phaseDeg)}
+        disabled={disabled}
+        label="Phase slider"
+        onChange={setT('phaseDeg', `phase-${sig.id}`)}
+      />
+      <NumberField
+        label="Phase as time"
+        title="The phase expressed as a time lead at the current frequency"
+        unit="s"
+        value={lead}
+        disabled={disabled}
+        onCommit={(v) => setT('phaseDeg')(timeToPhase(v, f))}
+      />
+      <NumberField
+        label="Delay"
+        title="Position on the global timeline; positive shifts right (later)"
+        unit="s"
+        value={sig.timing.delay}
+        disabled={disabled}
+        onCommit={setT('delay')}
+      />
+      <Readout
+        items={[
+          [
+            'Net time shift',
+            net === 0 ? '0 (reference)' : `${formatSI(Math.abs(net), 's')} ${net > 0 ? 'later' : 'earlier'} (${formatDeg(timeToPhase(-net, f))})`,
+          ],
+        ]}
+      />
+    </Group>
+  );
+}
+
+function wrap180(deg: number): number {
+  const w = ((((deg + 180) % 360) + 360) % 360) - 180;
+  return w;
+}
+
+function formatDeg(d: number): string {
+  return `${d >= 0 ? '+' : ''}${Number(d.toPrecision(5))}°`;
+}
+
+function WindowParams({ sig, upd, disabled }: { sig: SignalDef; upd: Upd; disabled: boolean }) {
+  const w = sig.window;
+  const f = sig.generator === 'dc' ? 1 : sig.timing.frequency;
+  const setW = (next: SignalWindow) => upd((s) => void (s.window = next));
+  return (
+    <Group title="Time window" defaultOpen={w.mode !== 'infinite'}>
+      <div className="field">
+        <label>Extent</label>
+        <select
+          value={w.mode}
+          disabled={disabled}
+          onChange={(e) => {
+            const mode = e.target.value as SignalWindow['mode'];
+            const outside = w.mode === 'infinite' ? 'zero' : w.outside;
+            if (mode === 'infinite') setW({ mode });
+            else if (mode === 'interval') setW({ mode, start: 0, end: 2 / f, outside });
+            else setW({ mode, start: 0, cycles: 2, outside });
+          }}
+        >
+          <option value="infinite">Repeats forever</option>
+          <option value="interval">Start / end time</option>
+          {sig.generator !== 'dc' && <option value="cycles">Number of cycles</option>}
+        </select>
+      </div>
+      {w.mode !== 'infinite' && (
+        <>
+          <NumberField
+            label="Start time"
+            title="Relative to the signal's delay"
+            unit="s"
+            value={w.start}
+            disabled={disabled}
+            onCommit={(v) => setW({ ...w, start: v })}
+          />
+          {w.mode === 'interval' ? (
+            <NumberField label="End time" unit="s" min={w.start} value={w.end} disabled={disabled} onCommit={(v) => setW({ ...w, end: v })} />
+          ) : (
+            <NumberField label="Cycles" plain positive value={w.cycles} disabled={disabled} onCommit={(v) => setW({ ...w, cycles: v })} />
+          )}
+          <div className="field">
+            <label>Outside window</label>
+            <select value={w.outside} disabled={disabled} onChange={(e) => setW({ ...w, outside: e.target.value as 'zero' | 'undefined' })}>
+              <option value="zero">Zero</option>
+              <option value="undefined">Undefined (not drawn)</option>
+            </select>
+          </div>
+        </>
+      )}
+    </Group>
+  );
+}
+
+function StyleParams({ sig, upd, disabled }: { sig: SignalDef; upd: Upd; disabled: boolean }) {
+  return (
+    <Group title="Appearance">
+      <div className="field">
+        <label>Colour</label>
+        <input
+          type="color"
+          value={sig.style.color}
+          disabled={disabled}
+          onChange={(e) => upd((s) => void (s.style.color = e.target.value), `color-${sig.id}`)}
+        />
+      </div>
+      <NumberField
+        label="Line width"
+        unit="px"
+        plain
+        min={0.25}
+        max={12}
+        value={sig.style.lineWidth}
+        disabled={disabled}
+        onCommit={(v) => upd((s) => void (s.style.lineWidth = v))}
+      />
+      <div className="field">
+        <label>Line style</label>
+        <select value={sig.style.dash} disabled={disabled} onChange={(e) => upd((s) => void (s.style.dash = e.target.value as LineDash))}>
+          <option value="solid">Solid</option>
+          <option value="dashed">Dashed</option>
+          <option value="dotted">Dotted</option>
+          <option value="dashdot">Dash-dot</option>
+        </select>
+      </div>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={sig.style.showInLegend}
+          disabled={disabled}
+          onChange={(e) => upd((s) => void (s.style.showInLegend = e.target.checked))}
+        />
+        Show in legend
+      </label>
+    </Group>
+  );
+}
+
+function Readout({ items }: { items: Array<[string, string]> }) {
+  return (
+    <dl className="readout">
+      {items.map(([k, v]) => (
+        <div key={k}>
+          <dt>{k}</dt>
+          <dd>{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function Slider(p: { min: number; max: number; step: number; value: number; disabled: boolean; label: string; onChange(v: number): void }) {
+  return (
+    <input
+      type="range"
+      className="slider"
+      aria-label={p.label}
+      min={p.min}
+      max={p.max}
+      step={p.step}
+      value={p.value}
+      disabled={p.disabled}
+      onChange={(e) => p.onChange(Number(e.target.value))}
+    />
+  );
+}
+
+function TextField(p: { label: string; value: string; list?: string; title?: string; allowEmpty?: boolean; onCommit(v: string): void }) {
+  const [key, setKey] = useState(0);
+  const commit = (raw: string) => {
+    const v = raw.trim();
+    if ((v || p.allowEmpty) && v !== p.value) p.onCommit(v);
+    else setKey((k) => k + 1); // reset to the stored value
+  };
+  return (
+    <div className="field">
+      <label title={p.title}>{p.label}</label>
+      <input
+        key={`${p.value}-${key}`}
+        defaultValue={p.value}
+        list={p.list}
+        title={p.title}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+          if (e.key === 'Escape') {
+            e.currentTarget.value = p.value;
+            e.currentTarget.blur();
+          }
+        }}
+      />
+    </div>
+  );
+}

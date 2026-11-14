@@ -3,18 +3,21 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "WaveLab — browser-based mathematical waveform editor",
+  "description": "WaveLab \u2014 browser-based mathematical waveform editor",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "e2e": "node e2e/editor.e2e.cjs"
   },
   "dependencies": {
+    "immer": "^10.1.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.5"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

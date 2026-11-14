@@ -15,6 +15,7 @@ import {
   panelsForMode,
   pxToT,
   pxToY,
+  yToPx,
   type FigureLayout,
   type PlotTheme,
   type TraceInput,
@@ -40,10 +41,14 @@ export interface PlotViewProps {
   onFit(): void;
   theme: PlotTheme;
   onCursor?(info: CursorInfo | null): void;
+  /** Click (without dragging) on a trace selects it; on empty space passes null. */
+  onSelect?(signalId: string | null): void;
+  /** Message drawn in the middle of an empty plot. */
+  emptyMessage?: string;
 }
 
 type Drag =
-  | { kind: 'pan'; startX: number; startRange: Range }
+  | { kind: 'pan'; startX: number; startY: number; startRange: Range; moved: boolean }
   | { kind: 'box'; startX: number; startY: number; curX: number; curY: number };
 
 const WHEEL_STEP = 1.2;
@@ -116,7 +121,7 @@ export function PlotView(props: PlotViewProps) {
     setDrag(
       e.shiftKey
         ? { kind: 'box', startX: x, startY: y, curX: x, curY: y }
-        : { kind: 'pan', startX: x, startRange: props.xRange },
+        : { kind: 'pan', startX: x, startY: y, startRange: props.xRange, moved: false },
     );
   };
 
@@ -125,6 +130,8 @@ export function PlotView(props: PlotViewProps) {
     reportCursor(layout, x, y, props);
     if (!drag) return;
     if (drag.kind === 'pan') {
+      if (!drag.moved && Math.hypot(x - drag.startX, y - drag.startY) < 3) return;
+      if (!drag.moved) setDrag({ ...drag, moved: true });
       const span = drag.startRange[1] - drag.startRange[0];
       props.onXRangeChange(panRange(drag.startRange, (-(x - drag.startX) * span) / layout.plotW));
     } else {
@@ -133,6 +140,9 @@ export function PlotView(props: PlotViewProps) {
   };
 
   const onPointerUp = () => {
+    if (drag?.kind === 'pan' && !drag.moved) {
+      props.onSelect?.(hitTest(layout, props.traces, drag.startX, drag.startY));
+    }
     if (drag?.kind === 'box') {
       const x0 = clampX(layout, Math.min(drag.startX, drag.curX));
       const x1 = clampX(layout, Math.max(drag.startX, drag.curX));
@@ -161,6 +171,9 @@ export function PlotView(props: PlotViewProps) {
       onDoubleClick={props.onFit}
     >
       <div className="plot-svg" dangerouslySetInnerHTML={{ __html: svg }} />
+      {props.traces.length === 0 && props.emptyMessage && (
+        <div className="plot-empty">{props.emptyMessage}</div>
+      )}
       {drag?.kind === 'box' && (
         <svg className="plot-overlay" width={size.w} height={size.h}>
           <rect
@@ -199,4 +212,34 @@ function reportCursor(l: FigureLayout, x: number, y: number, p: PlotViewProps) {
     panelId: panel.id,
     unit: units.size === 1 ? [...units][0]! : '',
   });
+}
+
+/** Nearest trace within 6 px of the pointer (vertical distance, or on a vertical edge). */
+function hitTest(l: FigureLayout, traces: TraceInput[], x: number, y: number): string | null {
+  const panel = panelAt(l, y);
+  if (!panel || x < l.plotX || x > l.plotX + l.plotW) return null;
+  const t = pxToT(l, x);
+  const pxT = (l.xRange[1] - l.xRange[0]) / l.plotW;
+  let best: string | null = null;
+  let bestD = 6;
+  for (const tr of traces) {
+    if (!panel.traceIds.includes(tr.id)) continue;
+    const v = tr.signal.value(t);
+    const d = Number.isNaN(v) ? Infinity : Math.abs(yToPx(panel, v) - y);
+    if (d < bestD) {
+      bestD = d;
+      best = tr.id;
+    }
+    // Vertical edges: a jump within ±3 px whose span covers the pointer.
+    for (const f of tr.signal.features(t - 3 * pxT, t + 3 * pxT, 50).features) {
+      if (f.kind !== 'jump') continue;
+      const ya = yToPx(panel, f.left);
+      const yb = yToPx(panel, f.right);
+      if (y >= Math.min(ya, yb) - 3 && y <= Math.max(ya, yb) + 3 && bestD > 0.5) {
+        bestD = 0.5;
+        best = tr.id;
+      }
+    }
+  }
+  return best;
 }

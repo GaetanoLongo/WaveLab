@@ -1,0 +1,61 @@
+/** Global keyboard shortcuts. Ignored while typing in form fields (native editing wins). */
+
+import { useEffect } from 'react';
+import { actions, editor, isDirty } from '../state/store';
+
+function isTyping(t: EventTarget | null): boolean {
+  if (!(t instanceof HTMLElement)) return false;
+  if (t.isContentEditable) return true;
+  if (t instanceof HTMLInputElement) return !['checkbox', 'radio', 'range', 'color', 'button'].includes(t.type);
+  return t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
+}
+
+export function useShortcuts() {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      const k = e.key.toLowerCase();
+
+      // Save / Export are intercepted even in fields so the browser dialog never opens.
+      if (mod && k === 's') {
+        e.preventDefault();
+        editor.setState({ notice: e.shiftKey ? 'Export arrives in milestone M5.' : 'Saving arrives in milestone M5.' });
+        return;
+      }
+      if (isTyping(e.target)) return;
+
+      if (mod && k === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        actions.undo();
+      } else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        actions.redo();
+      } else if (mod && k === 'c') {
+        if (window.getSelection()?.toString()) return; // let text copy work
+        actions.copy();
+      } else if (mod && k === 'v') {
+        actions.paste();
+      } else if (mod && k === 'd') {
+        e.preventDefault();
+        actions.duplicate();
+      } else if (!mod && (e.key === 'Delete' || e.key === 'Backspace')) {
+        e.preventDefault();
+        actions.deleteSignal();
+      } else if (e.key === 'Escape') {
+        actions.select(null);
+      }
+    };
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty(editor.getState())) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, []);
+}

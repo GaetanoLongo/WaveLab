@@ -47,6 +47,8 @@ export interface TraceInput {
   dash: Dash;
   unit: string;
   showInLegend?: boolean;
+  /** Draw a soft halo behind the trace (selection, on screen only). */
+  highlight?: boolean;
 }
 
 export interface PanelInput {
@@ -202,6 +204,17 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
         }
         return flat;
       });
+      if (tr.highlight) {
+        items.push({
+          type: 'path',
+          polylines,
+          stroke: tr.color,
+          width: tr.lineWidth + 6,
+          dash: 'solid',
+          opacity: 0.18,
+          clipId,
+        });
+      }
       items.push({
         type: 'path',
         polylines,

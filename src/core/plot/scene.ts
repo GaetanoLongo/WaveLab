@@ -37,6 +37,7 @@ export interface ScenePath {
   width: number;
   dash: Dash;
   clipId?: string;
+  opacity?: number;
   /** Logical grouping id (signal id), emitted as a data attribute. */
   dataId?: string;
 }
