@@ -22,7 +22,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   };
 
   assert(await p.locator('.toolbar.compact').count() === 1, 'compact toolbar on phone');
-  assert(await p.locator('.phone-tabs [role=tab]').count() === 3, 'tab bar with Add / Signals / Properties');
+  assert(await p.locator('.phone-tabs [role=tab]').count() === 4, 'tab bar with Add / Signals / Properties / Measure');
   assert(await p.locator('.toolbox').count() === 0 && await p.locator('.phone-panel .toolbox-inner').count() === 1, 'toolbox shown inside the Add tab');
   await noOverflow('empty project');
   await p.screenshot({ path: path.join(out, 'mobile-empty.png') });

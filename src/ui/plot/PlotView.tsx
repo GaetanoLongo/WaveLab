@@ -22,6 +22,7 @@ import {
   timeTicks,
   tToPx,
   yToPx,
+  type CursorSpec,
   type FigureLayout,
   type PlotTheme,
   type TraceInput,
@@ -67,12 +68,16 @@ export interface PlotViewProps {
   getTiming?(id: string): TimingInfo | null;
   onMove?(id: string, delay: number, gestureKey: string): void;
   snap?: SnapSettings;
+  /** Measurement cursors and how to move them. */
+  cursors?: CursorSpec;
+  onCursorMove?(kind: 't' | 'y', index: 0 | 1, value: number): void;
 }
 
 type Drag =
   | { kind: 'pan'; startX: number; startY: number; startRange: Range; moved: boolean }
   | { kind: 'box'; startX: number; startY: number; curX: number; curY: number }
   | { kind: 'pinch'; startDist: number; startMid: number; startRange: Range }
+  | { kind: 'cursor'; ck: 't' | 'y'; index: 0 | 1; targets: SnapPoint[]; levels: Array<{ v: number; label: string }> }
   | {
       kind: 'move';
       id: string;
@@ -101,6 +106,7 @@ export function PlotView(props: PlotViewProps) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [guide, setGuide] = useState<Guide | null>(null);
   const [hoverMovable, setHoverMovable] = useState(false);
+  const [hoverCursor, setHoverCursor] = useState<'t' | 'y' | null>(null);
   /** Active pointers (for multi-touch pinch). */
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
@@ -132,8 +138,9 @@ export function PlotView(props: PlotViewProps) {
         xTitle: 'Time',
         showLegend: props.showLegend ?? true,
         theme: props.theme,
+        cursors: props.cursors,
       }),
-    [size, panels, props.xRange, props.theme, props.showLegend],
+    [size, panels, props.xRange, props.theme, props.showLegend, props.cursors],
   );
   const svg = useMemo(() => sceneToSvg(scene, `p${uid}-`), [scene, uid]);
 
@@ -222,6 +229,35 @@ export function PlotView(props: PlotViewProps) {
     setDrag({ kind: 'pinch', startDist: Math.max(10, Math.abs(a.x - b.x)), startMid: (a.x + b.x) / 2, startRange: props.xRange });
   };
 
+  /** Snap targets for a cursor drag, collected once at the start of the gesture. */
+  const startCursorDrag = (ck: 't' | 'y', index: 0 | 1): Drag => {
+    const sn = props.snap;
+    const [v0, v1] = layout.xRange;
+    const targets: SnapPoint[] = [];
+    const levels: Array<{ v: number; label: string }> = [{ v: 0, label: '0' }];
+    if (sn?.enabled) {
+      for (const tr of props.traces) {
+        for (const p of snapPoints(tr.signal, v0, v1, { edges: sn.edges, zeros: sn.zeros, peaks: true, cycles: false })) {
+          targets.push({ ...p, label: `${p.label} · ${tr.name}` });
+        }
+      }
+      targets.push({ t: 0, group: 'time-zero', label: 't = 0' });
+      if (sn.grid) {
+        const step = sn.gridStep ?? timeTicks(layout).minorStep;
+        targets.push(...gridPoints(v0, v1, step).map((g) => ({ ...g, label: `Grid ${formatSI(g.t, 's')}` })));
+      }
+    }
+    const target = props.traces.find((t) => t.id === props.cursors?.yTraceId);
+    if (target) {
+      for (const f of target.signal.features(v0, v1, 2000).features) {
+        if (f.kind === 'max') levels.push({ v: f.right, label: 'Peak' });
+        else if (f.kind === 'min') levels.push({ v: f.right, label: 'Minimum' });
+        else if (f.kind === 'jump') levels.push({ v: f.left, label: 'Level' }, { v: f.right, label: 'Level' });
+      }
+    }
+    return { kind: 'cursor', ck, index, targets, levels };
+  };
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     const { x, y } = localPos(e.currentTarget, e);
@@ -234,6 +270,11 @@ export function PlotView(props: PlotViewProps) {
     if (pointers.current.size > 2) return;
     if (e.shiftKey) {
       setDrag({ kind: 'box', startX: x, startY: y, curX: x, curY: y });
+      return;
+    }
+    const ch = props.onCursorMove ? cursorHit(layout, props.cursors, x, y) : null;
+    if (ch) {
+      setDrag(startCursorDrag(ch.kind, ch.index));
       return;
     }
     const hit = hitTest(layout, props.traces, x, y);
@@ -267,8 +308,54 @@ export function PlotView(props: PlotViewProps) {
     }
     reportCursor(layout, x, y, props);
     if (!drag) {
-      const hit = props.onMove ? hitTest(layout, props.traces, x, y) : null;
+      const ch = props.onCursorMove ? cursorHit(layout, props.cursors, x, y) : null;
+      setHoverCursor(ch?.kind ?? null);
+      const hit = !ch && props.onMove ? hitTest(layout, props.traces, x, y) : null;
       setHoverMovable(!!hit && !!props.canMove?.(hit));
+      return;
+    }
+    if (drag.kind === 'cursor') {
+      const sn = props.snap;
+      const free = !sn?.enabled || e.altKey;
+      const thrPx = sn?.thresholdPx ?? 8;
+      if (drag.ck === 't') {
+        let t = pxToT(layout, clampX(layout, x));
+        let label = '';
+        if (!free) {
+          const thr = (thrPx * (layout.xRange[1] - layout.xRange[0])) / layout.plotW;
+          let best = thr;
+          const raw = t;
+          for (const p of drag.targets) {
+            // Same tie-break as signal snapping: real features win over grid lines.
+            const d = Math.abs(p.t - raw) + (p.group === 'grid' ? thr * 0.05 : 0);
+            if (d < best) {
+              best = d;
+              label = p.label;
+              t = p.t;
+            }
+          }
+        }
+        props.onCursorMove?.('t', drag.index, t);
+        setGuide({ t: null, label: `Cursor ${drag.index + 1}: ${formatSI(t, 's', 6)}${label ? `   → ${label}` : ''}`, x, y });
+      } else {
+        const panel = props.cursors?.yTraceId ? layout.panels.find((p) => p.traceIds.includes(props.cursors!.yTraceId!)) : undefined;
+        if (!panel) return;
+        let v = pxToY(panel, Math.max(panel.y, Math.min(panel.y + panel.h, y)));
+        let label = '';
+        if (!free) {
+          let best = thrPx;
+          for (const lv of drag.levels) {
+            const d = Math.abs(yToPx(panel, lv.v) - y);
+            if (d < best) {
+              best = d;
+              v = lv.v;
+              label = lv.label;
+            }
+          }
+        }
+        props.onCursorMove?.('y', drag.index, v);
+        setGuide({ t: null, label: `Cursor ${drag.index === 0 ? 'A' : 'B'}: ${formatSI(v, '', 5)}${label ? `   → ${label}` : ''}`, x, y });
+      }
       return;
     }
     const span = layout.xRange[1] - layout.xRange[0];
@@ -331,7 +418,14 @@ export function PlotView(props: PlotViewProps) {
   const top = layout.panels[0]?.y ?? 0;
   const lastPanel = layout.panels[layout.panels.length - 1];
   const bottom = lastPanel ? lastPanel.y + lastPanel.h : size.h;
-  const cls = ['plot-host', drag?.kind === 'pan' && drag.moved && 'panning', drag?.kind === 'move' && 'moving', !drag && hoverMovable && 'can-move']
+  const cls = [
+    'plot-host',
+    drag?.kind === 'pan' && drag.moved && 'panning',
+    drag?.kind === 'move' && 'moving',
+    !drag && hoverMovable && 'can-move',
+    (drag?.kind === 'cursor' ? drag.ck : !drag ? hoverCursor : null) === 't' && 'cursor-t',
+    (drag?.kind === 'cursor' ? drag.ck : !drag ? hoverCursor : null) === 'y' && 'cursor-y',
+  ]
     .filter(Boolean)
     .join(' ');
 
@@ -433,4 +527,24 @@ function hitTest(l: FigureLayout, traces: TraceInput[], x: number, y: number): s
     }
   }
   return best;
+}
+
+/** Cursor line under the pointer (within 6 px; time cursors first). */
+function cursorHit(l: FigureLayout, c: CursorSpec | undefined, x: number, y: number): { kind: 't' | 'y'; index: 0 | 1 } | null {
+  if (!c) return null;
+  const first = l.panels[0];
+  const last = l.panels[l.panels.length - 1];
+  if (!first || !last || y < first.y - 2 || y > last.y + last.h + 2) return null;
+  for (const i of [0, 1] as const) {
+    const t = c.t[i];
+    if (t != null && Math.abs(tToPx(l, t) - x) <= 6) return { kind: 't', index: i };
+  }
+  const panel = c.yTraceId ? l.panels.find((p) => p.traceIds.includes(c.yTraceId!)) : undefined;
+  if (panel && x >= panel.x && x <= panel.x + panel.w) {
+    for (const i of [0, 1] as const) {
+      const v = c.y[i];
+      if (v != null && Math.abs(yToPx(panel, v) - y) <= 6) return { kind: 'y', index: i };
+    }
+  }
+  return null;
 }

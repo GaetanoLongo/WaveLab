@@ -100,3 +100,11 @@ These rules are part of the file format: changing them later needs a schema migr
 - `dnum(x, h)`: plain central difference (x(t + h/2) − x(t − h/2)) / h.
 - `movavg(x, W)`, `rms(x, W)`: **trailing** window [t − W, t]. Default window from the toolbox = one period of the input.
 - Units from the toolbox: integral of V → V·s, derivative of V → V/s (editable).
+
+## Measurements
+- Interval = between time cursors 1 and 2 when both exist, otherwise the visible time window.
+- Value at a cursor uses the right-limit convention (on an edge, the value after the edge).
+- Max/min are exact (feature-based); mean and RMS are exact integrals (impulses from `deriv` count in the mean).
+- Duty cycle = fraction of the interval above the mid level (max + min)/2; frequency = (n − 1)/(t_last − t_first)
+  over same-direction crossings of that level (the direction with more crossings), "—" with fewer than two.
+- Cursors are view state like the zoom: saved in the file, not part of undo, not marking the project unsaved.

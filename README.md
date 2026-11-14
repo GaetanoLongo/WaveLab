@@ -24,8 +24,17 @@ npm run e2e        # browser end-to-end checks: editor, snapping, files & export
 | M5 | Save/open .wlab, PNG/SVG/PDF export, math markup, GitHub Pages | ✅ |
 | M6 | Mathematical operations, comparators, logic, expression editor, dependencies | ✅ |
 | M7 | Integration, differentiation, moving average / RMS | ✅ |
+| — | Phone & tablet layout | ✅ |
+| M8 | Cursors and measurements | ✅ |
 
 See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the mathematical conventions.
+
+## Cursors and measurements
+"Time cursors" adds cursors 1 and 2 (all panels); "Level cursors" adds A and B in the measured signal's panel.
+Drag them in the plot (they snap to edges, peaks and zero crossings; Alt = free) or type exact positions.
+The panel shows values at the cursors, Δt, 1/Δt, ΔY, ΔAB, and for the interval between cursors 1–2 (or the
+visible window): max, min, peak-to-peak, mean, RMS, duty cycle and frequency — all computed exactly, not
+from samples. Cursors are saved in the project file and are left out of exports unless requested.
 
 ## Phones and tablets
 Below 760 px wide the plot sits on top with a tab bar (Add / Signals / Properties) underneath; the toolbar

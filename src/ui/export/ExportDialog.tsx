@@ -68,10 +68,10 @@ function Dialog() {
 
   // Preview uses exactly the export scene.
   const preview = useMemo(() => {
-    const svg = sceneToSvg(buildExportScene(o.width, o.height, o.transparent), { idPrefix: 'wlprev-' });
+    const svg = sceneToSvg(buildExportScene(o.width, o.height, o.transparent, o.includeCursors), { idPrefix: 'wlprev-' });
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
     // project/view are dependencies because buildExportScene reads them from the store.
-  }, [o.width, o.height, o.transparent, project, view]);
+  }, [o.width, o.height, o.transparent, o.includeCursors, project, view]);
 
   const doExport = async () => {
     setBusy(true);
@@ -139,6 +139,10 @@ function Dialog() {
             <label className="check">
               <input type="checkbox" checked={fig.showLegend} onChange={(e) => actions.setShowLegend(e.target.checked)} />
               Show legend (overlay mode)
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={o.includeCursors} onChange={(e) => set({ includeCursors: e.target.checked })} />
+              Include measurement cursors
             </label>
             <div className="field">
               <label>Size preset</label>

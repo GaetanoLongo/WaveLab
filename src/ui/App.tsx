@@ -8,6 +8,7 @@ import { compiled } from '../state/compiled';
 import { useSettings } from '../state/settings';
 import { actions, editor, findSignal, isDirty, orderedSignals, useEditor } from '../state/store';
 import { PropertiesPanel } from './panels/PropertiesPanel';
+import { MeasurePanel } from './panels/MeasurePanel';
 import { SignalList } from './panels/SignalList';
 import { Toolbox } from './panels/Toolbox';
 import { PlotView, type CursorInfo } from './plot/PlotView';
@@ -15,7 +16,7 @@ import { Toolbar } from './Toolbar';
 import { useShortcuts } from './useShortcuts';
 import { PHONE_QUERY, useMediaQuery } from './useMediaQuery';
 
-type PhoneTab = 'add' | 'signals' | 'props';
+type PhoneTab = 'add' | 'signals' | 'props' | 'measure';
 /** Which panel the phone layout shows under the plot. */
 export const usePhoneTab = create<{ tab: PhoneTab }>(() => ({ tab: 'add' }));
 
@@ -73,6 +74,7 @@ const TABS: Array<[PhoneTab, string]> = [
   ['add', 'Add'],
   ['signals', 'Signals'],
   ['props', 'Properties'],
+  ['measure', 'Measure'],
 ];
 
 /**
@@ -110,6 +112,7 @@ function PhoneWorkspace() {
         {tab === 'add' && <Toolbox />}
         {tab === 'signals' && <SignalList />}
         {tab === 'props' && <PropertiesPanel />}
+        {tab === 'measure' && <MeasurePanel phone />}
       </div>
     </div>
   );
@@ -124,6 +127,16 @@ function PlotArea() {
   const mode = project.figures[0]!.mode;
   const [cursor, setCursor] = useState<CursorInfo | null>(null);
   const snap = useSettings((s) => s.snap);
+  const visibleIds = orderedSignals(project).filter((s) => s.style.visible).map((s) => s.id);
+  const yTraceId =
+    (view.cursors.target && visibleIds.includes(view.cursors.target) ? view.cursors.target : null) ??
+    (selectedId && visibleIds.includes(selectedId) ? selectedId : null) ??
+    visibleIds[0] ??
+    null;
+  const cursorSpec = useMemo(
+    () => ({ t: view.cursors.t, y: view.cursors.y, yTraceId }),
+    [view.cursors.t, view.cursors.y, yTraceId],
+  );
 
   const traces = useMemo<TraceInput[]>(
     () =>
@@ -169,6 +182,8 @@ function PlotArea() {
             return { ...s.timing, periodic: s.generator !== 'dc' };
           }}
           onMove={(id, delay, key) => actions.setDelay(id, delay, key)}
+          cursors={cursorSpec}
+          onCursorMove={actions.setCursor}
           emptyMessage={
             project.signals.length === 0
               ? phoneLayout
@@ -178,6 +193,7 @@ function PlotArea() {
           }
         />
       </div>
+      {!phoneLayout && <MeasurePanel />}
       <footer className="status">
         <span>
           {formatSI(view.xRange[0], 's')} → {formatSI(view.xRange[1], 's')} (span {formatSI(view.xRange[1] - view.xRange[0], 's')})

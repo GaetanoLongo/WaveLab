@@ -7,7 +7,7 @@ import type { Scene } from '../../core/plot/scene';
 import { buildFigure, panelsForMode, themeById, type PlotTheme, type TraceInput } from '../../core/plot/layout';
 import { sceneToSvg } from '../../core/plot/svg';
 import { compiled } from '../../state/compiled';
-import { editor, orderedSignals } from '../../state/store';
+import { actions, editor, orderedSignals } from '../../state/store';
 import { downloadBlob } from '../fileio';
 
 export type ExportFormat = 'png' | 'svg' | 'pdf';
@@ -28,6 +28,8 @@ export interface ExportOptions {
   /** PDF: scale the plot to fit the page margins (otherwise 96 dpi actual size). */
   fit: boolean;
   fileName: string;
+  /** Draw the measurement cursors into the exported figure. */
+  includeCursors: boolean;
 }
 
 export const DEFAULT_EXPORT: Omit<ExportOptions, 'fileName'> = {
@@ -41,6 +43,7 @@ export const DEFAULT_EXPORT: Omit<ExportOptions, 'fileName'> = {
   pageH: 100,
   orientation: 'landscape',
   fit: true,
+  includeCursors: false,
 };
 
 const PAGE_MM: Record<'A4' | 'A3' | 'Letter', [number, number]> = {
@@ -53,7 +56,7 @@ const PX_TO_PT = 0.75; // 96 dpi
 const MARGIN_MM = 10;
 
 /** Scene of the current project at the export size (no selection halo). */
-export function buildExportScene(width: number, height: number, transparent: boolean): Scene {
+export function buildExportScene(width: number, height: number, transparent: boolean, includeCursors = false): Scene {
   const st = editor.getState();
   const fig = st.project.figures[0]!;
   const base: PlotTheme = themeById(fig.stylePreset);
@@ -78,7 +81,13 @@ export function buildExportScene(width: number, height: number, transparent: boo
     xTitle: 'Time',
     showLegend: fig.showLegend,
     theme,
+    cursors: includeCursors ? cursorSpecFor() : undefined,
   }).scene;
+}
+
+function cursorSpecFor() {
+  const st = editor.getState();
+  return { t: st.view.cursors.t, y: st.view.cursors.y, yTraceId: actions.measureTarget()?.id ?? null };
 }
 
 // --- fonts ---------------------------------------------------------------------
@@ -118,7 +127,7 @@ async function fontFaceCss(): Promise<string> {
 // --- exporters -------------------------------------------------------------------
 
 export function svgString(o: ExportOptions): string {
-  return sceneToSvg(buildExportScene(o.width, o.height, o.transparent), { xmlDeclaration: true, idPrefix: 'wl-' });
+  return sceneToSvg(buildExportScene(o.width, o.height, o.transparent, o.includeCursors), { xmlDeclaration: true, idPrefix: 'wl-' });
 }
 
 export async function exportSvg(o: ExportOptions): Promise<void> {
@@ -126,7 +135,7 @@ export async function exportSvg(o: ExportOptions): Promise<void> {
 }
 
 export async function renderPng(o: ExportOptions): Promise<Blob> {
-  const scene = buildExportScene(o.width, o.height, o.transparent);
+  const scene = buildExportScene(o.width, o.height, o.transparent, o.includeCursors);
   const svg = sceneToSvg(scene, { css: await fontFaceCss(), pixelScale: o.scale, idPrefix: 'wl-' });
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
   try {
@@ -190,7 +199,7 @@ export async function renderPdf(o: ExportOptions): Promise<Blob> {
   const x = (pw - w) / 2;
   const y = (ph - h) / 2;
 
-  const svgText = sceneToSvg(buildExportScene(o.width, o.height, o.transparent), { idPrefix: 'wlpdf-' });
+  const svgText = sceneToSvg(buildExportScene(o.width, o.height, o.transparent, o.includeCursors), { idPrefix: 'wlpdf-' });
   const host = document.createElement('div');
   host.style.cssText = 'position:fixed;left:-10000px;top:0;visibility:hidden';
   host.innerHTML = svgText;

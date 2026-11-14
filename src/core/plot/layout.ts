@@ -91,6 +91,15 @@ export interface PanelInput {
   title?: string;
 }
 
+export interface CursorSpec {
+  t: ReadonlyArray<number | null>;
+  y: ReadonlyArray<number | null>;
+  /** Trace whose panel holds the level cursors. */
+  yTraceId: string | null;
+}
+
+export const CURSOR_COLORS = { t: '#c2255c', y: '#6741d9' };
+
 export interface FigureInput {
   width: number;
   height: number;
@@ -99,6 +108,8 @@ export interface FigureInput {
   xTitle: string;
   showLegend: boolean;
   theme: PlotTheme;
+  /** Measurement cursors (on screen always; in exports only on request). */
+  cursors?: CursorSpec;
 }
 
 export interface PanelLayout {
@@ -337,6 +348,8 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
     }
   });
 
+  if (input.cursors) drawCursors(items, input.cursors, layout, fs);
+
   const scene: Scene = {
     width: input.width,
     height: input.height,
@@ -391,4 +404,40 @@ function drawImpulses(items: SceneItem[], tr: TraceInput, pl: PanelLayout, l: Fi
       });
     }
   }
+}
+
+/** Time cursors across all panels (shaded between them) and level cursors in the target's panel. */
+function drawCursors(items: SceneItem[], c: CursorSpec, l: FigureLayout, fs: number) {
+  const first = l.panels[0];
+  const last = l.panels[l.panels.length - 1];
+  if (!first || !last) return;
+  const top = first.y;
+  const bottom = last.y + last.h;
+  const [t1, t2] = c.t;
+  const inView = (t: number) => t >= l.xRange[0] && t <= l.xRange[1];
+  if (t1 != null && t2 != null) {
+    const xa = tToPx(l, Math.max(Math.min(t1, t2), l.xRange[0]));
+    const xb = tToPx(l, Math.min(Math.max(t1, t2), l.xRange[1]));
+    if (xb > xa) {
+      for (const p of l.panels) items.push({ type: 'rect', x: xa, y: p.y, w: xb - xa, h: p.h, fill: CURSOR_COLORS.t, opacity: 0.06 });
+    }
+  }
+  c.t.forEach((t, i) => {
+    if (t == null || !inView(t)) return;
+    const x = tToPx(l, t);
+    items.push({ type: 'line', x1: x, y1: top, x2: x, y2: bottom, stroke: CURSOR_COLORS.t, width: 1.3, dash: i === 0 ? 'solid' : 'dashed' });
+    items.push({ type: 'rect', x: x - 7, y: top, w: 14, h: 14, fill: CURSOR_COLORS.t });
+    items.push({ type: 'text', x, y: top + 7, text: String(i + 1), size: fs * 0.8, fill: '#ffffff', anchor: 'middle', baseline: 'middle', weight: 'bold' });
+  });
+  const panel = c.yTraceId ? l.panels.find((p) => p.traceIds.includes(c.yTraceId!)) : undefined;
+  if (!panel) return;
+  c.y.forEach((v, i) => {
+    if (v == null || v < panel.yRange[0] || v > panel.yRange[1]) return;
+    const y = yToPx(panel, v);
+    items.push({ type: 'line', x1: panel.x, y1: y, x2: panel.x + panel.w, y2: y, stroke: CURSOR_COLORS.y, width: 1.3, dash: i === 0 ? 'solid' : 'dashed' });
+    items.push({ type: 'rect', x: panel.x + panel.w - 14, y: y - 7, w: 14, h: 14, fill: CURSOR_COLORS.y });
+    items.push({
+      type: 'text', x: panel.x + panel.w - 7, y, text: i === 0 ? 'A' : 'B', size: fs * 0.8, fill: '#ffffff', anchor: 'middle', baseline: 'middle', weight: 'bold',
+    });
+  });
 }

@@ -49,7 +49,7 @@ function integrateSmooth(f: (t: number) => number, a: number, b: number, depth =
 }
 
 /** ∫_a^b x over intervals that may contain features (a < b), plus impulses in (a, b]. */
-function integrateRange(x: SignalEval, a: number, b: number): number {
+export function integrateRange(x: SignalEval, a: number, b: number): number {
   if (b === a) return 0;
   const q = x.features(a, b, MAX_SAMPLES);
   let total = 0;
@@ -327,7 +327,7 @@ export function numericDerivativeOf(x: SignalEval, h: number): SignalEval {
 // --- moving windows ----------------------------------------------------------------
 
 /** x² as a signal (monotonic between x's features and zero crossings). */
-function squareOf(x: SignalEval): SignalEval {
+export function squareOf(x: SignalEval): SignalEval {
   return {
     value: (t) => x.value(t) ** 2,
     left: (t) => leftValue(x, t) ** 2,

@@ -271,7 +271,21 @@ function readView(v: unknown, path: string): SavedView {
       if (r !== null) yRanges[k] = range(r, `${path}.yRanges.${k}`);
     }
   }
-  return { xRange: range(w.xRange, `${path}.xRange`), yRanges };
+  let cursors: SavedView['cursors'];
+  if (w.cursors !== undefined) {
+    const c = obj(w.cursors, `${path}.cursors`);
+    const pair = (v: unknown, p: string): [number | null, number | null] => {
+      const a = arr(v, p);
+      if (a.length !== 2) throw new ProjectFileError(`${p} must have two entries.`);
+      return [a[0] === null ? null : num(a[0], `${p}[0]`), a[1] === null ? null : num(a[1], `${p}[1]`)];
+    };
+    cursors = {
+      t: pair(c.t, `${path}.cursors.t`),
+      y: pair(c.y, `${path}.cursors.y`),
+      target: c.target === null || c.target === undefined ? null : str(c.target, `${path}.cursors.target`),
+    };
+  }
+  return { xRange: range(w.xRange, `${path}.xRange`), yRanges, ...(cursors ? { cursors } : {}) };
 }
 
 // --- primitive readers -------------------------------------------------------

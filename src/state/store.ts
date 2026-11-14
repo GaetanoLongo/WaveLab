@@ -13,6 +13,8 @@ import { defaultGenerator } from '../core/model/defaults';
 import { paletteColor } from '../core/model/palette';
 import { createsCycle, dependents, storedAst } from '../core/model/deps';
 import {
+  NO_CURSORS,
+  type Cursors,
   emptyProject,
   type DerivedSignalDef,
   type GeneratorSignalDef,
@@ -24,6 +26,7 @@ import { ExprError, isLogic, nameToken, parseExpr, print, refsOf, splitAssignmen
 import type { GeneratorKind } from '../core/model/signal-defs';
 import type { Range } from '../core/plot/range';
 import { fitTimeRange } from '../core/plot/viewport';
+import { rangeOf } from '../core/plot/range';
 import { phaseForDifference } from '../core/signals/phase';
 import { snapPoints, zeroCrossings } from '../core/snap/points';
 import { compiled } from './compiled';
@@ -35,6 +38,7 @@ export const COALESCE_MS = 800;
 export interface ViewState {
   xRange: Range;
   yRanges: Record<string, Range | null>;
+  cursors: Cursors;
 }
 
 export interface EditorState {
@@ -70,7 +74,7 @@ function initialState(project = emptyProject()): EditorState {
     lastEdit: null,
     selectedId: null,
     clipboard: null,
-    view: { xRange: [0, 0.04], yRanges: {} },
+    view: { xRange: [0, 0.04], yRanges: {}, cursors: NO_CURSORS },
     notice: null,
   };
 }
@@ -209,7 +213,7 @@ export const actions = {
   /** Replace the whole document (Open) — clears history; restores the saved view if any. */
   loadProject(project: Project, view?: SavedView) {
     set(initialState(project));
-    if (view) set({ view: { xRange: view.xRange, yRanges: { ...view.yRanges } } });
+    if (view) set({ view: { xRange: view.xRange, yRanges: { ...view.yRanges }, cursors: view.cursors ?? NO_CURSORS } });
     else actions.fitAll();
   },
 
@@ -218,7 +222,9 @@ export const actions = {
     const v = get().view;
     const yRanges: Record<string, [number, number]> = {};
     for (const [k, r] of Object.entries(v.yRanges)) if (r) yRanges[k] = [r[0], r[1]];
-    return { xRange: [v.xRange[0], v.xRange[1]], yRanges };
+    const c = v.cursors;
+    const any = c.t.some((x) => x !== null) || c.y.some((x) => x !== null) || c.target !== null;
+    return { xRange: [v.xRange[0], v.xRange[1]], yRanges, ...(any ? { cursors: c } : {}) };
   },
 
   setStylePreset(id: string) {
@@ -561,13 +567,56 @@ export const actions = {
   fitAll() {
     const p = get().project;
     const visible = orderedSignals(p).filter((s) => s.style.visible);
-    set({ view: { xRange: fitTimeRange(visible.map((s) => compiled(s, p))), yRanges: {} } });
+    set((st) => ({ view: { ...st.view, xRange: fitTimeRange(visible.map((s) => compiled(s, p))), yRanges: {} } }));
   },
 
   fitSelected() {
     const sig = findSignal(get().project, get().selectedId);
     if (!sig) return actions.fitAll();
     set((s) => ({ view: { ...s.view, xRange: fitTimeRange([compiled(sig, s.project)]) } }));
+  },
+
+  // --- measurement cursors (view state: saved in files, not undoable) ---
+
+  /** Signal measured by the cursors: the pinned target, else the selection, else the first visible. */
+  measureTarget(): SignalDef | undefined {
+    const st = get();
+    const visible = orderedSignals(st.project).filter((s) => s.style.visible);
+    return (
+      findSignal(st.project, st.view.cursors.target) ??
+      visible.find((s) => s.id === st.selectedId) ??
+      visible[0]
+    );
+  },
+
+  setCursors(patch: Partial<Cursors>) {
+    set((st) => ({ view: { ...st.view, cursors: { ...st.view.cursors, ...patch } } }));
+  },
+
+  setCursor(kind: 't' | 'y', index: 0 | 1, value: number | null) {
+    const c = get().view.cursors;
+    const arr: [number | null, number | null] = [...c[kind]];
+    arr[index] = value;
+    actions.setCursors({ [kind]: arr });
+  },
+
+  /** Show both time cursors at 1/3 and 2/3 of the view, or hide them. */
+  toggleTimeCursors() {
+    const { cursors, xRange } = get().view;
+    if (cursors.t.some((x) => x !== null)) return actions.setCursors({ t: [null, null] });
+    const [a, b] = xRange;
+    actions.setCursors({ t: [a + (b - a) / 3, a + (2 * (b - a)) / 3] });
+  },
+
+  /** Show both level cursors inside the target's range, or hide them. */
+  toggleLevelCursors() {
+    const st = get();
+    if (st.view.cursors.y.some((x) => x !== null)) return actions.setCursors({ y: [null, null] });
+    const target = actions.measureTarget();
+    if (!target) return notify('Add a signal first.');
+    const r = rangeOf(compiled(target, st.project), st.view.xRange[0], st.view.xRange[1]) ?? [-1, 1];
+    const [lo, hi] = r[1] > r[0] ? r : [r[0] - 1, r[0] + 1];
+    actions.setCursors({ y: [lo + (hi - lo) * 0.25, lo + (hi - lo) * 0.75] });
   },
 
   clearNotice() {

@@ -80,11 +80,22 @@ export interface Figure {
   showLegend: boolean;
 }
 
-/** Saved view (zoom/pan) so a reopened project looks the same. */
+/** Measurement cursors: two time cursors (all panels) and two level cursors (target's panel). */
+export interface Cursors {
+  t: [number | null, number | null];
+  y: [number | null, number | null];
+  /** Signal that is measured and whose panel/units the level cursors use (null = selected signal). */
+  target: string | null;
+}
+
+export const NO_CURSORS: Cursors = { t: [null, null], y: [null, null], target: null };
+
+/** Saved view (zoom/pan, cursors) so a reopened project looks the same. */
 export interface SavedView {
   xRange: [number, number];
   /** Manual vertical ranges by panel id (absent = automatic). */
   yRanges: Record<string, [number, number]>;
+  cursors?: Cursors;
 }
 
 export interface Project {

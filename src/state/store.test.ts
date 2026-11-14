@@ -289,3 +289,47 @@ function compiledFromText(text: string, id: string, t: number): number {
   const { project } = parseProjectFile(text);
   return compiled(project.signals.find((s) => s.id === id)!, project).value(t);
 }
+
+describe('measurement cursors (M8)', () => {
+  it('toggle places time cursors at 1/3 and 2/3 of the view, and hides them', () => {
+    actions.addSignal('sine');
+    actions.toggleTimeCursors();
+    const [a, b] = st().view.cursors.t;
+    expect(a).toBeCloseTo(0.04 / 3, 15);
+    expect(b).toBeCloseTo(0.08 / 3, 15);
+    actions.toggleTimeCursors();
+    expect(st().view.cursors.t).toEqual([null, null]);
+  });
+
+  it('level cursors sit inside the target range; target defaults to the selection', () => {
+    actions.addSignal('sine');
+    const sq = actions.addSignal('square');
+    actions.updateGenerator(sq, (s) => void (s.generator === 'square' && Object.assign(s.params, { high: 10, low: 0 })));
+    expect(actions.measureTarget()?.id).toBe(sq);
+    actions.toggleLevelCursors();
+    expect(st().view.cursors.y).toEqual([2.5, 7.5]);
+  });
+
+  it('cursors are view state: not undoable, not dirty, but saved and restored', () => {
+    actions.addSignal('sine');
+    actions.markSaved();
+    actions.setCursor('t', 0, 0.005);
+    actions.setCursor('y', 1, 0.7);
+    expect(isDirty(st())).toBe(false);
+    expect(st().past).toHaveLength(1);
+    const { project, view } = parseProjectFile(serializeProject(st().project, actions.savedView()));
+    actions.newProject();
+    actions.loadProject(project, view);
+    expect(st().view.cursors.t).toEqual([0.005, null]);
+    expect(st().view.cursors.y).toEqual([null, 0.7]);
+  });
+
+  it('files without cursors load with none', () => {
+    actions.addSignal('sine');
+    const text = serializeProject(st().project, actions.savedView());
+    expect(text).not.toContain('"cursors"');
+    const { view } = parseProjectFile(text);
+    actions.loadProject(parseProjectFile(text).project, view);
+    expect(st().view.cursors.t).toEqual([null, null]);
+  });
+});
