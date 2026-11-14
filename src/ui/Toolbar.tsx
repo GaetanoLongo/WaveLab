@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { zoomRange } from '../core/plot/viewport';
 import { actions, canRedo, canUndo, editor, isDirty, useEditor } from '../state/store';
 import { Icon, type IconName } from './icons';
+import { SnapMenu } from './panels/SnapMenu';
 
 const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
 
@@ -91,7 +92,7 @@ export function Toolbar() {
       </div>
       <div className="sep" />
       <div className="tb-group">
-        <Btn icon="magnet" label="Grid & snap settings" pending="M4" />
+        <SnapMenu />
         <Btn icon="export" label={`Export (${MOD}Shift+S)`} pending="M5" />
         <Btn icon="settings" label="Settings" pending="M9" />
       </div>

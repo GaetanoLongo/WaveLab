@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { LIGHT_TECHNICAL, type TraceInput } from '../core/plot/layout';
 import { formatSI } from '../core/units/si';
 import { compiled } from '../state/compiled';
-import { actions, orderedSignals, useEditor } from '../state/store';
+import { useSettings } from '../state/settings';
+import { actions, editor, findSignal, orderedSignals, useEditor } from '../state/store';
 import { PropertiesPanel } from './panels/PropertiesPanel';
 import { SignalList } from './panels/SignalList';
 import { Toolbox } from './panels/Toolbox';
@@ -36,6 +37,7 @@ function PlotArea() {
   const notice = useEditor((s) => s.notice);
   const mode = project.figures[0]!.mode;
   const [cursor, setCursor] = useState<CursorInfo | null>(null);
+  const snap = useSettings((s) => s.snap);
 
   const traces = useMemo<TraceInput[]>(
     () =>
@@ -69,6 +71,17 @@ function PlotArea() {
           theme={LIGHT_TECHNICAL}
           onCursor={setCursor}
           onSelect={actions.select}
+          snap={snap}
+          canMove={(id) => {
+            const s = findSignal(editor.getState().project, id);
+            return !!s && !s.locked;
+          }}
+          getTiming={(id) => {
+            const s = findSignal(editor.getState().project, id);
+            if (!s) return null;
+            return { ...s.timing, periodic: s.generator !== 'dc' };
+          }}
+          onMove={(id, delay, key) => actions.setDelay(id, delay, key)}
           emptyMessage={
             project.signals.length === 0
               ? 'Add a waveform from the toolbox on the left.'
@@ -88,7 +101,7 @@ function PlotArea() {
             {notice}
           </span>
         ) : (
-          <span className="hint">Wheel: zoom · Drag: pan · Click trace: select · Shift+wheel/drag: vertical / box zoom · Double-click: fit</span>
+          <span className="hint">Drag trace: move (Alt: no snap) · Drag empty: pan · Wheel: zoom · Shift+wheel/drag: vertical / box zoom · Double-click: fit</span>
         )}
       </footer>
     </main>

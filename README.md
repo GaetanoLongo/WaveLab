@@ -20,7 +20,7 @@ npm run e2e        # browser end-to-end check of the editor (uses Playwright)
 | M1 | Signal engine: sine, cosine, square, pulse, triangle, sawtooth, DC | ✅ |
 | M2 | Plot engine (overlay/stacked, zoom/pan, exact edges) | ✅ |
 | M3 | Editor interface | ✅ |
-| M4 | Positioning and snapping (configurable modes) | ⏳ |
+| M4 | Positioning and snapping (configurable modes) | ✅ |
 | M5 | Save/open .wlab, PNG/SVG/PDF export, GitHub Pages | ⏳ |
 
 See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the mathematical conventions.

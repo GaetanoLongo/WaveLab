@@ -163,7 +163,7 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
   const clips: Scene['clips'] = [];
   const [t0, t1] = layout.xRange;
 
-  const xt = niceTicks(t0, t1, Math.max(2, Math.floor(layout.plotW / 90)), 's', 1);
+  const xt = timeTicks(layout);
 
   layout.panels.forEach((pl, idx) => {
     const pin = input.panels[idx];
@@ -311,4 +311,9 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
     items,
   };
   return { scene, layout };
+}
+
+/** Time-axis ticks exactly as drawn (shared with snapping so the grid matches). */
+export function timeTicks(l: FigureLayout) {
+  return niceTicks(l.xRange[0], l.xRange[1], Math.max(2, Math.floor(l.plotW / 90)), 's', 1);
 }

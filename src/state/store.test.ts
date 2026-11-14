@@ -135,3 +135,52 @@ describe('editor store', () => {
     expect(s.generator === 'square' && [s.params.high, s.params.low]).toEqual([-5, 0]);
   });
 });
+
+describe('positioning and alignment (M4)', () => {
+  it('a drag gesture is one undo step regardless of duration', () => {
+    const a = actions.addSignal('sine');
+    for (const d of [0.001, 0.002, 0.003]) actions.setDelay(a, d, 'drag:a:1');
+    expect(findSignal(st().project, a)!.timing.delay).toBe(0.003);
+    actions.undo();
+    expect(findSignal(st().project, a)!.timing.delay).toBe(0);
+  });
+
+  it('aligns rising edges by moving the delay only', () => {
+    const ref = actions.addSignal('square');
+    const sig = actions.addSignal('square');
+    actions.updateSignal(ref, (s) => void (s.timing.delay = 0.003));
+    actions.updateSignal(sig, (s) => void (s.timing.phaseDeg = 45));
+    actions.setXRange([0, 0.04]);
+    const msg = actions.alignFeature(sig, ref, 'rise');
+    expect(msg).toMatch(/Aligned/);
+    const s = findSignal(st().project, sig)!;
+    expect(s.timing.phaseDeg).toBe(45); // phase untouched
+    expect(s.timing.frequency).toBe(50); // frequency untouched
+    // Rising edges now coincide: net shift equals the reference's (modulo a period).
+    const shift = s.timing.delay - 45 / 360 / 50 - 0.003;
+    expect(Math.abs(shift - Math.round(shift / 0.02) * 0.02)).toBeLessThan(1e-12);
+  });
+
+  it('reports when a feature kind does not exist', () => {
+    const ref = actions.addSignal('square');
+    const sig = actions.addSignal('sine');
+    expect(actions.alignFeature(sig, ref, 'rise')).toMatch(/no rising edges/);
+  });
+
+  it('sets a phase difference via the phase parameter (Acceptance Test 2 workflow)', () => {
+    const ref = actions.addSignal('sine');
+    const sig = actions.addSignal('sine');
+    actions.setPhaseDifference(sig, ref, 120);
+    const s = findSignal(st().project, sig)!;
+    expect(s.timing.phaseDeg).toBeCloseTo(120, 9);
+    expect(s.timing.delay).toBe(0);
+    expect(s.timing.frequency).toBe(50);
+  });
+
+  it('refuses a phase difference between different frequencies', () => {
+    const ref = actions.addSignal('sine');
+    const sig = actions.addSignal('sine');
+    actions.updateSignal(sig, (s) => void (s.timing.frequency = 60));
+    expect(actions.setPhaseDifference(sig, ref, 30)).toMatch(/same frequency/);
+  });
+});

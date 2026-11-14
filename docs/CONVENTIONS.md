@@ -43,3 +43,23 @@ These rules are part of the file format: changing them later needs a schema migr
   vertical axis. Use Shift+wheel or Shift+drag for vertical zoom, and "Auto Y" to reset.
 - When a signal has more than about one feature per two pixels (e.g. 1 MHz viewed over 1 s), it is
   drawn as an exact min/max band (one vertical stroke per pixel column) instead of an aliased line.
+
+## Moving and snapping
+- Dragging a trace changes only its **delay**. Frequency, amplitude and phase are never touched.
+  One drag = one undo step. Locked signals cannot be dragged (dragging them pans instead).
+- Snap targets: t = 0 (always), the time grid, and the edges / zero crossings / peaks / cycle starts
+  of the other visible signals, depending on the enabled modes. A feature snaps to a feature of the
+  same family (edge ↔ edge, peak ↔ peak, …); t = 0 and grid lines accept any feature.
+- Ties go first to real features over grid lines, then to like-for-like pairs (rising → rising),
+  then to the pair nearest the pointer.
+- Phase mode moves the signal in steps of N electrical degrees **of the dragged signal**.
+  Dragging right is a lag (negative phase).
+- Hold **Alt** to move freely. Snap settings are a per-browser preference, not part of the project.
+
+## Phase difference ("Set difference", "Phase vs ref.")
+- Defined between the **fundamental components** of two signals with the same frequency, each written
+  as sin(2πft + θ). This makes "sine vs square" or "sine vs triangle" meaningful.
+- θ of each shape at its cycle start: sine 0°, cosine +90°, triangle −90°, rising sawtooth 180°,
+  falling sawtooth 0°, square 90° − 180°·duty, pulse 90° − 360°·(centre/T). The pulse centre
+  assumes symmetric edges; with rise ≠ fall it is an approximation.
+- "Set difference" changes the signal's **phase parameter**. The align buttons change its **delay**.

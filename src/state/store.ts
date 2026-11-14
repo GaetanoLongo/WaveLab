@@ -15,6 +15,8 @@ import { emptyProject, type Project, type SignalDef } from '../core/model/projec
 import type { GeneratorKind } from '../core/model/signal-defs';
 import type { Range } from '../core/plot/range';
 import { fitTimeRange } from '../core/plot/viewport';
+import { phaseForDifference } from '../core/signals/phase';
+import { snapPoints, zeroCrossings } from '../core/snap/points';
 import { compiled } from './compiled';
 
 export const HISTORY_LIMIT = 200;
@@ -130,7 +132,11 @@ export function commit(recipe: (d: Draft<Project>) => void, key?: string): void 
   const next = produce(s.project, recipe);
   if (next === s.project) return;
   const now = Date.now();
-  const merge = key !== undefined && s.lastEdit?.key === key && now - s.lastEdit.at < COALESCE_MS;
+  // Keys starting with "drag:" belong to one pointer gesture and always merge.
+  const merge =
+    key !== undefined &&
+    s.lastEdit?.key === key &&
+    (key.startsWith('drag:') || now - s.lastEdit.at < COALESCE_MS);
   set({
     project: next,
     past: merge ? s.past : [...s.past, s.project].slice(-HISTORY_LIMIT),
@@ -142,6 +148,23 @@ export function commit(recipe: (d: Draft<Project>) => void, key?: string): void 
 
 // ---------------------------------------------------------------------------
 // Actions
+
+export type AlignKind = 'rise' | 'fall' | 'max' | 'min' | 'zero-up';
+
+export const ALIGN_LABELS: Record<AlignKind, string> = {
+  rise: 'rising edges',
+  fall: 'falling edges',
+  max: 'positive peaks',
+  min: 'negative peaks',
+  'zero-up': 'rising zero crossings',
+};
+
+function alignPoints(s: ReturnType<typeof compiled>, kind: AlignKind, t0: number, t1: number): number[] {
+  if (kind === 'zero-up') return zeroCrossings(s, t0, t1).filter((z) => z.rising).map((z) => z.t);
+  const pts = snapPoints(s, t0, t1, { edges: true, zeros: false, peaks: true, cycles: false });
+  const label = { rise: 'Rising edge', fall: 'Falling edge', max: 'Positive peak', min: 'Negative peak' }[kind];
+  return pts.filter((p) => p.label === label).map((p) => p.t);
+}
 
 export const actions = {
   undo() {
@@ -335,6 +358,50 @@ export const actions = {
       const [item] = tr.splice(from, 1);
       tr.splice(Math.max(0, Math.min(tr.length, toIndex)), 0, item!);
     });
+  },
+
+  /** Set a signal's position on the timeline. Use one `key` per drag gesture. */
+  setDelay(id: string, delay: number, key?: string) {
+    actions.updateSignal(id, (s) => void (s.timing.delay = delay), key);
+  },
+
+  /**
+   * Shift signal `id` (via its delay) so that one of its features coincides with the
+   * nearest feature of the same kind on `refId`. Returns a status message.
+   */
+  alignFeature(id: string, refId: string, kind: AlignKind): string {
+    const p = get().project;
+    const sig = findSignal(p, id);
+    const ref = findSignal(p, refId);
+    if (!sig || !ref) return 'Select a signal and a reference.';
+    const s = compiled(sig);
+    const r = compiled(ref);
+    const [v0, v1] = get().view.xRange;
+    const span = Math.max(v1 - v0, s.period ?? 0, r.period ?? 0);
+    const mine = alignPoints(s, kind, v0 - span, v1 + span);
+    if (mine.length === 0) return `“${sig.name}” has no ${ALIGN_LABELS[kind]} near the view.`;
+    // Use the signal's matching feature closest to the middle of the view.
+    const mid = (v0 + v1) / 2;
+    const a = mine.reduce((x, y) => (Math.abs(y - mid) < Math.abs(x - mid) ? y : x));
+    const reach = Math.max(span, (r.period ?? 0) * 1.01);
+    const theirs = alignPoints(r, kind, a - reach, a + reach);
+    if (theirs.length === 0) return `“${ref.name}” has no ${ALIGN_LABELS[kind]} near the view.`;
+    const b = theirs.reduce((x, y) => (Math.abs(y - a) < Math.abs(x - a) ? y : x));
+    if (b === a) return 'Already aligned.';
+    actions.setDelay(id, sig.timing.delay + (b - a));
+    return `Aligned ${ALIGN_LABELS[kind]} of “${sig.name}” to “${ref.name}”.`;
+  },
+
+  /** Set the phase parameter of `id` so it leads `refId` by `deg` (fundamental phase). */
+  setPhaseDifference(id: string, refId: string, deg: number): string {
+    const p = get().project;
+    const sig = findSignal(p, id);
+    const ref = findSignal(p, refId);
+    if (!sig || !ref) return 'Select a signal and a reference.';
+    const phase = phaseForDifference(sig, ref, deg);
+    if (phase === null) return 'Phase difference needs two periodic signals with the same frequency.';
+    actions.updateSignal(id, (s) => void (s.timing.phaseDeg = Number(phase.toPrecision(12))));
+    return `“${sig.name}” now leads “${ref.name}” by ${deg}°.`;
   },
 
   // --- view (not undoable) ---

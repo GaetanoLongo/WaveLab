@@ -43,7 +43,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   await p.click('.tool:has-text("Sine")');
   await setField('Phase', '120');
   assert((await field('Phase as time').inputValue()) === '6.66667 ms', 'phase 120° at 50 Hz = 6.66667 ms (got ' + await field('Phase as time').inputValue() + ')');
-  assert((await p.locator('.readout').last().innerText()).includes('earlier'), 'net shift says earlier');
+  assert((await p.locator('.readout div', { hasText: 'Net time shift' }).innerText()).includes('earlier'), 'net shift says earlier');
   await p.click('.seg button:has-text("Stacked")');
   await p.screenshot({ path: sp + '/m3-editor.png' });
 

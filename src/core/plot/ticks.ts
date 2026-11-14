@@ -6,6 +6,7 @@ export interface Ticks {
   major: number[];
   minor: number[];
   step: number;
+  minorStep: number;
   /** Labels for the major ticks, same order. */
   labels: string[];
   /** Unit with prefix, e.g. "ms" — shown in the axis title. */
@@ -19,7 +20,7 @@ export function niceTicks(
   unit = '',
   maxPrefixFactor = 1e12,
 ): Ticks {
-  const empty: Ticks = { major: [], minor: [], step: 0, labels: [], unitLabel: unit };
+  const empty: Ticks = { major: [], minor: [], step: 0, minorStep: 0, labels: [], unitLabel: unit };
   if (!(max > min) || !Number.isFinite(min) || !Number.isFinite(max)) return empty;
 
   const raw = (max - min) / Math.max(1, maxCount);
@@ -59,5 +60,5 @@ export function niceTicks(
   const [factor, prefix] = prefixFactorFor(absMax, maxPrefixFactor);
   const decimals = Math.max(0, Math.ceil(-Math.log10(step / factor) - 1e-9));
   const labels = major.map((v) => formatFixed(v, factor, decimals));
-  return { major, minor, step, labels, unitLabel: prefix + unit };
+  return { major, minor, step, minorStep, labels, unitLabel: prefix + unit };
 }

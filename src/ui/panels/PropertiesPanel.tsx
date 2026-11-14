@@ -4,7 +4,8 @@ import { useState, type ReactNode } from 'react';
 import type { LineDash, SignalDef } from '../../core/model/project';
 import { phaseToTime, timeToPhase, type SignalWindow } from '../../core/model/signal-defs';
 import { formatSI } from '../../core/units/si';
-import { actions, findSignal, GENERATOR_LABELS, useEditor } from '../../state/store';
+import { phaseDifferenceDeg } from '../../core/signals/phase';
+import { actions, editor, findSignal, GENERATOR_LABELS, orderedSignals, useEditor, type AlignKind } from '../../state/store';
 import { NumberField } from '../fields/NumberField';
 
 type Upd = (recipe: (s: SignalDef) => void, key?: string) => void;
@@ -50,6 +51,7 @@ export function PropertiesPanel() {
 
         <WaveformParams sig={sig} upd={upd} disabled={dis} />
         {sig.generator !== 'dc' && <TimingParams sig={sig} upd={upd} disabled={dis} />}
+        {sig.generator !== 'dc' && <AlignParams sig={sig} disabled={dis} />}
         <WindowParams sig={sig} upd={upd} disabled={dis} />
         <StyleParams sig={sig} upd={upd} disabled={dis} />
 
@@ -226,7 +228,9 @@ function TimingParams({ sig, upd, disabled }: { sig: SignalDef; upd: Upd; disabl
   const setT = (k: 'frequency' | 'phaseDeg' | 'delay', key?: string) => (v: number) =>
     upd((s) => void (s.timing[k] = v), key);
   const lead = phaseToTime(sig.timing.phaseDeg, f);
-  const net = sig.timing.delay - lead;
+  const rawNet = sig.timing.delay - lead;
+  // Hide floating-point residue (e.g. after alignment): below 1e-9 of a period counts as 0.
+  const net = Math.abs(rawNet) < 1e-9 / f ? 0 : rawNet;
 
   return (
     <Group title="Timing">
@@ -291,6 +295,74 @@ function TimingParams({ sig, upd, disabled }: { sig: SignalDef; upd: Upd; disabl
             net === 0 ? '0 (reference)' : `${formatSI(Math.abs(net), 's')} ${net > 0 ? 'later' : 'earlier'} (${formatDeg(timeToPhase(-net, f))})`,
           ],
         ]}
+      />
+    </Group>
+  );
+}
+
+const ALIGN_BUTTONS: Array<[AlignKind, string, string]> = [
+  ['rise', 'Rising edges', '↑ edge'],
+  ['fall', 'Falling edges', '↓ edge'],
+  ['max', 'Positive peaks', '+ peak'],
+  ['min', 'Negative peaks', '− peak'],
+  ['zero-up', 'Rising zero crossings', '0 ↑'],
+];
+
+function AlignParams({ sig, disabled }: { sig: SignalDef; disabled: boolean }) {
+  const project = useEditor((s) => s.project);
+  const others = orderedSignals(project).filter((s) => s.id !== sig.id);
+  const [refId, setRefId] = useState('');
+  const ref = others.find((o) => o.id === refId) ?? others[0];
+  const say = (m: string) => editor.setState({ notice: m });
+
+  if (!ref) {
+    return (
+      <Group title="Alignment" defaultOpen={false}>
+        <p className="hint-text">Add another signal to align against.</p>
+      </Group>
+    );
+  }
+  const diff = phaseDifferenceDeg(sig, ref);
+  const f = sig.timing.frequency;
+  return (
+    <Group title="Alignment">
+      <div className="field">
+        <label>Reference</label>
+        <select value={ref.id} onChange={(e) => setRefId(e.target.value)}>
+          {others.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="align-buttons" role="group" aria-label="Align features to reference">
+        {ALIGN_BUTTONS.map(([k, title, short]) => (
+          <button key={k} disabled={disabled} title={`Align ${title.toLowerCase()} to the reference (moves the delay)`} onClick={() => say(actions.alignFeature(sig.id, ref.id, k))}>
+            {short}
+          </button>
+        ))}
+      </div>
+      <Readout
+        items={[
+          [
+            'Phase vs ref.',
+            diff === null
+              ? 'n/a (needs the same frequency)'
+              : diff === 0
+                ? 'in phase (0°)'
+                : `${diff > 0 ? 'leads' : 'lags'} by ${Math.abs(Number(diff.toPrecision(6)))}° (${formatSI(Math.abs(phaseToTime(diff, f)), 's')})`,
+          ],
+        ]}
+      />
+      <NumberField
+        label="Set difference"
+        title="Phase by which this signal leads the reference (fundamental component). Changes the phase parameter."
+        unit="°"
+        plain
+        value={diff ?? 0}
+        disabled={disabled || diff === null}
+        onCommit={(v) => say(actions.setPhaseDifference(sig.id, ref.id, v))}
       />
     </Group>
   );
