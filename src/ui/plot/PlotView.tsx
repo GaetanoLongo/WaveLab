@@ -22,6 +22,7 @@ import {
   timeTicks,
   tToPx,
   yToPx,
+  type AxisStyle,
   type CursorSpec,
   type FigureLayout,
   type PlotTheme,
@@ -71,7 +72,12 @@ export interface PlotViewProps {
   /** Measurement cursors and how to move them. */
   cursors?: CursorSpec;
   onCursorMove?(kind: 't' | 'y', index: 0 | 1, value: number): void;
+  axes?: FigureInputAxes;
+  /** Double-click on an axis area: 'x' or a panel id (instead of fit-all). */
+  onAxisDoubleClick?(axis: string): void;
 }
+
+type FigureInputAxes = { x?: AxisStyle; y?: Record<string, AxisStyle> };
 
 type Drag =
   | { kind: 'pan'; startX: number; startY: number; startRange: Range; moved: boolean }
@@ -139,8 +145,9 @@ export function PlotView(props: PlotViewProps) {
         showLegend: props.showLegend ?? true,
         theme: props.theme,
         cursors: props.cursors,
+        axes: props.axes,
       }),
-    [size, panels, props.xRange, props.theme, props.showLegend, props.cursors],
+    [size, panels, props.xRange, props.theme, props.showLegend, props.cursors, props.axes],
   );
   const svg = useMemo(() => sceneToSvg(scene, `p${uid}-`), [scene, uid]);
 
@@ -442,7 +449,16 @@ export function PlotView(props: PlotViewProps) {
         setGuide(null);
       }}
       onPointerLeave={() => props.onCursor?.(null)}
-      onDoubleClick={props.onFit}
+      onDoubleClick={(e) => {
+        const { x, y } = localPos(e.currentTarget, e);
+        const last = layout.panels[layout.panels.length - 1];
+        if (props.onAxisDoubleClick && last && y > last.y + last.h && x >= layout.plotX) return props.onAxisDoubleClick('x');
+        if (props.onAxisDoubleClick && x < layout.plotX) {
+          const panel = panelAt(layout, y);
+          if (panel) return props.onAxisDoubleClick(panel.id);
+        }
+        props.onFit();
+      }}
     >
       <div className="plot-svg" dangerouslySetInnerHTML={{ __html: svg }} />
       {props.traces.length === 0 && props.emptyMessage && <div className="plot-empty">{props.emptyMessage}</div>}

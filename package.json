@@ -11,7 +11,7 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "node e2e/editor.e2e.cjs && node e2e/snap.e2e.cjs && node e2e/files.e2e.cjs && node e2e/ops.e2e.cjs && node e2e/calculus.e2e.cjs && node e2e/mobile.e2e.cjs && node e2e/measure.e2e.cjs"
+    "e2e": "node e2e/editor.e2e.cjs && node e2e/snap.e2e.cjs && node e2e/files.e2e.cjs && node e2e/ops.e2e.cjs && node e2e/calculus.e2e.cjs && node e2e/mobile.e2e.cjs && node e2e/measure.e2e.cjs && node e2e/style.e2e.cjs"
   },
   "dependencies": {
     "immer": "^10.1.1",

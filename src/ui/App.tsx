@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
-import { themeById, type TraceInput } from '../core/plot/layout';
+import { resolveTheme, type TraceInput } from '../core/plot/layout';
 import { ExportDialog } from './export/ExportDialog';
+import { AxesDialog } from './panels/AxesDialog';
+import { FigureSettingsDialog } from './panels/FigureSettings';
+import { openAxes } from './Modal';
 import { loadFile } from './fileio';
 import { formatSI } from '../core/units/si';
 import { compiled } from '../state/compiled';
@@ -51,6 +54,8 @@ export function App() {
       }}
     >
       <ExportDialog />
+      <FigureSettingsDialog />
+      <AxesDialog />
       <Toolbar compact={phone} />
       {phone ? (
         <PhoneWorkspace />
@@ -133,6 +138,8 @@ function PlotArea() {
     (selectedId && visibleIds.includes(selectedId) ? selectedId : null) ??
     visibleIds[0] ??
     null;
+  const fig = project.figures[0]!;
+  const theme = useMemo(() => resolveTheme(fig.stylePreset, fig.style), [fig.stylePreset, fig.style]);
   const cursorSpec = useMemo(
     () => ({ t: view.cursors.t, y: view.cursors.y, yTraceId }),
     [view.cursors.t, view.cursors.y, yTraceId],
@@ -167,7 +174,8 @@ function PlotArea() {
           yRanges={view.yRanges}
           onYRangeChange={actions.setYRange}
           onFit={actions.fitAll}
-          theme={themeById(project.figures[0]!.stylePreset)}
+          theme={theme}
+          axes={project.figures[0]!.axes}
           showLegend={project.figures[0]!.showLegend}
           onCursor={setCursor}
           onSelect={actions.select}
@@ -184,6 +192,7 @@ function PlotArea() {
           onMove={(id, delay, key) => actions.setDelay(id, delay, key)}
           cursors={cursorSpec}
           onCursorMove={actions.setCursor}
+          onAxisDoubleClick={openAxes}
           emptyMessage={
             project.signals.length === 0
               ? phoneLayout
@@ -195,9 +204,9 @@ function PlotArea() {
       </div>
       {!phoneLayout && <MeasurePanel />}
       <footer className="status">
-        <span>
+        <button className="range-btn" title="Set the visible time interval (Axes)" onClick={() => openAxes('x')}>
           {formatSI(view.xRange[0], 's')} → {formatSI(view.xRange[1], 's')} (span {formatSI(view.xRange[1] - view.xRange[0], 's')})
-        </span>
+        </button>
         <span className="cursor-readout">
           {cursor ? `t = ${formatSI(cursor.t, 's', 6)}   y = ${formatSI(cursor.y, cursor.unit, 4)}` : ''}
         </span>

@@ -51,7 +51,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   assert(box.x >= 0 && box.x + box.width <= 390, 'menu fits on screen');
   await p.screenshot({ path: path.join(out, 'mobile-menu.png') });
   await p.locator('.popover.menu button:has-text("Zoom in")').tap();
-  const st = await p.locator('.status span').first().innerText();
+  const st = await p.locator('.status .range-btn').innerText();
   assert(st.includes('→ 30 ms') || st.includes('10 ms → 30 ms'), 'menu Zoom in works: ' + st);
 
   // Pinch out with two fingers (raw touch events through CDP)
@@ -65,7 +65,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   for (let k = 1; k <= 6; k++) await touch('touchMove', [cx - 30 - 15 * k, cx + 30 + 15 * k]);
   await touch('touchEnd', []);
   await p.waitForTimeout(100);
-  const span = await p.locator('.status span').first().innerText();
+  const span = await p.locator('.status .range-btn').innerText();
   const m = /span ([\d.]+) ms/.exec(span);
   assert(m && +m[1] < 20, 'pinch-out zooms in (span 40 ms → ' + (m ? m[1] : '?') + ' ms)');
   await p.screenshot({ path: path.join(out, 'mobile-pinch.png') });

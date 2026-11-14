@@ -1,6 +1,6 @@
 /** "Nice" axis ticks (1-2-5 steps) with SI-prefixed labels. */
 
-import { formatFixed, prefixFactorFor } from '../units/si';
+import { formatFixed, formatSI, prefixFactorFor } from '../units/si';
 
 export interface Ticks {
   major: number[];
@@ -13,12 +13,20 @@ export interface Ticks {
   unitLabel: string;
 }
 
+export interface TickOptions {
+  /** Fixed major step (data units); null/undefined = automatic. */
+  step?: number | null;
+  /** Fixed number of decimals in labels; null/undefined = automatic. */
+  decimals?: number | null;
+}
+
 export function niceTicks(
   min: number,
   max: number,
   maxCount: number,
   unit = '',
   maxPrefixFactor = 1e12,
+  opts: TickOptions = {},
 ): Ticks {
   const empty: Ticks = { major: [], minor: [], step: 0, minorStep: 0, labels: [], unitLabel: unit };
   if (!(max > min) || !Number.isFinite(min) || !Number.isFinite(max)) return empty;
@@ -38,7 +46,13 @@ export function niceTicks(
 
   // Guarantee at least 3 labelled ticks (small panels would otherwise get one).
   let major = multiples(nice * mag);
-  for (let i = 0; i < 4 && major.length < 3; i++) {
+  const forced = opts.step && opts.step > 0 && (max - min) / opts.step <= 500 ? opts.step : null;
+  if (forced) {
+    major = multiples(forced);
+    mag = 10 ** Math.floor(Math.log10(forced));
+    nice = forced / mag;
+  }
+  for (let i = 0; !forced && i < 4 && major.length < 3; i++) {
     if (nice === 10) nice = 5;
     else if (nice === 5) nice = 2;
     else if (nice === 2) nice = 1;
@@ -49,7 +63,7 @@ export function niceTicks(
     major = multiples(nice * mag);
   }
   const step = nice * mag;
-  const sub = nice === 2 ? 4 : 5;
+  const sub = Math.abs(nice - 2) < 1e-9 ? 4 : 5;
   const minorStep = step / sub;
   const minor = multiples(minorStep).filter((v) => {
     const r = Math.abs(v / step - Math.round(v / step));
@@ -58,7 +72,31 @@ export function niceTicks(
 
   const absMax = Math.max(Math.abs(min), Math.abs(max));
   const [factor, prefix] = prefixFactorFor(absMax, maxPrefixFactor);
-  const decimals = Math.max(0, Math.ceil(-Math.log10(step / factor) - 1e-9));
+  const decimals = opts.decimals ?? Math.max(0, Math.ceil(-Math.log10(step / factor) - 1e-9));
   const labels = major.map((v) => formatFixed(v, factor, decimals));
   return { major, minor, step, minorStep, labels, unitLabel: prefix + unit };
+}
+
+/** Logarithmic ticks: decades as majors (labelled), 2…9 × decade as minors. Requires 0 < min < max. */
+export function logTicks(min: number, max: number, unit = ''): Ticks {
+  const empty: Ticks = { major: [], minor: [], step: 0, minorStep: 0, labels: [], unitLabel: unit };
+  if (!(min > 0) || !(max > min)) return empty;
+  const k0 = Math.floor(Math.log10(min));
+  const k1 = Math.ceil(Math.log10(max));
+  const decades = Math.log10(max / min);
+  // Labelled multiples per decade: all for < 1 decade, 1-2-5 for < 2.5 decades, else decades only.
+  const labelled = decades < 1 ? [1, 2, 3, 4, 5, 6, 7, 8, 9] : decades < 2.5 ? [1, 2, 5] : [1];
+  const major: number[] = [];
+  const minor: number[] = [];
+  for (let k = k0; k <= k1; k++) {
+    const d = 10 ** k;
+    for (let m = 1; m <= 9; m++) {
+      const v = m * d;
+      if (v < min * (1 - 1e-12) || v > max * (1 + 1e-12)) continue;
+      (labelled.includes(m) ? major : minor).push(v);
+    }
+  }
+  // Plain numbers in the usual range (0.8, 1, 20, 1000); SI prefixes only for extremes.
+  const labels = major.map((v) => (v >= 1e-3 && v < 1e5 ? String(Number(v.toPrecision(3))) : formatSI(v, '', 3)));
+  return { major, minor, step: 0, minorStep: 0, labels, unitLabel: unit };
 }

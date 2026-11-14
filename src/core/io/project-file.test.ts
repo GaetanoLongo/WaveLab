@@ -159,3 +159,17 @@ describe('derived signals in project files', () => {
     expect(() => parseProjectFile(JSON.stringify(f))).toThrow(/expr is invalid: Expression is incomplete/);
   });
 });
+
+describe('style and axis settings in project files', () => {
+  it('round-trip and validate', () => {
+    const p = sample();
+    p.figures[0]!.style = { font: 'serif', fontSize: 14, legend: 'bottom-left', gridOpacity: 0.3, background: null, margins: 'wide', lineScale: 1.5 };
+    p.figures[0]!.axes = { x: { title: 't', tickStep: 0.005, decimals: 1 }, y: { 'stack-a': { log: true, title: 'V_{a}' } } };
+    const back = parseProjectFile(serializeProject(p)).project.figures[0]!;
+    expect(back.style).toEqual(p.figures[0]!.style);
+    expect(back.axes).toEqual(p.figures[0]!.axes);
+    const f = JSON.parse(serializeProject(p));
+    f.project.figures[0].style.legend = 'middle';
+    expect(() => parseProjectFile(JSON.stringify(f))).toThrow(/legend is not a valid position/);
+  });
+});

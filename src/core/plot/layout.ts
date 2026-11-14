@@ -9,7 +9,7 @@ import { sampleSignal } from './sampler';
 import type { Dash, Scene, SceneItem } from './scene';
 import { formatSI } from '../units/si';
 import { estimateWidth } from './mathtext';
-import { niceTicks } from './ticks';
+import { logTicks, niceTicks } from './ticks';
 import { autoYRange } from './viewport';
 
 export interface PlotTheme {
@@ -26,6 +26,24 @@ export interface PlotTheme {
   mutedText: string;
   fontFamily: string;
   fontSize: number;
+  legend: LegendPosition;
+  margins: 'compact' | 'normal' | 'wide';
+  /** Multiplier for trace line widths (presentation style). */
+  lineScale: number;
+}
+
+export type LegendPosition = 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left' | 'outside-right' | 'none';
+
+/** Per-axis presentation options (document state). */
+export interface AxisStyle {
+  /** Custom title; empty/undefined = automatic (signal name and unit). */
+  title?: string;
+  /** Fixed major tick step; null/undefined = automatic. */
+  tickStep?: number | null;
+  /** Fixed label decimals; null/undefined = automatic. */
+  decimals?: number | null;
+  /** Logarithmic vertical scale (only applied when the visible range is strictly positive). */
+  log?: boolean;
 }
 
 export const LIGHT_TECHNICAL: PlotTheme = {
@@ -42,6 +60,9 @@ export const LIGHT_TECHNICAL: PlotTheme = {
   mutedText: '#4a5466',
   fontFamily: 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
   fontSize: 12,
+  legend: 'top-right',
+  margins: 'normal',
+  lineScale: 1,
 };
 
 /** Clean look for papers: no minor grid, faint major grid, black text. */
@@ -59,12 +80,97 @@ export const MINIMAL_PUBLICATION: PlotTheme = {
   mutedText: '#000000',
   fontFamily: 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
   fontSize: 12,
+  legend: 'top-right',
+  margins: 'normal',
+  lineScale: 1,
+};
+
+/** Dark background for screens and dark slide templates. */
+export const DARK_TECHNICAL: PlotTheme = {
+  id: 'dark',
+  label: 'Dark technical',
+  background: '#0f141c',
+  plotBackground: '#121a24',
+  axisColor: '#c6cfdb',
+  gridMajor: '#8d99ab',
+  gridMajorOpacity: 0.3,
+  gridMinor: '#8d99ab',
+  gridMinorOpacity: 0.1,
+  text: '#e6ebf2',
+  mutedText: '#a9b4c4',
+  fontFamily: 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+  fontSize: 12,
+  legend: 'top-right',
+  margins: 'normal',
+  lineScale: 1,
+};
+
+/** Large text and thick lines for projection. */
+export const PRESENTATION: PlotTheme = {
+  id: 'presentation',
+  label: 'Presentation',
+  background: '#ffffff',
+  plotBackground: '#ffffff',
+  axisColor: '#1c2330',
+  gridMajor: '#8a94a6',
+  gridMajorOpacity: 0.35,
+  gridMinor: '#8a94a6',
+  gridMinorOpacity: 0,
+  text: '#111827',
+  mutedText: '#374151',
+  fontFamily: 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+  fontSize: 17,
+  legend: 'top-right',
+  margins: 'normal',
+  lineScale: 1.8,
 };
 
 export const THEMES: Record<string, PlotTheme> = {
   light: LIGHT_TECHNICAL,
+  dark: DARK_TECHNICAL,
+  presentation: PRESENTATION,
   minimal: MINIMAL_PUBLICATION,
 };
+
+export const FONT_STACKS: Record<'sans' | 'serif' | 'mono', string> = {
+  sans: 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+  serif: '"STIX Two Text", "Times New Roman", Times, serif',
+  mono: '"JetBrains Mono", Menlo, Consolas, "Courier New", monospace',
+};
+
+/** User overrides on top of a preset (document state, all optional). */
+export interface StyleOverrides {
+  background?: string | null;
+  plotBackground?: string;
+  gridColor?: string;
+  gridOpacity?: number;
+  minorGrid?: boolean;
+  font?: 'sans' | 'serif' | 'mono';
+  fontSize?: number;
+  legend?: LegendPosition;
+  margins?: 'compact' | 'normal' | 'wide';
+  lineScale?: number;
+}
+
+/** Preset + overrides → effective theme. */
+export function resolveTheme(presetId: string | undefined, o: StyleOverrides = {}): PlotTheme {
+  const base = themeById(presetId);
+  const t: PlotTheme = { ...base };
+  if (o.background !== undefined) t.background = o.background;
+  if (o.plotBackground !== undefined) t.plotBackground = o.plotBackground;
+  if (o.gridColor !== undefined) t.gridMajor = t.gridMinor = o.gridColor;
+  if (o.gridOpacity !== undefined) {
+    t.gridMajorOpacity = o.gridOpacity;
+    t.gridMinorOpacity = base.gridMinorOpacity > 0 ? o.gridOpacity / 3 : 0;
+  }
+  if (o.minorGrid !== undefined) t.gridMinorOpacity = o.minorGrid ? Math.max(0.06, t.gridMajorOpacity / 3) : 0;
+  if (o.font) t.fontFamily = FONT_STACKS[o.font];
+  if (o.fontSize) t.fontSize = o.fontSize;
+  if (o.legend) t.legend = o.legend;
+  if (o.margins) t.margins = o.margins;
+  if (o.lineScale) t.lineScale = o.lineScale;
+  return t;
+}
 
 export function themeById(id: string | undefined): PlotTheme {
   return (id && THEMES[id]) || LIGHT_TECHNICAL;
@@ -110,6 +216,8 @@ export interface FigureInput {
   theme: PlotTheme;
   /** Measurement cursors (on screen always; in exports only on request). */
   cursors?: CursorSpec;
+  /** Axis presentation: time axis and vertical axes by panel id. */
+  axes?: { x?: AxisStyle; y?: Record<string, AxisStyle> };
 }
 
 export interface PanelLayout {
@@ -120,6 +228,8 @@ export interface PanelLayout {
   h: number;
   yRange: Range;
   traceIds: string[];
+  /** Logarithmic vertical mapping (yRange strictly positive). */
+  log: boolean;
 }
 
 export interface FigureLayout {
@@ -144,12 +254,50 @@ export function pxToT(l: FigureLayout, px: number): number {
 }
 
 export function yToPx(p: PanelLayout, v: number): number {
-  const px = p.y + p.h - ((v - p.yRange[0]) / (p.yRange[1] - p.yRange[0])) * p.h;
+  const f = p.log
+    ? (Math.log10(Math.max(v, 1e-300)) - Math.log10(p.yRange[0])) / (Math.log10(p.yRange[1]) - Math.log10(p.yRange[0]))
+    : (v - p.yRange[0]) / (p.yRange[1] - p.yRange[0]);
+  const px = p.y + p.h - f * p.h;
   return Math.max(-PX_LIMIT, Math.min(PX_LIMIT, px));
 }
 
 export function pxToY(p: PanelLayout, px: number): number {
-  return p.yRange[0] + ((p.y + p.h - px) / p.h) * (p.yRange[1] - p.yRange[0]);
+  const f = (p.y + p.h - px) / p.h;
+  if (p.log) return 10 ** (Math.log10(p.yRange[0]) + f * (Math.log10(p.yRange[1]) - Math.log10(p.yRange[0])));
+  return p.yRange[0] + f * (p.yRange[1] - p.yRange[0]);
+}
+
+/** Margins scale with the font size; the legend can take space on the right. */
+export function marginsFor(theme: PlotTheme, legendWidth = 0) {
+  const fs = theme.fontSize;
+  const m = { left: Math.round(48 + fs * 2.3), right: 16, top: 12, bottom: Math.round(22 + fs * 2) };
+  if (theme.margins === 'compact') {
+    m.left -= 8;
+    m.bottom -= 6;
+    m.top = 6;
+    m.right = 8;
+  } else if (theme.margins === 'wide') {
+    m.left += 16;
+    m.bottom += 10;
+    m.top = 26;
+    m.right = 32;
+  }
+  m.right += legendWidth;
+  return m;
+}
+
+const LEGEND_ROW = (fs: number) => fs + 6;
+
+function legendEntries(input: FigureInput): TraceInput[] {
+  if (input.theme.legend === 'none' || !input.showLegend) return [];
+  const all = input.panels.flatMap((p) => p.traces).filter((t) => t.showInLegend !== false);
+  // Overlay: legend when more than one trace. Stacked: panels carry their own titles.
+  return input.panels.length === 1 && all.length > 1 ? all : [];
+}
+
+function legendSize(entries: TraceInput[], fs: number) {
+  const textW = Math.max(0, ...entries.map((e) => estimateWidth(e.name, fs * 0.92)));
+  return { w: 30 + textW + 10, h: entries.length * LEGEND_ROW(fs) + 8 };
 }
 
 export function panelAt(l: FigureLayout, py: number): PanelLayout | undefined {
@@ -176,26 +324,45 @@ export function panelsForMode(
 
 export function computeLayout(input: FigureInput): FigureLayout {
   const { width, height } = input;
-  const plotX = MARGIN.left;
-  const plotW = Math.max(10, width - MARGIN.left - MARGIN.right);
+  const th = input.theme;
+  const entries = legendEntries(input);
+  const outside = th.legend === 'outside-right' && entries.length > 0 ? legendSize(entries, th.fontSize).w + 12 : 0;
+  const M = marginsFor(th, outside);
+  const plotX = M.left;
+  const plotW = Math.max(10, width - M.left - M.right);
   const n = Math.max(1, input.panels.length);
-  const avail = height - MARGIN.top - MARGIN.bottom - PANEL_GAP * (n - 1);
+  const gap = Math.round(PANEL_GAP * (th.fontSize / 12));
+  const avail = height - M.top - M.bottom - gap * (n - 1);
   const h = Math.max(30, avail / n);
-  const panels: PanelLayout[] = input.panels.map((p, i) => ({
-    id: p.id,
-    x: plotX,
-    y: MARGIN.top + i * (h + PANEL_GAP),
-    w: plotW,
-    h,
-    yRange:
-      p.yRange ??
-      autoYRange(p.traces.map((t) => t.signal)),
-    traceIds: p.traces.map((t) => t.id),
-  }));
+  const panels: PanelLayout[] = input.panels.map((p, i) => {
+    const wantLog = !!input.axes?.y?.[p.id]?.log;
+    let yRange = p.yRange ?? autoYRange(p.traces.map((t) => t.signal));
+    let log = false;
+    if (wantLog) {
+      if (!p.yRange) yRange = autoLogRange(p.traces.map((t) => t.signal)) ?? yRange;
+      log = yRange[0] > 0 && yRange[1] > yRange[0];
+    }
+    return { id: p.id, x: plotX, y: M.top + i * (h + gap), w: plotW, h, yRange, traceIds: p.traces.map((t) => t.id), log };
+  });
   if (panels.length === 0) {
-    panels.push({ id: 'empty', x: plotX, y: MARGIN.top, w: plotW, h, yRange: [-1, 1], traceIds: [] });
+    panels.push({ id: 'empty', x: plotX, y: M.top, w: plotW, h, yRange: [-1, 1], traceIds: [], log: false });
   }
   return { width, height, xRange: input.xRange, plotX, plotW, panels };
+}
+
+/** Automatic positive range for a log axis (null if any visible value is ≤ 0). */
+export function autoLogRange(signals: SignalEval[]): Range | null {
+  const r = autoYRangeRaw(signals);
+  if (!r || !(r[0] > 0)) return null;
+  return [r[0] / 1.3, r[1] * 1.3];
+}
+
+function autoYRangeRaw(signals: SignalEval[]): Range | null {
+  const lin = autoYRange(signals);
+  // Undo the 8 % padding of the linear auto range to get the data range.
+  const span = (lin[1] - lin[0]) / 1.16;
+  const mid = (lin[0] + lin[1]) / 2;
+  return [mid - span / 2, mid + span / 2];
 }
 
 export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureLayout } {
@@ -206,7 +373,9 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
   const clips: Scene['clips'] = [];
   const [t0, t1] = layout.xRange;
 
-  const xt = timeTicks(layout);
+  const xs = input.axes?.x;
+  const xt = timeTicks(layout, xs);
+  const scale = th.lineScale;
 
   layout.panels.forEach((pl, idx) => {
     const pin = input.panels[idx];
@@ -219,7 +388,13 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
 
     const units = new Set(traces.map((t) => t.unit));
     const unit = units.size === 1 ? [...units][0]! : '';
-    const yt = niceTicks(pl.yRange[0], pl.yRange[1], Math.max(2, Math.floor(pl.h / 36)), unit);
+    const ys = input.axes?.y?.[pl.id];
+    const yt = pl.log
+      ? logTicks(pl.yRange[0], pl.yRange[1], unit)
+      : niceTicks(pl.yRange[0], pl.yRange[1], Math.max(2, Math.floor(pl.h / (fs * 3))), unit, 1e12, {
+          step: ys?.tickStep,
+          decimals: ys?.decimals,
+        });
 
     // Grid.
     const vline = (t: number, color: string, opacity: number) => {
@@ -241,20 +416,28 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
     // Traces.
     for (const tr of traces) {
       const sampled = sampleSignal(tr.signal, t0, t1, layout.plotW);
-      const polylines = sampled.lines.map((line) => {
-        const flat: number[] = new Array(line.t.length * 2);
+      const polylines: number[][] = [];
+      for (const line of sampled.lines) {
+        let flat: number[] = [];
         for (let i = 0; i < line.t.length; i++) {
-          flat[2 * i] = tToPx(layout, line.t[i]!);
-          flat[2 * i + 1] = yToPx(pl, line.y[i]!);
+          const v = line.y[i]!;
+          if (pl.log && !(v > 0)) {
+            // Non-positive values have no place on a log axis: leave a gap.
+            if (flat.length) polylines.push(flat);
+            flat = [];
+            continue;
+          }
+          flat.push(tToPx(layout, line.t[i]!), yToPx(pl, v));
         }
-        return flat;
-      });
+        if (flat.length) polylines.push(flat);
+      }
+      const lw = tr.lineWidth * scale;
       if (tr.highlight) {
         items.push({
           type: 'path',
           polylines,
           stroke: tr.color,
-          width: tr.lineWidth + 6,
+          width: lw + 6,
           dash: 'solid',
           opacity: 0.18,
           clipId,
@@ -264,7 +447,7 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
         type: 'path',
         polylines,
         stroke: tr.color,
-        width: tr.lineWidth,
+        width: lw,
         dash: sampled.mode === 'envelope' ? 'solid' : tr.dash,
         clipId,
         dataId: tr.id,
@@ -289,11 +472,12 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
       });
     });
     const yTitleBase = pin?.title ?? (traces.length === 1 ? traces[0]!.name : '');
-    const yTitle = yt.unitLabel ? (yTitleBase ? `${yTitleBase} (${yt.unitLabel})` : yt.unitLabel) : yTitleBase;
+    const autoTitle = yt.unitLabel ? (yTitleBase ? `${yTitleBase} (${yt.unitLabel})` : yt.unitLabel) : yTitleBase;
+    const yTitle = ys?.title?.trim() ? ys.title : autoTitle;
     if (yTitle) {
       items.push({
         type: 'text',
-        x: 14,
+        x: Math.max(fs * 1.1, 14),
         y: pl.y + pl.h / 2,
         text: yTitle,
         size: fs,
@@ -304,19 +488,19 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
       });
     }
 
-    // Overlay legend (top-right, inside).
-    const entries = traces.filter((t) => t.showInLegend !== false);
-    if (input.showLegend && traces.length > 1 && entries.length > 0) {
-      const rowH = fs + 6;
-      const textW = Math.max(...entries.map((e) => estimateWidth(e.name, fs * 0.92)));
-      const boxW = 30 + textW + 10;
-      const boxH = entries.length * rowH + 8;
-      const bx = pl.x + pl.w - boxW - 8;
-      const by = pl.y + 8;
+    // Legend (overlay mode): corner inside the panel, or outside on the right.
+    const entries = legendEntries(input);
+    if (entries.length > 0 && idx === 0) {
+      const rowH = LEGEND_ROW(fs);
+      const { w: boxW, h: boxH } = legendSize(entries, fs);
+      const pos = th.legend;
+      const bx =
+        pos === 'outside-right' ? pl.x + pl.w + 12 : pos === 'top-left' || pos === 'bottom-left' ? pl.x + 8 : pl.x + pl.w - boxW - 8;
+      const by = pos === 'bottom-left' || pos === 'bottom-right' ? pl.y + pl.h - boxH - 8 : pl.y + 8;
       items.push({ type: 'rect', x: bx, y: by, w: boxW, h: boxH, fill: th.plotBackground, stroke: th.gridMajor, strokeWidth: 0.8, opacity: 0.92 });
       entries.forEach((e, i) => {
         const cy = by + 4 + rowH * i + rowH / 2;
-        items.push({ type: 'line', x1: bx + 8, y1: cy, x2: bx + 26, y2: cy, stroke: e.color, width: e.lineWidth, dash: e.dash });
+        items.push({ type: 'line', x1: bx + 8, y1: cy, x2: bx + 26, y2: cy, stroke: e.color, width: e.lineWidth * scale, dash: e.dash });
         items.push({ type: 'text', x: bx + 32, y: cy, text: e.name, size: fs * 0.92, fill: th.text, anchor: 'start', baseline: 'middle' });
       });
     }
@@ -339,7 +523,7 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
         type: 'text',
         x: pl.x + pl.w / 2,
         y: input.height - 8,
-        text: `${input.xTitle} (${xt.unitLabel})`,
+        text: xs?.title?.trim() ? xs.title : `${input.xTitle} (${xt.unitLabel})`,
         size: fs,
         fill: th.text,
         anchor: 'middle',
@@ -362,8 +546,11 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
 }
 
 /** Time-axis ticks exactly as drawn (shared with snapping so the grid matches). */
-export function timeTicks(l: FigureLayout) {
-  return niceTicks(l.xRange[0], l.xRange[1], Math.max(2, Math.floor(l.plotW / 90)), 's', 1);
+export function timeTicks(l: FigureLayout, style?: AxisStyle) {
+  return niceTicks(l.xRange[0], l.xRange[1], Math.max(2, Math.floor(l.plotW / 90)), 's', 1, {
+    step: style?.tickStep,
+    decimals: style?.decimals,
+  });
 }
 
 /**

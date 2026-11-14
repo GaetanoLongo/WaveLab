@@ -22,6 +22,7 @@ import {
 } from '../model/project';
 import type { GeneratorKind, SignalWindow, Timing } from '../model/signal-defs';
 import { createsCycle, directDeps } from '../model/deps';
+import type { AxisStyle, StyleOverrides } from '../plot/layout';
 import { ExprError, parseExpr } from '../expr/parse';
 
 export const FORMAT_ID = 'wavelab-project';
@@ -252,6 +253,8 @@ function readFigure(v: unknown, path: string, ids: Set<string>): Figure {
     xAxis: { auto: true, min: 0, max: 0.04, title: 'Time' },
     stylePreset: f.stylePreset === undefined ? 'light' : str(f.stylePreset, `${path}.stylePreset`),
     showLegend: f.showLegend === undefined ? true : bool(f.showLegend, `${path}.showLegend`),
+    ...(f.style !== undefined ? { style: readStyleOverrides(f.style, `${path}.style`) } : {}),
+    ...(f.axes !== undefined ? { axes: readAxes(f.axes, `${path}.axes`) } : {}),
   };
 }
 
@@ -319,4 +322,61 @@ function str(v: unknown, path: string): string {
 function bool(v: unknown, path: string): boolean {
   if (typeof v !== 'boolean') throw new ProjectFileError(`${path} must be true or false.`);
   return v;
+}
+
+const LEGENDS = ['top-right', 'top-left', 'bottom-right', 'bottom-left', 'outside-right', 'none'];
+
+function readStyleOverrides(v: unknown, path: string): StyleOverrides {
+  const o = obj(v, path);
+  const out: StyleOverrides = {};
+  const color = (x: unknown, p: string) => {
+    const c = str(x, p);
+    if (!/^#[0-9a-fA-F]{6}$/.test(c)) throw new ProjectFileError(`${p} must be a #RRGGBB colour.`);
+    return c;
+  };
+  if (o.background !== undefined) out.background = o.background === null ? null : color(o.background, `${path}.background`);
+  if (o.plotBackground !== undefined) out.plotBackground = color(o.plotBackground, `${path}.plotBackground`);
+  if (o.gridColor !== undefined) out.gridColor = color(o.gridColor, `${path}.gridColor`);
+  if (o.gridOpacity !== undefined) out.gridOpacity = Math.min(1, Math.max(0, num(o.gridOpacity, `${path}.gridOpacity`)));
+  if (o.minorGrid !== undefined) out.minorGrid = bool(o.minorGrid, `${path}.minorGrid`);
+  if (o.font !== undefined) {
+    if (!['sans', 'serif', 'mono'].includes(o.font as string)) throw new ProjectFileError(`${path}.font must be sans, serif or mono.`);
+    out.font = o.font as StyleOverrides['font'];
+  }
+  if (o.fontSize !== undefined) out.fontSize = Math.min(40, Math.max(6, num(o.fontSize, `${path}.fontSize`)));
+  if (o.legend !== undefined) {
+    if (!LEGENDS.includes(o.legend as string)) throw new ProjectFileError(`${path}.legend is not a valid position.`);
+    out.legend = o.legend as StyleOverrides['legend'];
+  }
+  if (o.margins !== undefined) {
+    if (!['compact', 'normal', 'wide'].includes(o.margins as string)) throw new ProjectFileError(`${path}.margins must be compact, normal or wide.`);
+    out.margins = o.margins as StyleOverrides['margins'];
+  }
+  if (o.lineScale !== undefined) out.lineScale = Math.min(5, Math.max(0.25, num(o.lineScale, `${path}.lineScale`)));
+  return out;
+}
+
+function readAxisStyle(v: unknown, path: string): AxisStyle {
+  const a = obj(v, path);
+  const out: AxisStyle = {};
+  if (a.title !== undefined) out.title = str(a.title, `${path}.title`);
+  if (a.tickStep !== undefined && a.tickStep !== null) {
+    const t = num(a.tickStep, `${path}.tickStep`);
+    if (!(t > 0)) throw new ProjectFileError(`${path}.tickStep must be positive.`);
+    out.tickStep = t;
+  }
+  if (a.decimals !== undefined && a.decimals !== null) out.decimals = Math.min(12, Math.max(0, Math.round(num(a.decimals, `${path}.decimals`))));
+  if (a.log !== undefined) out.log = bool(a.log, `${path}.log`);
+  return out;
+}
+
+function readAxes(v: unknown, path: string): { x?: AxisStyle; y?: Record<string, AxisStyle> } {
+  const a = obj(v, path);
+  const out: { x?: AxisStyle; y?: Record<string, AxisStyle> } = {};
+  if (a.x !== undefined) out.x = readAxisStyle(a.x, `${path}.x`);
+  if (a.y !== undefined) {
+    out.y = {};
+    for (const [k, val] of Object.entries(obj(a.y, `${path}.y`))) out.y[k] = readAxisStyle(val, `${path}.y.${k}`);
+  }
+  return out;
 }

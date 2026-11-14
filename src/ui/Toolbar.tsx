@@ -4,6 +4,7 @@ import { actions, canRedo, canUndo, editor, isDirty, useEditor } from '../state/
 import { Icon, type IconName } from './icons';
 import { SnapMenu } from './panels/SnapMenu';
 import { openExportDialog } from './export/ExportDialog';
+import { openAxes, openSettings } from './Modal';
 import { forgetFileHandle, openProject, saveProject } from './fileio';
 import { MathLabel } from './MathLabel';
 
@@ -125,6 +126,9 @@ function CompactToolbar() {
             {item('zoomIn', 'Zoom in', () => zoomBy(0.5))}
             {item('zoomOut', 'Zoom out', () => zoomBy(2))}
             {item('fit', 'Auto vertical scale', actions.resetYRanges)}
+            <hr />
+            {item('axes', 'Axes…', () => openAxes('all'))}
+            {item('settings', 'Figure settings…', openSettings)}
           </div>
         )}
       </div>
@@ -168,6 +172,7 @@ export function Toolbar({ compact = false }: { compact?: boolean }) {
         <button className="tb text" title="Return all vertical axes to automatic scaling" onClick={actions.resetYRanges}>
           Auto Y
         </button>
+        <Btn icon="axes" label="Axes: time range, titles, ticks, log scale" onClick={() => openAxes('all')} />
       </div>
       <div className="seg" role="group" aria-label="Plot mode">
         <button className={mode === 'overlay' ? 'on' : ''} onClick={() => actions.setMode('overlay')} title="All signals on one plot">
@@ -181,7 +186,7 @@ export function Toolbar({ compact = false }: { compact?: boolean }) {
       <div className="tb-group">
         <SnapMenu />
         <Btn icon="export" label={`Export PNG / SVG / PDF (${MOD}Shift+S)`} onClick={openExportDialog} />
-        <Btn icon="settings" label="Settings" pending="M9" />
+        <Btn icon="settings" label="Figure settings (style, fonts, legend)" onClick={openSettings} />
       </div>
     </header>
   );

@@ -205,3 +205,83 @@ describe('SVG text with math markup', () => {
     expect(svg).not.toContain('dominant-baseline');
   });
 });
+
+describe('M9: axis options, log scale, styles', () => {
+  it('forced tick step and decimals', () => {
+    const t = niceTicks(0, 0.04, 8, 's', 1, { step: 0.002, decimals: 1 });
+    expect(t.step).toBe(0.002);
+    expect(t.labels.slice(0, 3)).toEqual(['0.0', '2.0', '4.0']);
+    expect(t.unitLabel).toBe('ms');
+  });
+
+  it('log ticks label decades and keep 2…9 minors', async () => {
+    const { logTicks } = await import('./ticks');
+    const t = logTicks(0.5, 2000, 'V');
+    expect(t.major).toEqual([1, 10, 100, 1000]);
+    expect(t.labels).toEqual(['1', '10', '100', '1000']);
+    expect(t.minor).toContain(900);
+    // Narrow range (< 1 decade): every multiple is labelled.
+    expect(logTicks(0.8, 3.9, 'V').labels).toEqual(['0.8', '0.9', '1', '2', '3']);
+    expect(logTicks(1e-9, 1e-6, 's').labels).toEqual(['1 n', '10 n', '100 n', '1 µ']);
+    // 1–2.5 decades: 1-2-5 steps.
+    expect(logTicks(1, 100, 'V').labels).toEqual(['1', '2', '5', '10', '20', '50', '100']);
+  });
+
+  it('log panels map decades evenly and leave gaps at non-positive values', async () => {
+    const { buildFigure, LIGHT_TECHNICAL, panelsForMode, yToPx } = await import('./layout');
+    const d = defaultGenerator('sine');
+    if (d.generator === 'sine') Object.assign(d.params, { amplitude: 1, offset: 0.5 }); // dips below 0
+    const tr: TraceInput = { id: 'a', name: 'A', signal: compileGenerator(d), color: '#000', lineWidth: 1, dash: 'solid', unit: 'V' };
+    const { layout, scene } = buildFigure({
+      width: 800,
+      height: 500,
+      panels: panelsForMode('overlay', [tr], { overlay: [0.01, 10] }),
+      xRange: [0, 0.02],
+      xTitle: 'Time',
+      showLegend: false,
+      theme: LIGHT_TECHNICAL,
+      axes: { y: { overlay: { log: true } } },
+    });
+    const p = layout.panels[0]!;
+    expect(p.log).toBe(true);
+    const y1 = yToPx(p, 0.1);
+    const y2 = yToPx(p, 1);
+    const y3 = yToPx(p, 10);
+    expect(y1 - y2).toBeCloseTo(y2 - y3, 9);
+    const path = scene.items.find((i) => i.type === 'path' && i.dataId === 'a');
+    expect(path?.type === 'path' && path.polylines.length).toBeGreaterThan(1); // split around the negative part
+  });
+
+  it('style overrides apply on top of a preset', async () => {
+    const { resolveTheme, FONT_STACKS } = await import('./layout');
+    const t = resolveTheme('presentation', { font: 'serif', legend: 'outside-right', gridOpacity: 0.5, background: null });
+    expect(t.fontSize).toBe(17);
+    expect(t.lineScale).toBe(1.8);
+    expect(t.fontFamily).toBe(FONT_STACKS.serif);
+    expect(t.legend).toBe('outside-right');
+    expect(t.gridMajorOpacity).toBe(0.5);
+    expect(t.background).toBeNull();
+  });
+
+  it('outside-right legend takes space from the plot width; axis titles can be overridden', async () => {
+    const { buildFigure, resolveTheme, panelsForMode } = await import('./layout');
+    const traces = [trace('Alpha', 'sine', 50), trace('Beta', 'square', 50)];
+    const mk = (legend: 'top-right' | 'outside-right') =>
+      buildFigure({
+        width: 900,
+        height: 500,
+        panels: panelsForMode('overlay', traces, {}),
+        xRange: [0, 0.04],
+        xTitle: 'Time',
+        showLegend: true,
+        theme: resolveTheme('light', { legend }),
+        axes: { x: { title: 't (ms)' }, y: { overlay: { title: 'v_{out} (V)' } } },
+      });
+    const inside = mk('top-right');
+    const outside = mk('outside-right');
+    expect(outside.layout.plotW).toBeLessThan(inside.layout.plotW);
+    const texts = outside.scene.items.filter((i) => i.type === 'text').map((i) => (i.type === 'text' ? i.text : ''));
+    expect(texts).toContain('t (ms)');
+    expect(texts).toContain('v_{out} (V)');
+  });
+});

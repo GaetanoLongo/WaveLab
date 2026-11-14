@@ -27,6 +27,7 @@ import type { GeneratorKind } from '../core/model/signal-defs';
 import type { Range } from '../core/plot/range';
 import { fitTimeRange } from '../core/plot/viewport';
 import { rangeOf } from '../core/plot/range';
+import type { AxisStyle, StyleOverrides } from '../core/plot/layout';
 import { phaseForDifference } from '../core/signals/phase';
 import { snapPoints, zeroCrossings } from '../core/snap/points';
 import { compiled } from './compiled';
@@ -230,6 +231,38 @@ export const actions = {
   setStylePreset(id: string) {
     commit((d) => {
       d.figures[0]!.stylePreset = id;
+    });
+  },
+
+  /** Merge style overrides (undefined values remove an override). */
+  setStyle(patch: StyleOverrides, key?: string) {
+    commit((d) => {
+      const fig = d.figures[0]!;
+      const next: Record<string, unknown> = { ...(fig.style ?? {}) };
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === undefined) delete next[k];
+        else next[k] = v;
+      }
+      fig.style = next as StyleOverrides;
+    }, key);
+  },
+
+  resetStyle() {
+    commit((d) => {
+      delete d.figures[0]!.style;
+    });
+  },
+
+  /** Merge axis options for the time axis ('x') or a panel id. */
+  setAxisStyle(axis: string, patch: AxisStyle) {
+    commit((d) => {
+      const fig = d.figures[0]!;
+      const axes = (fig.axes ??= {});
+      if (axis === 'x') axes.x = { ...(axes.x ?? {}), ...patch };
+      else {
+        axes.y ??= {};
+        axes.y[axis] = { ...(axes.y[axis] ?? {}), ...patch };
+      }
     });
   },
 

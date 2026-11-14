@@ -26,6 +26,7 @@ npm run e2e        # browser end-to-end checks: editor, snapping, files & export
 | M7 | Integration, differentiation, moving average / RMS | ✅ |
 | — | Phone & tablet layout | ✅ |
 | M8 | Cursors and measurements | ✅ |
+| M9 | Axes, styles and figure settings | ✅ |
 
 See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the mathematical conventions.
 
@@ -35,6 +36,15 @@ Drag them in the plot (they snap to edges, peaks and zero crossings; Alt = free)
 The panel shows values at the cursors, Δt, 1/Δt, ΔY, ΔAB, and for the interval between cursors 1–2 (or the
 visible window): max, min, peak-to-peak, mean, RMS, duty cycle and frequency — all computed exactly, not
 from samples. Cursors are saved in the project file and are left out of exports unless requested.
+
+## Axes and figure style
+- **Axes** (toolbar button, click the time range in the status bar, or double-click an axis): exact visible
+  time interval, axis titles, fixed tick step, label decimals, manual vertical ranges, log scale (only for
+  strictly positive data).
+- **Figure settings** (gear button): presets Light technical, Dark technical, Presentation, Minimal/publication,
+  plus overrides for background, plot area, grid colour/opacity, minor grid, font (sans/serif/mono) and size,
+  legend position (corners, outside right, hidden), margins and a line-width multiplier. Saved in the project;
+  applied on screen and in exports. Only Inter is embedded in PDFs.
 
 ## Phones and tablets
 Below 760 px wide the plot sits on top with a tab bar (Add / Signals / Properties) underneath; the toolbar

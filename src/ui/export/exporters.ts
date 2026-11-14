@@ -4,7 +4,7 @@
  */
 
 import type { Scene } from '../../core/plot/scene';
-import { buildFigure, panelsForMode, themeById, type PlotTheme, type TraceInput } from '../../core/plot/layout';
+import { buildFigure, panelsForMode, resolveTheme, type PlotTheme, type TraceInput } from '../../core/plot/layout';
 import { sceneToSvg } from '../../core/plot/svg';
 import { compiled } from '../../state/compiled';
 import { actions, editor, orderedSignals } from '../../state/store';
@@ -59,7 +59,7 @@ const MARGIN_MM = 10;
 export function buildExportScene(width: number, height: number, transparent: boolean, includeCursors = false): Scene {
   const st = editor.getState();
   const fig = st.project.figures[0]!;
-  const base: PlotTheme = themeById(fig.stylePreset);
+  const base: PlotTheme = resolveTheme(fig.stylePreset, fig.style);
   const theme: PlotTheme = transparent ? { ...base, background: null, plotBackground: 'none' } : base;
   const traces: TraceInput[] = orderedSignals(st.project)
     .filter((s) => s.style.visible)
@@ -82,6 +82,7 @@ export function buildExportScene(width: number, height: number, transparent: boo
     showLegend: fig.showLegend,
     theme,
     cursors: includeCursors ? cursorSpecFor() : undefined,
+    axes: fig.axes,
   }).scene;
 }
 

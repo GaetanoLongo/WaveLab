@@ -7,6 +7,7 @@
  */
 
 import type { GeneratorDef } from './signal-defs';
+import type { AxisStyle, StyleOverrides } from '../plot/layout';
 
 export const SCHEMA_VERSION = 1;
 export const FILE_EXTENSION = '.wlab';
@@ -78,6 +79,10 @@ export interface Figure {
   /** Style preset id ('light' | 'minimal'; more in M9). Used on screen and for export. */
   stylePreset: string;
   showLegend: boolean;
+  /** Overrides on top of the preset (colours, fonts, legend position, margins, line scale). */
+  style?: StyleOverrides;
+  /** Axis presentation: time axis and vertical axes by panel id ("overlay" or "stack-<signal id>"). */
+  axes?: { x?: AxisStyle; y?: Record<string, AxisStyle> };
 }
 
 /** Measurement cursors: two time cursors (all panels) and two level cursors (target's panel). */

@@ -11,7 +11,8 @@ import { actions, findSignal, orderedSignals, useEditor } from '../../state/stor
 import { NumberField } from '../fields/NumberField';
 import { MathLabel } from '../MathLabel';
 
-const fmt = (v: number, unit: string, digits = 5) => (Number.isFinite(v) ? formatSI(v, unit, digits) : '—');
+const fmt = (v: number, unit: string, digits = 5, scale = 0) =>
+  Number.isFinite(v) ? formatSI(Math.abs(v) <= 1e-9 * scale ? 0 : v, unit, digits) : '—';
 
 export function MeasurePanel({ phone = false }: { phone?: boolean }) {
   const project = useEditor((s) => s.project);
@@ -128,7 +129,7 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
                 <dt>Pk-pk</dt>
                 <dd>{fmt(m.peakToPeak, unit)}</dd>
                 <dt>Mean</dt>
-                <dd>{fmt(m.mean, unit)}</dd>
+                <dd>{fmt(m.mean, unit, 5, Math.max(Math.abs(m.max), Math.abs(m.min)))}</dd>
                 <dt>RMS</dt>
                 <dd>{fmt(m.rms, unit)}</dd>
                 <dt title={`Fraction of time above the mid level ${fmt(m.threshold, unit)}`}>Duty</dt>
