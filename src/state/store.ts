@@ -11,7 +11,16 @@ import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { defaultGenerator } from '../core/model/defaults';
 import { paletteColor } from '../core/model/palette';
-import { emptyProject, type Project, type SavedView, type SignalDef } from '../core/model/project';
+import { createsCycle, dependents, storedAst } from '../core/model/deps';
+import {
+  emptyProject,
+  type DerivedSignalDef,
+  type GeneratorSignalDef,
+  type Project,
+  type SavedView,
+  type SignalDef,
+} from '../core/model/project';
+import { ExprError, isLogic, nameToken, parseExpr, print, refsOf, splitAssignment, storedRef } from '../core/expr/parse';
 import type { GeneratorKind } from '../core/model/signal-defs';
 import type { Range } from '../core/plot/range';
 import { fitTimeRange } from '../core/plot/viewport';
@@ -245,10 +254,10 @@ export const actions = {
   },
 
   /** Add a generator signal; `customize` adjusts the definition (presets) in the same undo step. */
-  addSignal(kind: GeneratorKind, customize?: (def: SignalDef) => void, name?: string) {
+  addSignal(kind: GeneratorKind, customize?: (def: GeneratorSignalDef) => void, name?: string) {
     const p = get().project;
     const first = p.signals.length === 0;
-    const def: SignalDef = {
+    const def: GeneratorSignalDef = {
       id: newId(),
       name: uniqueName(p, name ?? GENERATOR_LABELS[kind]),
       unit: 'V',
@@ -310,6 +319,11 @@ export const actions = {
       notify(`“${sig.name}” is locked — unlock it to delete.`);
       return;
     }
+    const users = dependents(p, sig.id);
+    if (users.length > 0) {
+      notify(`“${sig.name}” is used by ${users.map((u) => `“${u.name}”`).join(', ')} — delete or edit those first.`);
+      return;
+    }
     const ord = orderedSignals(p);
     const idx = ord.findIndex((s) => s.id === sig.id);
     commit((d) => {
@@ -349,7 +363,18 @@ export const actions = {
   /** Mirror the waveform around zero (y → −y) by transforming its parameters. */
   invert(id = get().selectedId) {
     if (!id) return;
-    actions.updateSignal(id, (s) => {
+    const target = findSignal(get().project, id);
+    if (target?.kind === 'derived') {
+      const ast = storedAst(target.expr);
+      if (!ast) return;
+      actions.updateSignal(id, (s) => {
+        if (s.kind !== 'derived') return;
+        if (isLogic(ast)) [s.logicHigh, s.logicLow] = [s.logicLow, s.logicHigh];
+        else s.expr = print({ k: 'neg', a: ast }, storedRef);
+      });
+      return;
+    }
+    actions.updateGenerator(id, (s) => {
       switch (s.generator) {
         case 'sine':
         case 'cosine':
@@ -383,7 +408,94 @@ export const actions = {
 
   /** Set a signal's position on the timeline. Use one `key` per drag gesture. */
   setDelay(id: string, delay: number, key?: string) {
-    actions.updateSignal(id, (s) => void (s.timing.delay = delay), key);
+    actions.updateGenerator(id, (s) => void (s.timing.delay = delay), key);
+  },
+
+  /** Edit a generator signal (no-op for derived signals). */
+  updateGenerator(id: string, recipe: (s: Draft<GeneratorSignalDef>) => void, key?: string) {
+    actions.updateSignal(
+      id,
+      (s) => {
+        if (s.kind === 'generator') recipe(s);
+      },
+      key,
+    );
+  },
+
+  /**
+   * Create a derived signal from a template applied to the selected signal (A) and,
+   * for binary operations, the next visible signal (B). Returns the new id or null.
+   */
+  addDerived(template: (a: string, b: string) => string, arity: 1 | 2, name: string): string | null {
+    const p = get().project;
+    const ordered = orderedSignals(p);
+    const a = findSignal(p, get().selectedId) ?? ordered[0];
+    if (!a) {
+      notify('Add a waveform first: operations work on existing signals.');
+      return null;
+    }
+    let b: SignalDef | undefined;
+    if (arity === 2) {
+      const idx = ordered.findIndex((s) => s.id === a.id);
+      const rest = [...ordered.slice(idx + 1), ...ordered.slice(0, idx)].filter((s) => s.id !== a.id);
+      b = rest.find((s) => s.style.visible) ?? rest[0];
+      if (!b) {
+        notify('This operation needs two signals. Add another waveform first.');
+        return null;
+      }
+    }
+    const expr = template(`#{${a.id}}`, b ? `#{${b.id}}` : '');
+    const ast = storedAst(expr);
+    const def: DerivedSignalDef = {
+      id: newId('d'),
+      name: uniqueName(p, name),
+      unit: ast && isLogic(ast) ? 'V' : a.unit,
+      locked: false,
+      style: { color: nextColor(p), lineWidth: 1.6, dash: 'solid', visible: true, showInLegend: true },
+      kind: 'derived',
+      expr,
+      logicHigh: 1,
+      logicLow: 0,
+      threshold: 0.5,
+      resolution: null,
+    };
+    commit((d) => {
+      d.signals.push(def);
+      order(d).push({ signalId: def.id });
+    });
+    set({ selectedId: def.id });
+    return def.id;
+  },
+
+  /**
+   * Set a derived signal's expression from display text ("Name = expr" allowed).
+   * Returns an error (message + position) or null on success.
+   */
+  setExpression(id: string, text: string): { message: string; pos: number } | null {
+    const p = get().project;
+    const sig = findSignal(p, id);
+    if (!sig || sig.kind !== 'derived') return { message: 'Not an expression signal.', pos: 0 };
+    if (sig.locked) return { message: 'Signal is locked.', pos: 0 };
+    const { name, expr } = splitAssignment(text);
+    const offset = text.length - expr.length;
+    let ast;
+    try {
+      ast = parseExpr(expr, (n) => resolveName(p, n, id));
+    } catch (e) {
+      if (e instanceof ExprError) return { message: e.message, pos: e.pos + offset };
+      throw e;
+    }
+    const refs = refsOf(ast);
+    if (refs.has(id)) return { message: 'A signal cannot use itself.', pos: offset };
+    if (createsCycle(p, id, refs)) return { message: 'This would create a circular dependency.', pos: offset };
+    const stored = print(ast, storedRef);
+    const newName = name?.trim();
+    actions.updateSignal(id, (s) => {
+      if (s.kind !== 'derived') return;
+      s.expr = stored;
+      if (newName) s.name = newName;
+    });
+    return null;
   },
 
   /**
@@ -395,8 +507,9 @@ export const actions = {
     const sig = findSignal(p, id);
     const ref = findSignal(p, refId);
     if (!sig || !ref) return 'Select a signal and a reference.';
-    const s = compiled(sig);
-    const r = compiled(ref);
+    if (sig.kind !== 'generator') return 'Derived signals follow their inputs; use delay() to shift them.';
+    const s = compiled(sig, p);
+    const r = compiled(ref, p);
     const [v0, v1] = get().view.xRange;
     const span = Math.max(v1 - v0, s.period ?? 0, r.period ?? 0);
     const mine = alignPoints(s, kind, v0 - span, v1 + span);
@@ -419,9 +532,10 @@ export const actions = {
     const sig = findSignal(p, id);
     const ref = findSignal(p, refId);
     if (!sig || !ref) return 'Select a signal and a reference.';
+    if (sig.kind !== 'generator' || ref.kind !== 'generator') return 'Phase difference is defined between generator signals.';
     const phase = phaseForDifference(sig, ref, deg);
     if (phase === null) return 'Phase difference needs two periodic signals with the same frequency.';
-    actions.updateSignal(id, (s) => void (s.timing.phaseDeg = Number(phase.toPrecision(12))));
+    actions.updateGenerator(id, (s) => void (s.timing.phaseDeg = Number(phase.toPrecision(12))));
     return `“${sig.name}” now leads “${ref.name}” by ${deg}°.`;
   },
 
@@ -440,17 +554,33 @@ export const actions = {
   },
 
   fitAll() {
-    const visible = orderedSignals(get().project).filter((s) => s.style.visible);
-    set({ view: { xRange: fitTimeRange(visible.map(compiled)), yRanges: {} } });
+    const p = get().project;
+    const visible = orderedSignals(p).filter((s) => s.style.visible);
+    set({ view: { xRange: fitTimeRange(visible.map((s) => compiled(s, p))), yRanges: {} } });
   },
 
   fitSelected() {
     const sig = findSignal(get().project, get().selectedId);
     if (!sig) return actions.fitAll();
-    set((s) => ({ view: { ...s.view, xRange: fitTimeRange([compiled(sig)]) } }));
+    set((s) => ({ view: { ...s.view, xRange: fitTimeRange([compiled(sig, s.project)]) } }));
   },
 
   clearNotice() {
     set({ notice: null });
   },
 };
+
+/** Resolve a display name in an expression to a signal id (exact name match). */
+export function resolveName(p: Project, name: string, _self?: string): string | null {
+  return p.signals.find((s) => s.name === name)?.id ?? null;
+}
+
+/** Display text of a stored expression, using current signal names. */
+export function exprToDisplay(p: Project, stored: string): string {
+  const ast = storedAst(stored);
+  if (!ast) return stored;
+  return print(ast, (id) => {
+    const s = p.signals.find((x) => x.id === id);
+    return s ? nameToken(s.name) : '[missing signal]';
+  });
+}

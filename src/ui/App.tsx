@@ -74,7 +74,7 @@ function PlotArea() {
         .map((s) => ({
           id: s.id,
           name: s.name,
-          signal: compiled(s),
+          signal: compiled(s, project),
           color: s.style.color,
           lineWidth: s.style.lineWidth,
           dash: s.style.dash,
@@ -103,11 +103,11 @@ function PlotArea() {
           snap={snap}
           canMove={(id) => {
             const s = findSignal(editor.getState().project, id);
-            return !!s && !s.locked;
+            return !!s && !s.locked && s.kind === 'generator';
           }}
           getTiming={(id) => {
             const s = findSignal(editor.getState().project, id);
-            if (!s) return null;
+            if (!s || s.kind !== 'generator') return null;
             return { ...s.timing, periodic: s.generator !== 'dc' };
           }}
           onMove={(id, delay, key) => actions.setDelay(id, delay, key)}

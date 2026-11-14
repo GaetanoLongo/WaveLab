@@ -3,7 +3,7 @@
  * shown disabled with the milestone that delivers them.
  */
 
-import type { SignalDef } from '../../core/model/project';
+import type { GeneratorSignalDef } from '../../core/model/project';
 import type { GeneratorKind } from '../../core/model/signal-defs';
 import { actions } from '../../state/store';
 import { WaveGlyph } from '../icons';
@@ -12,7 +12,7 @@ interface Entry {
   label: string;
   kind: GeneratorKind;
   name?: string;
-  customize?: (d: SignalDef) => void;
+  customize?: (d: GeneratorSignalDef) => void;
   title: string;
 }
 
@@ -67,20 +67,28 @@ const PLANNED_DIGITAL: Array<[string, string]> = [
   ['Manchester', 'Phase 4'],
   ['Bit sequence', 'Phase 4'],
 ];
-const PLANNED_OPS = [
-  'Add / Subtract',
-  'Multiply / Divide',
-  'Abs / Negate',
-  'Min / Max',
-  'Logic AND / OR / XOR / NOT',
-  'Comparators',
-  'Integration',
-  'Differentiation',
-  'Moving average / RMS',
-  'Rectify / Clip',
-  'Delay',
-  'Expression…',
+type Template = (a: string, b: string) => string;
+const OPS: Array<[label: string, glyph: string, name: string, arity: 1 | 2, tpl: Template, title: string]> = [
+  ['Add', '+', 'Sum', 2, (a, b) => `${a} + ${b}`, 'A + B'],
+  ['Subtract', '−', 'Difference', 2, (a, b) => `${a} - ${b}`, 'A − B'],
+  ['Multiply', '×', 'Product', 2, (a, b) => `${a} * ${b}`, 'A × B (e.g. power = voltage × current)'],
+  ['Divide', '÷', 'Quotient', 2, (a, b) => `${a} / ${b}`, 'A ÷ B (undefined where B = 0)'],
+  ['Absolute value', '|x|', 'Abs', 1, (a) => `abs(${a})`, '|A|'],
+  ['Negate', '−x', 'Negated', 1, (a) => `-${a}`, '−A'],
+  ['Minimum', 'min', 'Min', 2, (a, b) => `min(${a}, ${b})`, 'min(A, B)'],
+  ['Maximum', 'max', 'Max', 2, (a, b) => `max(${a}, ${b})`, 'max(A, B)'],
+  ['Compare A > B', '>', 'Comparison', 2, (a, b) => `${a} > ${b}`, 'Logic signal: high where A > B (e.g. PWM = Reference > Carrier)'],
+  ['Logic AND', '&', 'AND', 2, (a, b) => `and(${a}, ${b})`, 'Logic AND (analog inputs use the threshold)'],
+  ['Logic OR', '≥1', 'OR', 2, (a, b) => `or(${a}, ${b})`, 'Logic OR'],
+  ['Logic XOR', '=1', 'XOR', 2, (a, b) => `xor(${a}, ${b})`, 'Logic exclusive OR'],
+  ['Logic NOT', '¬', 'NOT', 1, (a) => `not(${a})`, 'Logic NOT'],
+  ['Half-wave rectify', '⌒', 'Half-wave', 1, (a) => `max(${a}, 0)`, 'max(A, 0)'],
+  ['Full-wave rectify', '⌒⌒', 'Full-wave', 1, (a) => `abs(${a})`, '|A|'],
+  ['Clip / saturate', '⊓', 'Clipped', 1, (a) => `clip(${a}, -1, 1)`, 'clip(A, −1, 1) — edit the limits in the expression'],
+  ['Delay', '→t', 'Delayed', 1, (a) => `delay(${a}, 1m)`, 'A shifted 1 ms later — edit the time in the expression'],
+  ['Expression…', 'ƒ', 'Expression', 1, (a) => a, 'Free expression, starting from A'],
 ];
+const PLANNED_OPS = ['Integration', 'Differentiation', 'Moving average', 'RMS (moving)'];
 
 function EntryButton({ e }: { e: Entry }) {
   return (
@@ -126,11 +134,18 @@ export function Toolbox() {
           ))}
         </div>
       </details>
-      <details>
+      <details open>
         <summary>Mathematical operations</summary>
+        <p className="tools-hint">A = selected signal, B = next signal in the list. The result is a new signal; inputs are never changed.</p>
         <div className="tools">
+          {OPS.map(([label, glyph, name, arity, tpl, title]) => (
+            <button key={label} className="tool" title={title} onClick={() => actions.addDerived(tpl, arity, name)}>
+              <span className="op-glyph">{glyph}</span>
+              <span>{label}</span>
+            </button>
+          ))}
           {PLANNED_OPS.map((l) => (
-            <Planned key={l} label={l} when="M6–M7" />
+            <Planned key={l} label={l} when="M7" />
           ))}
         </div>
       </details>

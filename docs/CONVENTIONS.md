@@ -71,3 +71,18 @@ These rules are part of the file format: changing them later needs a schema migr
 - Malformed markup (e.g. an unclosed `{`) is shown as typed, never dropped.
 - A signal name containing `_` is read as a subscript (`V_grid` → V with subscript g, followed by "rid").
   Use braces for longer subscripts (`V_{grid}`), or `\_` for a literal underscore.
+
+## Derived signals (expressions)
+- Stored as text with signals referenced by id (`#{id}`); the editor shows current names, so renaming
+  never breaks an expression. A signal used by others cannot be deleted; circular references are refused.
+- Comparisons (`> < >= <=`), `&& || !`, `and/or/xor/not` and `step()` produce **logic** values, mapped to
+  the signal's high/low levels. Analog inputs of logic operators are true above the signal's threshold.
+  There is no equality operator (meaningless for continuous signals).
+- `x / 0`, `sqrt` / `ln` of negative values give **undefined** (gaps), never huge finite values.
+- Derived signals are not draggable; use `delay(x, d)` (positive d = later).
+- Exactness: input edges are kept exactly; comparator crossings and abs/clip/min/max corners are located by
+  bisection (~1e-15 relative); peaks by golden-section search. Sampling only limits how close two switching
+  events *inside one smooth segment* can be and still both be found: by default 1/64 of the shortest input
+  period, configurable per signal ("Computation" → custom step).
+- Period of a derived signal = least common multiple of its inputs' periods (when their ratios are rational
+  with denominators ≤ 1000); otherwise it is treated as aperiodic.

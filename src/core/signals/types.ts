@@ -47,6 +47,10 @@ export interface SignalEval {
   readonly period?: number;
   /** Global time interval outside which the signal is constant (0) or undefined. */
   readonly extent?: readonly [number, number];
+  /** Exact left limit lim_{s→t⁻} f(s) (if omitted, callers approximate it). */
+  left?(t: number): number;
+  /** Characteristic time scale (shortest period involved) used to choose sampling steps. */
+  readonly scale?: number;
 }
 
 export const DEFAULT_MAX_FEATURES = 100_000;

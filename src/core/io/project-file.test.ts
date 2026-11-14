@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { defaultGenerator } from '../model/defaults';
-import { emptyProject, type Project, type SignalDef } from '../model/project';
+import { emptyProject, type GeneratorSignalDef, type Project } from '../model/project';
 import { compileSignal } from '../signals/compile';
 import { parseProjectFile, ProjectFileError, serializeProject } from './project-file';
 
-function sig(id: string, kind: Parameters<typeof defaultGenerator>[0], patch: (d: SignalDef) => void = () => {}): SignalDef {
-  const d: SignalDef = {
+function sig(
+  id: string,
+  kind: Parameters<typeof defaultGenerator>[0],
+  patch: (d: GeneratorSignalDef) => void = () => {},
+): GeneratorSignalDef {
+  const d: GeneratorSignalDef = {
     id,
     name: id,
     unit: 'V',
@@ -60,8 +64,8 @@ describe('project file round trip (Acceptance Test 7, generator part)', () => {
     const p = sample();
     const back = parseProjectFile(serializeProject(p)).project;
     for (let i = 0; i < p.signals.length; i++) {
-      const s0 = compileSignal(p.signals[i]!);
-      const s1 = compileSignal(back.signals[i]!);
+      const s0 = compileSignal(p.signals[i]! as GeneratorSignalDef);
+      const s1 = compileSignal(back.signals[i]! as GeneratorSignalDef);
       for (const t of [0, 0.0013, 0.0071, 0.0199, 0.05]) {
         expect(Object.is(s1.value(t), s0.value(t))).toBe(true);
       }
@@ -109,5 +113,49 @@ describe('project file validation', () => {
     const f = good();
     f.project.signals[1].id = 'a';
     expect(() => parseProjectFile(JSON.stringify(f))).toThrow(/Duplicate signal id/);
+  });
+});
+
+describe('derived signals in project files', () => {
+  const withDerived = () => {
+    const p = sample();
+    p.signals.push({
+      id: 'd1',
+      name: 'PWM',
+      unit: 'V',
+      locked: false,
+      style: { color: '#D55E00', lineWidth: 1.6, dash: 'solid', visible: true, showInLegend: true },
+      kind: 'derived',
+      expr: '#{b} > #{a}',
+      logicHigh: 15,
+      logicLow: 0,
+      threshold: 0.5,
+      resolution: null,
+    });
+    return p;
+  };
+
+  it('round-trips the expression and logic settings', () => {
+    const back = parseProjectFile(serializeProject(withDerived())).project;
+    expect(back.signals[3]).toEqual(withDerived().signals[3]);
+  });
+
+  it('rejects references to missing signals', () => {
+    const f = JSON.parse(serializeProject(withDerived()));
+    f.project.signals[3].expr = '#{zzz} + 1';
+    expect(() => parseProjectFile(JSON.stringify(f))).toThrow(/uses a signal that is not in the file/);
+  });
+
+  it('rejects circular dependencies', () => {
+    const f = JSON.parse(serializeProject(withDerived()));
+    f.project.signals.push({ ...f.project.signals[3], id: 'd2', expr: '#{d1} + #{d3}' });
+    f.project.signals.push({ ...f.project.signals[3], id: 'd3', expr: '#{d2} * 2' });
+    expect(() => parseProjectFile(JSON.stringify(f))).toThrow(/circular dependency/);
+  });
+
+  it('rejects unparsable expressions', () => {
+    const f = JSON.parse(serializeProject(withDerived()));
+    f.project.signals[3].expr = '#{a} +';
+    expect(() => parseProjectFile(JSON.stringify(f))).toThrow(/expr is invalid: Expression is incomplete/);
   });
 });

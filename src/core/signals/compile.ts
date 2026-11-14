@@ -1,8 +1,8 @@
-import type { SignalDef } from '../model/project';
+import type { GeneratorSignalDef } from '../model/project';
 import { compileGenerator } from './generator';
 import type { SignalEval } from './types';
 
-/** Turn a serializable signal definition into an evaluable signal. */
-export function compileSignal(def: SignalDef): SignalEval {
+/** Turn a generator definition into an evaluable signal (derived ones: see state/compiled). */
+export function compileSignal(def: GeneratorSignalDef): SignalEval {
   return compileGenerator(def);
 }

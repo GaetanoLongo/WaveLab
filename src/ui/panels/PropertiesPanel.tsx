@@ -1,14 +1,16 @@
 /** Contextual parameter editor for the selected signal. Every change applies immediately. */
 
 import { useState, type ReactNode } from 'react';
-import type { LineDash, SignalDef } from '../../core/model/project';
+import type { GeneratorSignalDef, LineDash, SignalDef } from '../../core/model/project';
 import { phaseToTime, timeToPhase, type SignalWindow } from '../../core/model/signal-defs';
 import { formatSI } from '../../core/units/si';
 import { phaseDifferenceDeg } from '../../core/signals/phase';
 import { actions, editor, findSignal, GENERATOR_LABELS, orderedSignals, useEditor, type AlignKind } from '../../state/store';
 import { NumberField } from '../fields/NumberField';
+import { DerivedProperties } from './DerivedProperties';
 
-type Upd = (recipe: (s: SignalDef) => void, key?: string) => void;
+type Upd = (recipe: (s: GeneratorSignalDef) => void, key?: string) => void;
+export type UpdAny = (recipe: (s: SignalDef) => void, key?: string) => void;
 
 export function PropertiesPanel() {
   const sig = useEditor((s) => findSignal(s.project, s.selectedId));
@@ -20,7 +22,40 @@ export function PropertiesPanel() {
       </section>
     );
   }
-  const upd: Upd = (recipe, key) => actions.updateSignal(sig.id, recipe, key);
+  return sig.kind === 'derived' ? <DerivedProperties sig={sig} /> : <GeneratorProperties sig={sig} />;
+}
+
+/** Name and unit (shared by generator and derived signals). */
+export function GeneralGroup({ sig, upd }: { sig: SignalDef; upd: UpdAny }) {
+  return (
+    <Group title="General">
+      <TextField
+        label="Name"
+        value={sig.name}
+        title="Supports math markup: V_{out}, I^2, \omega"
+        onCommit={(v) => upd((s) => void (s.name = v))}
+      />
+      <TextField
+        label="Unit"
+        value={sig.unit}
+        list="unit-options"
+        allowEmpty
+        title="Vertical unit, e.g. V, A, W"
+        onCommit={(v) => upd((s) => void (s.unit = v))}
+      />
+      <datalist id="unit-options">
+        <option value="V" />
+        <option value="A" />
+        <option value="W" />
+        <option value="Ω" />
+      </datalist>
+    </Group>
+  );
+}
+
+function GeneratorProperties({ sig }: { sig: GeneratorSignalDef }) {
+  const upd: Upd = (recipe, key) => actions.updateGenerator(sig.id, recipe, key);
+  const updAny: UpdAny = (recipe, key) => actions.updateSignal(sig.id, recipe, key);
   const dis = sig.locked;
   const label = sig.generator === 'sawtooth' && sig.params.slope === 'falling' ? 'Inverted sawtooth' : GENERATOR_LABELS[sig.generator];
 
@@ -31,29 +66,13 @@ export function PropertiesPanel() {
       </h2>
       {dis && <p className="locked-note">Locked: unlock the signal in the list to edit it.</p>}
       <fieldset disabled={dis}>
-        <Group title="General">
-          <TextField label="Name" value={sig.name} onCommit={(v) => upd((s) => void (s.name = v))} />
-          <TextField
-            label="Unit"
-            value={sig.unit}
-            list="unit-options"
-            allowEmpty
-            title="Vertical unit, e.g. V, A, W"
-            onCommit={(v) => upd((s) => void (s.unit = v))}
-          />
-          <datalist id="unit-options">
-            <option value="V" />
-            <option value="A" />
-            <option value="W" />
-            <option value="Ω" />
-          </datalist>
-        </Group>
+        <GeneralGroup sig={sig} upd={updAny} />
 
         <WaveformParams sig={sig} upd={upd} disabled={dis} />
         {sig.generator !== 'dc' && <TimingParams sig={sig} upd={upd} disabled={dis} />}
         {sig.generator !== 'dc' && <AlignParams sig={sig} disabled={dis} />}
         <WindowParams sig={sig} upd={upd} disabled={dis} />
-        <StyleParams sig={sig} upd={upd} disabled={dis} />
+        <StyleParams sig={sig} upd={updAny} disabled={dis} />
 
         <div className="prop-actions">
           <button onClick={() => actions.invert(sig.id)} title="Mirror the waveform around zero (y → −y)">
@@ -68,7 +87,7 @@ export function PropertiesPanel() {
   );
 }
 
-function Group({ title, children, defaultOpen = true }: { title: string; children: ReactNode; defaultOpen?: boolean }) {
+export function Group({ title, children, defaultOpen = true }: { title: string; children: ReactNode; defaultOpen?: boolean }) {
   return (
     <details className="group" open={defaultOpen}>
       <summary>{title}</summary>
@@ -77,7 +96,7 @@ function Group({ title, children, defaultOpen = true }: { title: string; childre
   );
 }
 
-function WaveformParams({ sig, upd, disabled }: { sig: SignalDef; upd: Upd; disabled: boolean }) {
+function WaveformParams({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: Upd; disabled: boolean }) {
   const u = sig.unit;
   switch (sig.generator) {
     case 'sine':
@@ -216,13 +235,13 @@ function WaveformParams({ sig, upd, disabled }: { sig: SignalDef; upd: Upd; disa
 }
 
 /** RMS of the AC component (offset excluded) for the shapes with a closed form. */
-function rmsAc(sig: SignalDef): number {
+function rmsAc(sig: GeneratorSignalDef): number {
   if (!('amplitude' in sig.params)) return NaN;
   const A = Math.abs(sig.params.amplitude);
   return sig.generator === 'sine' || sig.generator === 'cosine' ? A / Math.SQRT2 : A / Math.sqrt(3);
 }
 
-function TimingParams({ sig, upd, disabled }: { sig: SignalDef; upd: Upd; disabled: boolean }) {
+function TimingParams({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: Upd; disabled: boolean }) {
   const [phaseUnit, setPhaseUnit] = useState<'deg' | 'rad'>('deg');
   const f = sig.timing.frequency;
   const setT = (k: 'frequency' | 'phaseDeg' | 'delay', key?: string) => (v: number) =>
@@ -308,8 +327,9 @@ const ALIGN_BUTTONS: Array<[AlignKind, string, string]> = [
   ['zero-up', 'Rising zero crossings', '0 ↑'],
 ];
 
-function AlignParams({ sig, disabled }: { sig: SignalDef; disabled: boolean }) {
+function AlignParams({ sig, disabled }: { sig: GeneratorSignalDef; disabled: boolean }) {
   const project = useEditor((s) => s.project);
+  // Any signal can be the alignment reference (features); phase difference needs a generator.
   const others = orderedSignals(project).filter((s) => s.id !== sig.id);
   const [refId, setRefId] = useState('');
   const ref = others.find((o) => o.id === refId) ?? others[0];
@@ -322,7 +342,7 @@ function AlignParams({ sig, disabled }: { sig: SignalDef; disabled: boolean }) {
       </Group>
     );
   }
-  const diff = phaseDifferenceDeg(sig, ref);
+  const diff = ref.kind === 'generator' ? phaseDifferenceDeg(sig, ref) : null;
   const f = sig.timing.frequency;
   return (
     <Group title="Alignment">
@@ -377,7 +397,7 @@ function formatDeg(d: number): string {
   return `${d >= 0 ? '+' : ''}${Number(d.toPrecision(5))}°`;
 }
 
-function WindowParams({ sig, upd, disabled }: { sig: SignalDef; upd: Upd; disabled: boolean }) {
+function WindowParams({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: Upd; disabled: boolean }) {
   const w = sig.window;
   const f = sig.generator === 'dc' ? 1 : sig.timing.frequency;
   const setW = (next: SignalWindow) => upd((s) => void (s.window = next));
@@ -429,7 +449,7 @@ function WindowParams({ sig, upd, disabled }: { sig: SignalDef; upd: Upd; disabl
   );
 }
 
-function StyleParams({ sig, upd, disabled }: { sig: SignalDef; upd: Upd; disabled: boolean }) {
+export function StyleParams({ sig, upd, disabled }: { sig: SignalDef; upd: UpdAny; disabled: boolean }) {
   return (
     <Group title="Appearance">
       <div className="field">
@@ -473,7 +493,7 @@ function StyleParams({ sig, upd, disabled }: { sig: SignalDef; upd: Upd; disable
   );
 }
 
-function Readout({ items }: { items: Array<[string, string]> }) {
+export function Readout({ items }: { items: Array<[string, string]> }) {
   return (
     <dl className="readout">
       {items.map(([k, v]) => (
@@ -502,7 +522,7 @@ function Slider(p: { min: number; max: number; step: number; value: number; disa
   );
 }
 
-function TextField(p: { label: string; value: string; list?: string; title?: string; allowEmpty?: boolean; onCommit(v: string): void }) {
+export function TextField(p: { label: string; value: string; list?: string; title?: string; allowEmpty?: boolean; onCommit(v: string): void }) {
   const [key, setKey] = useState(0);
   const commit = (raw: string) => {
     const v = raw.trim();

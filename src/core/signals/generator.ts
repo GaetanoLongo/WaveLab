@@ -60,6 +60,12 @@ export function compileGenerator(def: GeneratorDef): SignalEval {
     return inner(t);
   };
 
+  const left = (t: number): number => {
+    const tau = t - delay;
+    if (tau <= range.a || tau > range.b) return range.outside;
+    return innerLeft(t);
+  };
+
   const features = (t0: number, t1: number, maxCount = DEFAULT_MAX_FEATURES): FeatureQuery => {
     const out: Feature[] = [];
     if (!(t1 >= t0)) return { features: out, truncated: false };
@@ -103,7 +109,9 @@ export function compileGenerator(def: GeneratorDef): SignalEval {
 
   return {
     value,
+    left,
     features,
+    scale: isDc ? undefined : 1 / f,
     period: infinite && !isDc ? 1 / f : undefined,
     extent: infinite ? undefined : [delay + range.a, delay + range.b],
   };

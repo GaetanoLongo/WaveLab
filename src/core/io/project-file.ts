@@ -21,6 +21,8 @@ import {
   type SignalStyle,
 } from '../model/project';
 import type { GeneratorKind, SignalWindow, Timing } from '../model/signal-defs';
+import { createsCycle, directDeps } from '../model/deps';
+import { ExprError, parseExpr } from '../expr/parse';
 
 export const FORMAT_ID = 'wavelab-project';
 
@@ -77,6 +79,16 @@ function readProject(v: unknown): Project {
     if (ids.has(s.id)) throw new ProjectFileError(`Duplicate signal id "${s.id}".`);
     ids.add(s.id);
   }
+  // Derived signals: every reference must exist and the graph must be acyclic.
+  const partial = { signals } as Project;
+  signals.forEach((s, i) => {
+    for (const ref of directDeps(s)) {
+      if (!ids.has(ref)) throw new ProjectFileError(`signals[${i}] (“${s.name}”) uses a signal that is not in the file (id "${ref}").`);
+    }
+    if (s.kind === 'derived' && createsCycle(partial, s.id, directDeps(s))) {
+      throw new ProjectFileError(`signals[${i}] (“${s.name}”) is part of a circular dependency.`);
+    }
+  });
   const figures = arr(p.figures, 'project.figures').map((f, i) => readFigure(f, `figures[${i}]`, ids));
   if (figures.length === 0) throw new ProjectFileError('project.figures must contain at least one figure.');
   // Every signal must appear exactly once in the first figure's order list.
@@ -94,6 +106,7 @@ function readProject(v: unknown): Project {
 
 function readSignal(v: unknown, path: string): SignalDef {
   const s = obj(v, path);
+  if (s.kind === 'derived') return readDerived(s, path);
   if (s.kind !== 'generator') throw new ProjectFileError(`${path}.kind "${String(s.kind)}" is not supported by this version.`);
   const generator = s.generator as GeneratorKind;
   if (!GENERATORS.includes(generator)) throw new ProjectFileError(`${path}.generator "${String(s.generator)}" is unknown.`);
@@ -137,6 +150,34 @@ function readSignal(v: unknown, path: string): SignalDef {
     case 'dc':
       return { ...base, generator, params: { level: n('level') } };
   }
+}
+
+function readDerived(s: Record<string, unknown>, path: string): SignalDef {
+  const expr = str(s.expr, `${path}.expr`);
+  try {
+    // Stored expressions reference signals only as #{id}; names are not resolved here.
+    parseExpr(expr, () => null);
+  } catch (e) {
+    const msg = e instanceof ExprError ? e.message : String(e);
+    throw new ProjectFileError(`${path}.expr is invalid: ${msg}`);
+  }
+  const resolution = s.resolution === undefined || s.resolution === null ? null : num(s.resolution, `${path}.resolution`);
+  if (resolution !== null && !(resolution > 0)) throw new ProjectFileError(`${path}.resolution must be positive or null.`);
+  const id = str(s.id, `${path}.id`);
+  if (!id) throw new ProjectFileError(`${path}.id must not be empty.`);
+  return {
+    id,
+    name: str(s.name, `${path}.name`),
+    unit: s.unit === undefined ? 'V' : str(s.unit, `${path}.unit`),
+    locked: s.locked === undefined ? false : bool(s.locked, `${path}.locked`),
+    style: readStyle(s.style, `${path}.style`),
+    kind: 'derived',
+    expr,
+    logicHigh: s.logicHigh === undefined ? 1 : num(s.logicHigh, `${path}.logicHigh`),
+    logicLow: s.logicLow === undefined ? 0 : num(s.logicLow, `${path}.logicLow`),
+    threshold: s.threshold === undefined ? 0.5 : num(s.threshold, `${path}.threshold`),
+    resolution,
+  };
 }
 
 function readTiming(v: unknown, path: string, periodic: boolean): Timing {

@@ -63,7 +63,7 @@ export function buildExportScene(width: number, height: number, transparent: boo
     .map((s) => ({
       id: s.id,
       name: s.name,
-      signal: compiled(s),
+      signal: compiled(s, st.project),
       color: s.style.color,
       lineWidth: s.style.lineWidth,
       dash: s.style.dash,

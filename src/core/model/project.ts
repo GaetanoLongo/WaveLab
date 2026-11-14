@@ -30,8 +30,26 @@ export interface SignalMeta {
   style: SignalStyle;
 }
 
-/** Generator-based signal. Derived (operation) signals are added in milestone M6. */
-export type SignalDef = SignalMeta & { kind: 'generator' } & GeneratorDef;
+/** Signal defined by a waveform generator. */
+export type GeneratorSignalDef = SignalMeta & { kind: 'generator' } & GeneratorDef;
+
+/**
+ * Signal defined by an expression of other signals (operations, comparators, logic…).
+ * `expr` is the stored form: signals are referenced by id as #{id}, so renames are safe.
+ */
+export interface DerivedParams {
+  expr: string;
+  /** Output levels when the expression is logic (comparison, and/or/not…). */
+  logicHigh: number;
+  logicLow: number;
+  /** Analog inputs of logic operators count as 1 above this value. */
+  threshold: number;
+  /** Computational sampling step in seconds; null = automatic (1/64 of the shortest input period). */
+  resolution: number | null;
+}
+export type DerivedSignalDef = SignalMeta & { kind: 'derived' } & DerivedParams;
+
+export type SignalDef = GeneratorSignalDef | DerivedSignalDef;
 
 export interface AxisConfig {
   auto: boolean;
