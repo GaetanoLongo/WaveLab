@@ -39,6 +39,12 @@ export interface FeatureQuery {
   truncated: boolean;
 }
 
+/** Ideal Dirac impulse weight·δ(t − t₀) (e.g. the derivative of an ideal edge). */
+export interface Impulse {
+  t: number;
+  weight: number;
+}
+
 export interface SignalEval {
   value(t: number): number;
   /** All features with t0 <= t <= t1, sorted by time. */
@@ -51,6 +57,10 @@ export interface SignalEval {
   left?(t: number): number;
   /** Characteristic time scale (shortest period involved) used to choose sampling steps. */
   readonly scale?: number;
+  /** Ideal impulses in [t0, t1] that are part of the signal but not of value(t). */
+  impulses?(t0: number, t1: number): Impulse[];
+  /** Notes about approximations (e.g. impulses dropped by a non-linear operation). */
+  readonly warnings?: string[];
 }
 
 export const DEFAULT_MAX_FEATURES = 100_000;

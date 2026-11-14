@@ -20,7 +20,7 @@ import {
   type SavedView,
   type SignalDef,
 } from '../core/model/project';
-import { ExprError, isLogic, nameToken, parseExpr, print, refsOf, splitAssignment, storedRef } from '../core/expr/parse';
+import { ExprError, isLogic, nameToken, parseExpr, print, refsOf, splitAssignment, storedRef, type Node } from '../core/expr/parse';
 import type { GeneratorKind } from '../core/model/signal-defs';
 import type { Range } from '../core/plot/range';
 import { fitTimeRange } from '../core/plot/viewport';
@@ -426,7 +426,12 @@ export const actions = {
    * Create a derived signal from a template applied to the selected signal (A) and,
    * for binary operations, the next visible signal (B). Returns the new id or null.
    */
-  addDerived(template: (a: string, b: string) => string, arity: 1 | 2, name: string): string | null {
+  addDerived(
+    template: (a: string, b: string, ctx: { periodA?: number }) => string,
+    arity: 1 | 2,
+    name: string,
+    unitOf?: (inputUnit: string) => string,
+  ): string | null {
     const p = get().project;
     const ordered = orderedSignals(p);
     const a = findSignal(p, get().selectedId) ?? ordered[0];
@@ -444,12 +449,12 @@ export const actions = {
         return null;
       }
     }
-    const expr = template(`#{${a.id}}`, b ? `#{${b.id}}` : '');
+    const expr = template(`#{${a.id}}`, b ? `#{${b.id}}` : '', { periodA: compiled(a, p).period });
     const ast = storedAst(expr);
     const def: DerivedSignalDef = {
       id: newId('d'),
       name: uniqueName(p, name),
-      unit: ast && isLogic(ast) ? 'V' : a.unit,
+      unit: unitOf ? unitOf(a.unit) : ast && isLogic(ast) ? 'V' : a.unit,
       locked: false,
       style: { color: nextColor(p), lineWidth: 1.6, dash: 'solid', visible: true, showInLegend: true },
       kind: 'derived',
@@ -578,7 +583,11 @@ export function resolveName(p: Project, name: string, _self?: string): string | 
 /** Display text of a stored expression, using current signal names. */
 export function exprToDisplay(p: Project, stored: string): string {
   const ast = storedAst(stored);
-  if (!ast) return stored;
+  return ast ? astToDisplay(p, ast) : stored;
+}
+
+/** Display text of an expression tree, using current signal names. */
+export function astToDisplay(p: Project, ast: Node): string {
   return print(ast, (id) => {
     const s = p.signals.find((x) => x.id === id);
     return s ? nameToken(s.name) : '[missing signal]';

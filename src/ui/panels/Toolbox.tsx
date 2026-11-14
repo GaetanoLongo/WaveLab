@@ -5,6 +5,7 @@
 
 import type { GeneratorSignalDef } from '../../core/model/project';
 import type { GeneratorKind } from '../../core/model/signal-defs';
+import { siLiteral } from '../../core/units/si';
 import { actions } from '../../state/store';
 import { WaveGlyph } from '../icons';
 
@@ -67,8 +68,8 @@ const PLANNED_DIGITAL: Array<[string, string]> = [
   ['Manchester', 'Phase 4'],
   ['Bit sequence', 'Phase 4'],
 ];
-type Template = (a: string, b: string) => string;
-const OPS: Array<[label: string, glyph: string, name: string, arity: 1 | 2, tpl: Template, title: string]> = [
+type Template = (a: string, b: string, ctx: { periodA?: number }) => string;
+const OPS: Array<[label: string, glyph: string, name: string, arity: 1 | 2, tpl: Template, title: string, unit?: (u: string) => string]> = [
   ['Add', '+', 'Sum', 2, (a, b) => `${a} + ${b}`, 'A + B'],
   ['Subtract', '−', 'Difference', 2, (a, b) => `${a} - ${b}`, 'A − B'],
   ['Multiply', '×', 'Product', 2, (a, b) => `${a} * ${b}`, 'A × B (e.g. power = voltage × current)'],
@@ -86,9 +87,12 @@ const OPS: Array<[label: string, glyph: string, name: string, arity: 1 | 2, tpl:
   ['Full-wave rectify', '⌒⌒', 'Full-wave', 1, (a) => `abs(${a})`, '|A|'],
   ['Clip / saturate', '⊓', 'Clipped', 1, (a) => `clip(${a}, -1, 1)`, 'clip(A, −1, 1) — edit the limits in the expression'],
   ['Delay', '→t', 'Delayed', 1, (a) => `delay(${a}, 1m)`, 'A shifted 1 ms later — edit the time in the expression'],
+  ['Integration', '∫', 'Integral', 1, (a) => `integral(${a}, 0, 0)`, '∫ A dt from t0 = 0 with initial value 0 (editable)', (u) => (u ? `${u}·s` : 's')],
+  ['Differentiation', 'd/dt', 'Derivative', 1, (a) => `deriv(${a})`, 'dA/dt — ideal edges are shown as impulse markers', (u) => (u ? `${u}/s` : '1/s')],
+  ['Moving average', 'x̄', 'Average', 1, (a, _b, c) => `movavg(${a}, ${siLiteral(c.periodA ?? 1e-3)})`, 'Average over a trailing window (default: one period of A)'],
+  ['RMS (moving)', 'rms', 'RMS', 1, (a, _b, c) => `rms(${a}, ${siLiteral(c.periodA ?? 1e-3)})`, 'RMS over a trailing window (default: one period of A)'],
   ['Expression…', 'ƒ', 'Expression', 1, (a) => a, 'Free expression, starting from A'],
 ];
-const PLANNED_OPS = ['Integration', 'Differentiation', 'Moving average', 'RMS (moving)'];
 
 function EntryButton({ e }: { e: Entry }) {
   return (
@@ -138,14 +142,11 @@ export function Toolbox() {
         <summary>Mathematical operations</summary>
         <p className="tools-hint">A = selected signal, B = next signal in the list. The result is a new signal; inputs are never changed.</p>
         <div className="tools">
-          {OPS.map(([label, glyph, name, arity, tpl, title]) => (
-            <button key={label} className="tool" title={title} onClick={() => actions.addDerived(tpl, arity, name)}>
+          {OPS.map(([label, glyph, name, arity, tpl, title, unit]) => (
+            <button key={label} className="tool" title={title} onClick={() => actions.addDerived(tpl, arity, name, unit)}>
               <span className="op-glyph">{glyph}</span>
               <span>{label}</span>
             </button>
-          ))}
-          {PLANNED_OPS.map((l) => (
-            <Planned key={l} label={l} when="M7" />
           ))}
         </div>
       </details>

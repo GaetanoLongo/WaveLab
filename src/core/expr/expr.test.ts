@@ -49,7 +49,7 @@ describe('expression parser', () => {
     expect(err('A +')).toEqual(['Expression is incomplete', 3]);
     expect(err('abs(A, B)')).toEqual(['abs() takes 1 argument', 0]);
     expect(err('foo(A)')).toEqual(['Unknown function “foo”', 0]);
-    expect(err('delay(A, B)')?.[0]).toMatch(/constant time/);
+    expect(err('delay(A, B)')?.[0]).toMatch(/needs a constant as argument 2/);
     expect(err('A == B')?.[0]).toMatch(/Equality comparison is not supported/);
     expect(err('(A')?.[0]).toBe('Expected “)”');
   });

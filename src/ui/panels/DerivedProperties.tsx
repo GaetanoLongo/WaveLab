@@ -3,10 +3,10 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { storedAst } from '../../core/model/deps';
 import type { DerivedSignalDef } from '../../core/model/project';
-import { FUNCTIONS, isLogic, nameToken, refsOf, walk } from '../../core/expr/parse';
-import { formatSI } from '../../core/units/si';
+import { constValue, FUNCTIONS, isLogic, nameToken, refsOf, walk, type Node } from '../../core/expr/parse';
+import { formatSI, siLiteral } from '../../core/units/si';
 import { compiled } from '../../state/compiled';
-import { actions, exprToDisplay, useEditor } from '../../state/store';
+import { actions, astToDisplay, editor, exprToDisplay, useEditor } from '../../state/store';
 import { NumberField } from '../fields/NumberField';
 import { MathLabel } from '../MathLabel';
 import { GeneralGroup, Group, Readout, StyleParams, type UpdAny } from './PropertiesPanel';
@@ -35,6 +35,11 @@ export function DerivedProperties({ sig }: { sig: DerivedSignalDef }) {
 
         <Group title="Expression">
           <ExpressionField sig={sig} />
+          {(ev.warnings ?? []).map((w) => (
+            <p key={w} className="warn">
+              {w}
+            </p>
+          ))}
           <div className="inputs-row">
             <span className="muted">Inputs:</span>
             {inputs.length === 0 && <span className="muted">none</span>}
@@ -66,6 +71,8 @@ export function DerivedProperties({ sig }: { sig: DerivedSignalDef }) {
             </ul>
           </details>
         </Group>
+
+        {ast && ast.k === 'call' && FUNCTIONS[ast.fn]?.operator && <OperatorGroup sig={sig} ast={ast} disabled={dis} />}
 
         {(logic || usesThreshold) && (
           <Group title="Logic">
@@ -286,4 +293,105 @@ function ExpressionField({ sig }: { sig: DerivedSignalDef }) {
       {draft !== null && !error && <div className="hint-text">Enter to apply · Shift+Enter new line · Esc to cancel</div>}
     </div>
   );
+}
+
+type CallNode = Extract<Node, { k: 'call' }>;
+
+/** Friendly controls for a top-level calculus operator; edits rewrite the expression. */
+function OperatorGroup({ sig, ast, disabled }: { sig: DerivedSignalDef; ast: CallNode; disabled: boolean }) {
+  const project = useEditor((s) => s.project);
+  const x = ast.args[0]!;
+  const input = x.k === 'ref' ? project.signals.find((s) => s.id === x.id) : undefined;
+  const period = input ? compiled(input, project).period : compiled(sig, project).period;
+  const c = (i: number, dflt: number) => (ast.args[i] ? constValue(ast.args[i]!) : dflt);
+  const num = (v: number): Node => ({ k: 'num', v, text: siLiteral(v) });
+  const apply = (fn: string, args: Node[]) => {
+    const err = actions.setExpression(sig.id, astToDisplay(project, { k: 'call', fn, args }));
+    if (err) editor.setState({ notice: err.message });
+  };
+  const base = period ?? 1e-3;
+
+  switch (ast.fn) {
+    case 'integral':
+      return (
+        <Group title="Integration">
+          <NumberField
+            label="Start time t₀"
+            unit="s"
+            value={c(1, 0)}
+            disabled={disabled}
+            title="The integral starts at t₀ (it also runs backwards for t < t₀)"
+            onCommit={(v) => apply('integral', [x, num(v), ast.args[2] ?? num(0)])}
+          />
+          <NumberField
+            label="Initial value"
+            unit={sig.unit}
+            value={c(2, 0)}
+            disabled={disabled}
+            title="Value of the integral at t₀ (integration constant)"
+            onCommit={(v) => apply('integral', [x, ast.args[1] ?? num(0), num(v)])}
+          />
+          <p className="hint-text">Exact for piecewise-linear inputs; jumps in the input give corners, impulses give steps.</p>
+        </Group>
+      );
+    case 'deriv':
+    case 'dfinite':
+    case 'dnum': {
+      const mode = ast.fn;
+      return (
+        <Group title="Differentiation">
+          <div className="field">
+            <label>Ideal edges</label>
+            <select
+              value={mode}
+              disabled={disabled}
+              onChange={(e) => {
+                const m = e.target.value;
+                if (m === 'deriv') apply('deriv', [x]);
+                else if (m === 'dfinite') apply('dfinite', [x, num(base / 100)]);
+                else apply('dnum', [x, num(base / 1000)]);
+              }}
+            >
+              <option value="deriv">Impulse markers (exact)</option>
+              <option value="dfinite">Finite rise/fall time</option>
+              <option value="dnum">Numerical difference</option>
+            </select>
+          </div>
+          {mode === 'dfinite' && (
+            <NumberField label="Rise/fall time" unit="s" positive value={c(1, base / 100)} disabled={disabled} onCommit={(v) => apply('dfinite', [x, num(v)])} />
+          )}
+          {mode === 'dnum' && (
+            <NumberField label="Step h" unit="s" positive value={c(1, base / 1000)} disabled={disabled} onCommit={(v) => apply('dnum', [x, num(v)])} />
+          )}
+          <p className="hint-text">
+            {mode === 'deriv' && 'An ideal edge has an infinite derivative: it is drawn as an arrow δ·(jump), not as a finite spike.'}
+            {mode === 'dfinite' && 'Each edge becomes a ramp of the given duration, so its derivative is a rectangle of height jump/time.'}
+            {mode === 'dnum' && 'Central difference (x(t+h/2) − x(t−h/2))/h: an edge becomes a rectangle of height jump/h.'}
+          </p>
+        </Group>
+      );
+    }
+    case 'movavg':
+    case 'rms':
+      return (
+        <Group title={ast.fn === 'rms' ? 'Moving RMS' : 'Moving average'}>
+          <NumberField
+            label="Window"
+            unit="s"
+            positive
+            value={c(1, base)}
+            disabled={disabled}
+            title="Trailing window: the value at t uses the input over [t − W, t]"
+            onCommit={(v) => apply(ast.fn, [x, num(v)])}
+          />
+          {period !== undefined && (
+            <button disabled={disabled} onClick={() => apply(ast.fn, [x, num(period)])}>
+              Window = one period ({formatSI(period, 's')})
+            </button>
+          )}
+        </Group>
+      );
+    default:
+      return null;
+  }
 }

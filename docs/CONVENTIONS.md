@@ -86,3 +86,17 @@ These rules are part of the file format: changing them later needs a schema migr
   period, configurable per signal ("Computation" → custom step).
 - Period of a derived signal = least common multiple of its inputs' periods (when their ratios are rational
   with denominators ≤ 1000); otherwise it is treated as aperiodic.
+
+## Calculus operators
+- `integral(x, t0, y0)`: I(t) = y0 + ∫ from t0 to t of x (also defined for t < t0). Smooth segments between the
+  input's features use adaptive Gauss–Legendre quadrature: exact for piecewise-polynomial inputs, ~1e-13
+  relative otherwise. For periodic inputs the cost does not grow with |t − t0| (k·P + partial period), so there
+  is no drift. Impulses of the input (from `deriv`) add steps, so `integral(deriv(x))` = x − x(t0⁺).
+- `deriv(x)`: derivative of the smooth parts (4th-order differences that never straddle a feature, ~1e-9
+  relative). Ideal jumps J become **impulses J·δ**: drawn as arrows labelled "δ·J", never as finite spikes,
+  and ignored by the automatic vertical range. Impulses survive linear operations (sum, difference, scaling by a
+  constant, delay); a non-linear operation shows a warning instead of silently dropping them.
+- `dfinite(x, tr)`: each jump spread over a ramp of duration tr centred on the edge → rectangle J/tr.
+- `dnum(x, h)`: plain central difference (x(t + h/2) − x(t − h/2)) / h.
+- `movavg(x, W)`, `rms(x, W)`: **trailing** window [t − W, t]. Default window from the toolbox = one period of the input.
+- Units from the toolbox: integral of V → V·s, derivative of V → V/s (editable).

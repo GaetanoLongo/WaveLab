@@ -7,6 +7,7 @@ import type { SignalEval } from '../signals/types';
 import type { Range } from './range';
 import { sampleSignal } from './sampler';
 import type { Dash, Scene, SceneItem } from './scene';
+import { formatSI } from '../units/si';
 import { estimateWidth } from './mathtext';
 import { niceTicks } from './ticks';
 import { autoYRange } from './viewport';
@@ -257,6 +258,7 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
         clipId,
         dataId: tr.id,
       });
+      drawImpulses(items, tr, pl, layout, clipId, fs);
     }
 
     // Frame.
@@ -349,4 +351,44 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
 /** Time-axis ticks exactly as drawn (shared with snapping so the grid matches). */
 export function timeTicks(l: FigureLayout) {
   return niceTicks(l.xRange[0], l.xRange[1], Math.max(2, Math.floor(l.plotW / 90)), 's', 1);
+}
+
+/**
+ * Ideal impulses (e.g. derivative of an ideal edge) as arrows from the zero line,
+ * labelled with their area. Their height is symbolic: it never affects the axis range.
+ */
+function drawImpulses(items: SceneItem[], tr: TraceInput, pl: PanelLayout, l: FigureLayout, clipId: string, fs: number) {
+  const imps = tr.signal.impulses?.(l.xRange[0], l.xRange[1]) ?? [];
+  if (imps.length === 0 || imps.length > l.plotW / 3) return;
+  const zero = Math.min(Math.max(0, pl.yRange[0]), pl.yRange[1]);
+  const y0 = yToPx(pl, zero);
+  const len = pl.h * 0.38;
+  const polylines: number[][] = [];
+  const head = Math.min(7, len / 4);
+  for (const imp of imps) {
+    const x = tToPx(l, imp.t);
+    const dir = imp.weight >= 0 ? -1 : 1; // positive = up (smaller y)
+    const tip = y0 + dir * len;
+    polylines.push([x, y0, x, tip]);
+    polylines.push([x - head * 0.6, tip - dir * head, x, tip, x + head * 0.6, tip - dir * head]);
+  }
+  items.push({ type: 'path', polylines, stroke: tr.color, width: Math.max(1.2, tr.lineWidth), dash: 'solid', clipId, dataId: tr.id });
+  if (imps.length <= l.plotW / 70) {
+    const unit = tr.unit.endsWith('/s') ? tr.unit.slice(0, -2) : '';
+    for (const imp of imps) {
+      const x = tToPx(l, imp.t);
+      const dir = imp.weight >= 0 ? -1 : 1;
+      const nearRight = x > l.plotX + l.plotW - 60;
+      items.push({
+        type: 'text',
+        x: nearRight ? x - 4 : x + 4,
+        y: y0 + dir * len,
+        text: `δ·${formatSI(imp.weight, unit, 4)}`,
+        size: fs * 0.85,
+        fill: tr.color,
+        anchor: nearRight ? 'end' : 'start',
+        baseline: dir < 0 ? 'top' : 'bottom',
+      });
+    }
+  }
 }

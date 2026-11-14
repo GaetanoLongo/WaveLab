@@ -124,3 +124,8 @@ export function formatFixed(value: number, factor: number, decimals: number): st
   const s = (value / factor).toFixed(Math.max(0, Math.min(12, decimals)));
   return /^-0(\.0*)?$/.test(s) ? s.slice(1) : s;
 }
+
+/** Compact literal for expressions, e.g. 0.02 → "20m", 1e-6 → "1u", 1500 → "1.5k". */
+export function siLiteral(v: number, digits = 6): string {
+  return formatSI(v, '', digits).replace(' ', '').replace('µ', 'u');
+}

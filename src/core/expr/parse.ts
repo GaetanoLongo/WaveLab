@@ -41,6 +41,10 @@ export interface FnSpec {
   max: number;
   /** Returns a logic (0/1) value. */
   logic?: boolean;
+  /** Arguments from this index on must be constants (no signals, no t). */
+  constFrom?: number;
+  /** Operates on the whole signal (calculus), not point by point. */
+  operator?: boolean;
   doc: string;
 }
 
@@ -62,7 +66,13 @@ export const FUNCTIONS: Record<string, FnSpec> = {
   or: { min: 2, max: 16, logic: true, doc: 'or(a, b, …) — logic OR' },
   xor: { min: 2, max: 2, logic: true, doc: 'xor(a, b) — logic exclusive OR' },
   not: { min: 1, max: 1, logic: true, doc: 'not(x) — logic NOT' },
-  delay: { min: 2, max: 2, doc: 'delay(x, d) — x shifted later by the constant time d' },
+  delay: { min: 2, max: 2, constFrom: 1, doc: 'delay(x, d) — x shifted later by the constant time d' },
+  integral: { min: 1, max: 3, constFrom: 1, operator: true, doc: 'integral(x, t0, y0) — ∫ x dt from t0 (default 0) with initial value y0 (default 0)' },
+  deriv: { min: 1, max: 1, operator: true, doc: 'deriv(x) — derivative; ideal edges become impulse markers' },
+  dfinite: { min: 2, max: 2, constFrom: 1, operator: true, doc: 'dfinite(x, tr) — derivative with each edge spread over a rise/fall time tr' },
+  dnum: { min: 2, max: 2, constFrom: 1, operator: true, doc: 'dnum(x, h) — numerical derivative (x(t+h/2) − x(t−h/2)) / h' },
+  movavg: { min: 2, max: 2, constFrom: 1, operator: true, doc: 'movavg(x, W) — moving average over the last W seconds' },
+  rms: { min: 2, max: 2, constFrom: 1, operator: true, doc: 'rms(x, W) — moving RMS over the last W seconds' },
 };
 
 const RESERVED = new Set(['t', 'pi', 'e', ...Object.keys(FUNCTIONS)]);
@@ -192,7 +202,14 @@ export function parseExpr(src: string, resolve: NameResolver): Node {
             const n = spec.min === spec.max ? `${spec.min}` : `${spec.min}–${spec.max}`;
             throw new ExprError(`${t.v}() takes ${n} argument${spec.max === 1 ? '' : 's'}`, t.pos);
           }
-          if (t.v === 'delay' && usesSignalOrTime(args[1]!)) throw new ExprError('delay() needs a constant time as its 2nd argument', t.pos);
+          if (spec.constFrom !== undefined) {
+            for (let i = spec.constFrom; i < args.length; i++) {
+              if (usesSignalOrTime(args[i]!)) throw new ExprError(`${t.v}() needs a constant as argument ${i + 1}`, t.pos);
+            }
+          }
+          const positive: Record<string, number> = { dfinite: 1, dnum: 1, movavg: 1, rms: 1 };
+          const pi = positive[t.v];
+          if (pi !== undefined && !(constValue(args[pi]!) > 0)) throw new ExprError(`${t.v}() needs a positive time as argument ${pi + 1}`, t.pos);
           return { k: 'call', fn: t.v, args };
         }
         if (t.v === 't') return { k: 'time' };
@@ -259,6 +276,38 @@ export function parseExpr(src: string, resolve: NameResolver): Node {
   const rest = peek();
   if (rest.t !== 'end') throw new ExprError(`Unexpected “${'v' in rest ? rest.v : ''}”`, rest.pos);
   return root;
+}
+
+/** Value of a constant expression (numbers, pi, e, + − * / ^, unary −). NaN if not constant. */
+export function constValue(n: Node): number {
+  switch (n.k) {
+    case 'num':
+      return n.v;
+    case 'const':
+      return n.name === 'pi' ? Math.PI : Math.E;
+    case 'neg':
+      return -constValue(n.a);
+    case 'bin': {
+      const a = constValue(n.a);
+      const b = constValue(n.b);
+      switch (n.op) {
+        case '+':
+          return a + b;
+        case '-':
+          return a - b;
+        case '*':
+          return a * b;
+        case '/':
+          return a / b;
+        case '^':
+          return a ** b;
+        default:
+          return NaN;
+      }
+    }
+    default:
+      return NaN;
+  }
 }
 
 function usesSignalOrTime(n: Node): boolean {

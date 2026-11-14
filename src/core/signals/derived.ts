@@ -23,8 +23,17 @@
  * narrow pulses around input breakpoints (e.g. near PWM carrier peaks) are found.
  */
 
-import { FUNCTIONS, isLogic, type Node } from '../expr/parse';
-import { DEFAULT_MAX_FEATURES, type Feature, type FeatureQuery, type SignalEval } from './types';
+import { constValue, FUNCTIONS, isLogic, type Node } from '../expr/parse';
+import {
+  derivativeOf,
+  finiteRiseDerivativeOf,
+  integralOf,
+  movingAverageOf,
+  movingRmsOf,
+  numericDerivativeOf,
+} from './operators';
+import { leftValue, MAX_SAMPLES, same, scanSegment } from './scan';
+import { DEFAULT_MAX_FEATURES, type Feature, type FeatureQuery, type Impulse, type SignalEval } from './types';
 
 export interface DerivedSpec {
   root: Node;
@@ -39,16 +48,54 @@ export interface DerivedSpec {
 /** Evaluator: value at t (left limit if `left`), optionally recording the state signature. */
 type Ev = (t: number, left: boolean, sig: number[] | null) => number;
 
-const MAX_SAMPLES = 20_000;
 const SAMPLES_PER_SCALE = 64;
 
-export function leftValue(s: SignalEval, t: number): number {
-  return s.left ? s.left(t) : s.value(t - 1e-12 * Math.max(1, Math.abs(t)));
-}
+
+const NAN_SIGNAL: SignalEval = { value: () => NaN, features: () => ({ features: [], truncated: false }) };
 
 export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval>): SignalEval {
   const thr = spec.threshold;
   const logicRoot = isLogic(spec.root);
+  const warnings = new Set<string>();
+
+  // Calculus operators work on whole signals: their argument becomes a signal of its own.
+  const opCache = new Map<Node, SignalEval>();
+  const operatorSignal = (n: Extract<Node, { k: 'call' }>): SignalEval => {
+    const cached = opCache.get(n);
+    if (cached) return cached;
+    const argNode = n.args[0]!;
+    const x =
+      argNode.k === 'ref'
+        ? (inputs.get(argNode.id) ?? NAN_SIGNAL)
+        : compileDerived({ ...spec, root: argNode, logicHigh: 1, logicLow: 0 }, inputs);
+    for (const w of x.warnings ?? []) warnings.add(w);
+    const c = (i: number, dflt: number) => (n.args[i] ? constValue(n.args[i]!) : dflt);
+    let sig: SignalEval;
+    switch (n.fn) {
+      case 'integral':
+        sig = integralOf(x, c(1, 0), c(2, 0));
+        break;
+      case 'deriv':
+        sig = derivativeOf(x);
+        break;
+      case 'dfinite':
+        sig = finiteRiseDerivativeOf(x, c(1, NaN));
+        break;
+      case 'dnum':
+        sig = numericDerivativeOf(x, c(1, NaN));
+        break;
+      case 'movavg':
+        sig = movingAverageOf(x, c(1, NaN));
+        break;
+      case 'rms':
+        sig = movingRmsOf(x, c(1, NaN));
+        break;
+      default:
+        sig = NAN_SIGNAL;
+    }
+    opCache.set(n, sig);
+    return sig;
+  };
 
   const build = (n: Node): Ev => {
     switch (n.k) {
@@ -77,8 +124,13 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
       }
       case 'bin':
         return buildBin(n.op, n.a, n.b);
-      case 'call':
+      case 'call': {
+        if (FUNCTIONS[n.fn]?.operator) {
+          const s = operatorSignal(n);
+          return (t, left) => (left ? leftValue(s, t) : s.value(t));
+        }
         return buildCall(n.fn, n.args);
+      }
     }
   };
 
@@ -257,19 +309,85 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
         collect(n.b, shift);
         break;
       case 'call':
-        if (n.fn === 'delay') collect(n.args[0]!, shift + build(n.args[1]!)(0, false, null));
+        if (FUNCTIONS[n.fn]?.operator) {
+          const s = operatorSignal(n);
+          if (!shifted.some((x) => x.s === s && x.shift === shift)) shifted.push({ s, shift });
+        } else if (n.fn === 'delay') collect(n.args[0]!, shift + build(n.args[1]!)(0, false, null));
         else for (const a of n.args) collect(a, shift);
         break;
     }
   };
   collect(spec.root, 0);
 
+  // Impulses (from deriv) pass through linear operations only.
+  type ImpFn = (a: number, b: number) => Impulse[];
+  const scaleImp = (f: ImpFn, k: number): ImpFn => (a, b) => f(a, b).map((i) => ({ t: i.t, weight: i.weight * k }));
+  const impulsesOf = (n: Node): ImpFn | null => {
+    switch (n.k) {
+      case 'ref': {
+        const s = inputs.get(n.id);
+        return s?.impulses ? (a, b) => s.impulses!(a, b) : null;
+      }
+      case 'neg': {
+        const f = impulsesOf(n.a);
+        return f ? scaleImp(f, -1) : null;
+      }
+      case 'bin': {
+        const fa = impulsesOf(n.a);
+        const fb = impulsesOf(n.b);
+        if (!fa && !fb) return null;
+        if (n.op === '+' || n.op === '-') {
+          const k = n.op === '-' ? -1 : 1;
+          return (a, b) => [...(fa?.(a, b) ?? []), ...(fb ? scaleImp(fb, k)(a, b) : [])].sort((p, q) => p.t - q.t);
+        }
+        if (n.op === '*' || n.op === '/') {
+          const ca = constValue(n.a);
+          const cb = constValue(n.b);
+          if (fa && Number.isFinite(cb)) return scaleImp(fa, n.op === '*' ? cb : 1 / cb);
+          if (fb && n.op === '*' && Number.isFinite(ca)) return scaleImp(fb, ca);
+        }
+        warnings.add('Impulses (ideal edges of a derivative) cannot pass through this operation; only the finite part is shown. Use dfinite() or dnum() for a finite representation.');
+        return null;
+      }
+      case 'call': {
+        if (FUNCTIONS[n.fn]?.operator) {
+          const s = operatorSignal(n);
+          return s.impulses ? (a, b) => s.impulses!(a, b) : null;
+        }
+        if (n.fn === 'delay') {
+          const f = impulsesOf(n.args[0]!);
+          const d = constValue(n.args[1]!);
+          return f ? (a, b) => f(a - d, b - d).map((i) => ({ t: i.t + d, weight: i.weight })) : null;
+        }
+        if (n.args.some((x) => impulsesOf(x))) {
+          warnings.add(`Impulses (ideal edges of a derivative) cannot pass through ${n.fn}(); only the finite part is shown.`);
+        }
+        return null;
+      }
+      case 'not':
+        if (impulsesOf(n.a)) warnings.add('Impulses cannot pass through a logic operation.');
+        return null;
+      default:
+        return null;
+    }
+  };
+  const rootImpulses = logicRoot ? null : impulsesOf(spec.root);
+
   const usesT = hasTime(spec.root);
   const scales = shifted.map((x) => x.s.scale ?? x.s.period).filter((v): v is number => v !== undefined && v > 0);
   const scale = scales.length ? Math.min(...scales) : undefined;
   const period = usesT ? undefined : commonPeriod(shifted.map((x) => x.s.period));
 
+  // Expression that is just one signal or one operator: its features are already exact.
+  const direct =
+    !logicRoot && spec.root.k === 'ref'
+      ? inputs.get(spec.root.id)
+      : spec.root.k === 'call' && FUNCTIONS[spec.root.fn]?.operator
+        ? operatorSignal(spec.root)
+        : undefined;
+
   const features = (t0: number, t1: number, maxCount = DEFAULT_MAX_FEATURES): FeatureQuery => {
+    if (direct) return direct.features(t0, t1, maxCount);
     const result: Feature[] = [];
     if (!(t1 > t0)) return { features: result, truncated: false };
 
@@ -292,17 +410,26 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
     if (t1 - points[points.length - 1]! > tol) points.push(t1);
     else points[points.length - 1] = t1;
 
-    for (let i = 1; i < points.length - 1; i++) {
-      const t = points[i]!;
-      const L = ev(t, true, null);
-      const R = ev(t, false, null);
-      result.push({ t, kind: same(L, R) ? 'kink' : 'jump', left: L, right: R });
-    }
-
     // 2./3. Sample each segment.
     const span = t1 - t0;
     let step = spec.resolution ?? (scale !== undefined ? scale / SAMPLES_PER_SCALE : span / 512);
     if (span / step > MAX_SAMPLES) step = span / MAX_SAMPLES;
+
+    for (let i = 1; i < points.length - 1; i++) {
+      const t = points[i]!;
+      const L = ev(t, true, null);
+      const R = ev(t, false, null);
+      if (!same(L, R)) {
+        result.push({ t, kind: 'jump', left: L, right: R });
+        continue;
+      }
+      // Continuous breakpoint: an extremum if the value falls (or rises) on both sides.
+      const d = Math.min(step / 8, (t - points[i - 1]!) / 4, (points[i + 1]! - t) / 4);
+      const a = ev(t - d, false, null);
+      const b = ev(t + d, false, null);
+      const kind = a < R && b < R ? 'max' : a > R && b > R ? 'min' : 'kink';
+      result.push({ t, kind, left: L, right: R });
+    }
 
     for (let i = 0; i + 1 < points.length; i++) {
       scanSegment(points[i]!, points[i + 1]!, step, ev, !logicRoot, result);
@@ -315,119 +442,14 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
   };
 
   return {
+    impulses: rootImpulses ?? undefined,
+    warnings: [...warnings],
     value: (t) => ev(t, false, null),
     left: (t) => ev(t, true, null),
     features,
     period,
     scale: spec.resolution !== null ? Math.min(scale ?? Infinity, spec.resolution * SAMPLES_PER_SCALE) : scale,
   };
-}
-
-function scanSegment(
-  a: number,
-  b: number,
-  step: number,
-  ev: (t: number, left: boolean, sig: number[] | null) => number,
-  findExtrema: boolean,
-  out: Feature[],
-) {
-  const n = Math.max(2, Math.min(MAX_SAMPLES, Math.ceil((b - a) / step)));
-  const ts: number[] = new Array(n + 1);
-  const vs: number[] = new Array(n + 1);
-  const sigs: string[] = new Array(n + 1);
-  for (let i = 0; i <= n; i++) {
-    const t = i === n ? b : a + ((b - a) * i) / n;
-    const sig: number[] = [];
-    // Segment ends use one-sided limits (inside the segment).
-    vs[i] = ev(t, i === n, sig);
-    ts[i] = t;
-    sigs[i] = sig.join(',') + (Number.isNaN(vs[i]!) ? 'N' : '');
-  }
-
-  const sigAt = (t: number) => {
-    const sig: number[] = [];
-    const v = ev(t, false, sig);
-    return sig.join(',') + (Number.isNaN(v) ? 'N' : '');
-  };
-
-  // Continuous switches (abs/clip/min/max corners) can show ~1e-16 differences between the two
-  // sides; treat differences below 1e-9 of the segment's magnitude as continuous.
-  let mag = 0;
-  for (const v of vs) if (Number.isFinite(v)) mag = Math.max(mag, Math.abs(v));
-  const close = (x: number, y: number) => same(x, y) || Math.abs(x - y) <= 1e-9 * mag;
-
-  // Switching instants.
-  for (let i = 0; i < n; i++) {
-    let lo = ts[i]!;
-    const hi0 = ts[i + 1]!;
-    let sLo = sigs[i]!;
-    const sHi = sigs[i + 1]!;
-    for (let guard = 0; guard < 8 && sLo !== sHi; guard++) {
-      let l = lo;
-      let h = hi0;
-      for (let k = 0; k < 64 && h - l > 1e-15 * Math.max(1, Math.abs(h)); k++) {
-        const m = (l + h) / 2;
-        if (m <= l || m >= h) break;
-        if (sigAt(m) === sLo) l = m;
-        else h = m;
-      }
-      // The sample at the segment end is a left limit, so a genuine switch lies strictly inside.
-      if (h >= hi0) break;
-      const L = ev(l, false, null);
-      const R = ev(h, false, null);
-      if (close(L, R)) {
-        const v = (L + R) / 2;
-        out.push({ t: h, kind: 'kink', left: v, right: v });
-      } else {
-        out.push({ t: h, kind: 'jump', left: L, right: R });
-      }
-      lo = h;
-      sLo = sigAt(h);
-      if (h >= hi0) break;
-    }
-  }
-
-  // Local extrema (only inside stretches with an unchanged signature).
-  if (!findExtrema) return;
-  for (let i = 1; i < n; i++) {
-    if (sigs[i - 1] !== sigs[i] || sigs[i] !== sigs[i + 1]) continue;
-    const d1 = vs[i]! - vs[i - 1]!;
-    const d2 = vs[i + 1]! - vs[i]!;
-    if (!(d1 * d2 < 0)) continue;
-    const isMax = d1 > 0;
-    const t = golden(ts[i - 1]!, ts[i + 1]!, (x) => (isMax ? -1 : 1) * ev(x, false, null));
-    const v = ev(t, false, null);
-    out.push({ t, kind: isMax ? 'max' : 'min', left: v, right: v });
-  }
-}
-
-/** Golden-section minimization of f on [a, b]. */
-function golden(a: number, b: number, f: (x: number) => number): number {
-  const g = (Math.sqrt(5) - 1) / 2;
-  let c = b - g * (b - a);
-  let d = a + g * (b - a);
-  let fc = f(c);
-  let fd = f(d);
-  for (let i = 0; i < 80 && b - a > 1e-15 * Math.max(1, Math.abs(b)); i++) {
-    if (fc < fd) {
-      b = d;
-      d = c;
-      fd = fc;
-      c = b - g * (b - a);
-      fc = f(c);
-    } else {
-      a = c;
-      c = d;
-      fc = fd;
-      d = a + g * (b - a);
-      fd = f(d);
-    }
-  }
-  return (a + b) / 2;
-}
-
-function same(a: number, b: number): boolean {
-  return a === b || (Number.isNaN(a) && Number.isNaN(b));
 }
 
 function hasTime(n: Node): boolean {
