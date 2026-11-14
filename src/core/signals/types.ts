@@ -9,6 +9,9 @@
  * Conventions:
  *  - value(t) is right-continuous: at a jump, value(t) returns the right limit.
  *  - NaN means "undefined" (drawn as a gap, propagates through operations).
+ *  - CONTRACT: between two consecutive features the signal is continuous and
+ *    monotonic. This lets the renderer compute exact min/max over any interval
+ *    from the interval end values and the feature limits alone.
  */
 
 export type FeatureKind =
@@ -42,6 +45,8 @@ export interface SignalEval {
   features(t0: number, t1: number, maxCount?: number): FeatureQuery;
   /** Fundamental period in seconds if the signal is periodic over all time. */
   readonly period?: number;
+  /** Global time interval outside which the signal is constant (0) or undefined. */
+  readonly extent?: readonly [number, number];
 }
 
 export const DEFAULT_MAX_FEATURES = 100_000;

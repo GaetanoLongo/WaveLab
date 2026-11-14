@@ -109,3 +109,18 @@ function trimNumber(x: number, digits: number): string {
   if (s.includes('.')) s = s.replace(/\.?0+$/, '');
   return s === '-0' ? '0' : s;
 }
+
+/** Largest SI prefix factor <= |value| (1 for 0), optionally capped at `maxFactor`. */
+export function prefixFactorFor(absValue: number, maxFactor = 1e12): [number, string] {
+  if (!(absValue > 0) || !Number.isFinite(absValue)) return [1, ''];
+  for (const p of FORMAT_PREFIXES) {
+    if (p[0] <= maxFactor && absValue >= p[0] * (1 - 1e-12)) return p;
+  }
+  return FORMAT_PREFIXES[FORMAT_PREFIXES.length - 1]!;
+}
+
+/** Fixed-prefix, fixed-decimals formatting (used for axis tick labels). */
+export function formatFixed(value: number, factor: number, decimals: number): string {
+  const s = (value / factor).toFixed(Math.max(0, Math.min(12, decimals)));
+  return /^-0(\.0*)?$/.test(s) ? s.slice(1) : s;
+}

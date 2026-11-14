@@ -105,6 +105,7 @@ export function compileGenerator(def: GeneratorDef): SignalEval {
     value,
     features,
     period: infinite && !isDc ? 1 / f : undefined,
+    extent: infinite ? undefined : [delay + range.a, delay + range.b],
   };
 }
 

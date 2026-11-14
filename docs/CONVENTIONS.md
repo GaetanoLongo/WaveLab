@@ -36,3 +36,10 @@ These rules are part of the file format: changing them later needs a schema migr
 - Optional: a time interval, or N cycles. The window is given in *local* time (relative to the
   delay), so it moves with the signal. Outside the window the value is either 0 (default) or
   undefined.
+
+## Plot behaviour
+- Automatic vertical range = the signal's full range (one period, or its whole window), plus 8 %
+  padding. It does **not** follow the visible time window, so zooming in time never rescales the
+  vertical axis. Use Shift+wheel or Shift+drag for vertical zoom, and "Auto Y" to reset.
+- When a signal has more than about one feature per two pixels (e.g. 1 MHz viewed over 1 s), it is
+  drawn as an exact min/max band (one vertical stroke per pixel column) instead of an aliased line.

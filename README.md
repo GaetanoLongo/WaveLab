@@ -16,7 +16,7 @@ npm run build      # production build into dist/
 |---|---|---|
 | M0 | Project setup, SI units, document model | ✅ |
 | M1 | Signal engine: sine, cosine, square, pulse, triangle, sawtooth, DC | ✅ |
-| M2 | Plot engine (overlay/stacked, zoom/pan, exact edges) | ⏳ |
+| M2 | Plot engine (overlay/stacked, zoom/pan, exact edges) | ✅ |
 | M3 | Editor interface | ⏳ |
 | M4 | Positioning and snapping (configurable modes) | ⏳ |
 | M5 | Save/open .wlab, PNG/SVG/PDF export, GitHub Pages | ⏳ |
