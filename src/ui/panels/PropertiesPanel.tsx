@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from 'react';
 import type { GeneratorSignalDef, LineDash, SignalDef } from '../../core/model/project';
-import { phaseToTime, timeToPhase, type SignalWindow } from '../../core/model/signal-defs';
+import { isPeriodicKind, phaseToTime, timeToPhase, type SignalWindow } from '../../core/model/signal-defs';
 import { formatSI } from '../../core/units/si';
 import { phaseDifferenceDeg } from '../../core/signals/phase';
 import { actions, editor, findSignal, GENERATOR_LABELS, orderedSignals, useEditor, type AlignKind } from '../../state/store';
@@ -71,7 +71,7 @@ function GeneratorProperties({ sig }: { sig: GeneratorSignalDef }) {
         <WaveformParams sig={sig} upd={upd} disabled={dis} />
         {sig.generator !== 'dc' && <TimingParams sig={sig} upd={upd} disabled={dis} />}
         {sig.generator !== 'dc' && <AlignParams sig={sig} disabled={dis} />}
-        <WindowParams sig={sig} upd={upd} disabled={dis} />
+        {(isPeriodicKind(sig.generator) || sig.generator === 'dc') && <WindowParams sig={sig} upd={upd} disabled={dis} />}
         <StyleParams sig={sig} upd={updAny} disabled={dis} />
 
         <div className="prop-actions">
@@ -219,6 +219,44 @@ function WaveformParams({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: 
         </Group>
       );
     }
+    case 'exponential': {
+      const p = sig.params;
+      const setE = (k: 'initial' | 'final' | 'tau') => (v: number) => upd((s) => void (s.generator === 'exponential' && (s.params[k] = v)));
+      return (
+        <Group title="Waveform">
+          <NumberField label="Initial value" unit={u} value={p.initial} disabled={disabled} onCommit={setE('initial')} />
+          <NumberField label="Final value" unit={u} value={p.final} disabled={disabled} onCommit={setE('final')} />
+          <NumberField label="Time constant τ" unit="s" positive value={p.tau} disabled={disabled} onCommit={setE('tau')} />
+          <Readout
+            items={[
+              ['10–90 % time', formatSI(p.tau * Math.log(9), 's')],
+              ['Settles to 1 %', formatSI(p.tau * Math.log(100), 's')],
+            ]}
+          />
+        </Group>
+      );
+    }
+    case 'damped': {
+      const p = sig.params;
+      const setD = (k: 'amplitude' | 'offset' | 'tau') => (v: number) => upd((s) => void (s.generator === 'damped' && (s.params[k] = v)));
+      return (
+        <Group title="Waveform">
+          <NumberField label="Amplitude" title="Initial envelope (zero-to-peak)" unit={u} value={p.amplitude} disabled={disabled} onCommit={setD('amplitude')} />
+          <NumberField label="Offset" unit={u} value={p.offset} disabled={disabled} onCommit={setD('offset')} />
+          <NumberField label="Decay τ" title="Envelope time constant: A·e^(−t/τ)" unit="s" positive value={p.tau} disabled={disabled} onCommit={setD('tau')} />
+          <Readout
+            items={[
+              ['Envelope halves every', formatSI(p.tau * Math.LN2, 's')],
+              ['Quality factor Q', (Math.PI * sig.timing.frequency * p.tau).toPrecision(4)],
+            ]}
+          />
+        </Group>
+      );
+    }
+    case 'piecewise':
+      return <PiecewiseParams sig={sig} upd={upd} disabled={disabled} />;
+    case 'bits':
+      return <BitsParamsView sig={sig} upd={upd} disabled={disabled} />;
     case 'dc':
       return (
         <Group title="Waveform">
@@ -232,6 +270,123 @@ function WaveformParams({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: 
         </Group>
       );
   }
+}
+
+function PiecewiseParams({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: Upd; disabled: boolean }) {
+  if (sig.generator !== 'piecewise') return null;
+  const p = sig.params;
+  const setPoints = (pts: Array<[number, number]>) =>
+    upd((s) => {
+      if (s.generator !== 'piecewise') return;
+      // Keep the table sorted by time (stable, so equal times keep their order = vertical steps).
+      s.params.points = pts.map((q, i) => [q, i] as const).sort((a, b) => a[0][0] - b[0][0] || a[1] - b[1]).map((x) => x[0]);
+    });
+  const span = p.points.length ? p.points[p.points.length - 1]![0] - p.points[0]![0] : 0;
+  return (
+    <Group title="Points">
+      <table className="points">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Value</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {p.points.map(([t, y], i) => (
+            <tr key={i}>
+              <td>
+                <NumberField label="" unit="s" value={t} disabled={disabled} onCommit={(v) => setPoints(p.points.map((q, j) => (j === i ? [v, q[1]] : q)))} />
+              </td>
+              <td>
+                <NumberField label="" unit={sig.unit} value={y} disabled={disabled} onCommit={(v) => setPoints(p.points.map((q, j) => (j === i ? [q[0], v] : q)))} />
+              </td>
+              <td>
+                <button
+                  className="icon"
+                  aria-label={`Remove point ${i + 1}`}
+                  disabled={disabled || p.points.length <= 2}
+                  onClick={() => setPoints(p.points.filter((_, j) => j !== i))}
+                >
+                  ✕
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button
+        disabled={disabled}
+        onClick={() => {
+          const last = p.points[p.points.length - 1] ?? [0, 0];
+          const prev = p.points[p.points.length - 2] ?? [last[0] - 1e-3, 0];
+          const dt = last[0] - prev[0] > 0 ? last[0] - prev[0] : 1e-3;
+          setPoints([...p.points, [last[0] + dt, last[1]]]);
+        }}
+      >
+        + Add point
+      </button>
+      <p className="hint-text">Two points with the same time make a vertical step. Times are relative to the start time.</p>
+      <div className="field">
+        <label>Interpolation</label>
+        <select value={p.interp} disabled={disabled} onChange={(e) => upd((s) => void (s.generator === 'piecewise' && (s.params.interp = e.target.value as 'linear' | 'step')))}>
+          <option value="linear">Linear</option>
+          <option value="step">Step (hold)</option>
+        </select>
+      </div>
+      <label className="check">
+        <input type="checkbox" checked={p.repeat} disabled={disabled} onChange={(e) => upd((s) => void (s.generator === 'piecewise' && (s.params.repeat = e.target.checked)))} />
+        Repeat (period = {formatSI(span, 's')})
+      </label>
+    </Group>
+  );
+}
+
+function BitsParamsView({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: Upd; disabled: boolean }) {
+  if (sig.generator !== 'bits') return null;
+  const p = sig.params;
+  const set = <K extends keyof typeof p>(k: K, v: (typeof p)[K]) => upd((s) => void (s.generator === 'bits' && (s.params[k] = v)));
+  return (
+    <Group title="Bit sequence">
+      <TextField
+        label="Bits"
+        value={p.bits}
+        title="Only 0 and 1 (spaces are removed)"
+        validate={(v) => {
+          const ok = /^[01]+$/.test(v.replace(/\s+/g, ''));
+          if (!ok) editor.setState({ notice: 'Bits may contain only 0 and 1.' });
+          return ok;
+        }}
+        onCommit={(v) => set('bits', v.replace(/\s+/g, ''))}
+      />
+      <div className="field">
+        <label>Encoding</label>
+        <select value={p.encoding} disabled={disabled} onChange={(e) => set('encoding', e.target.value as typeof p.encoding)}>
+          <option value="nrz">NRZ (non-return-to-zero)</option>
+          <option value="rz">RZ (return-to-zero)</option>
+          <option value="manchester">Manchester (IEEE 802.3)</option>
+        </select>
+      </div>
+      <NumberField label="Bit time" unit="s" positive value={p.bitTime} disabled={disabled} onCommit={(v) => set('bitTime', v)} />
+      <NumberField label="High level" unit={sig.unit} value={p.high} disabled={disabled} onCommit={(v) => set('high', v)} />
+      <NumberField label="Low level" unit={sig.unit} value={p.low} disabled={disabled} onCommit={(v) => set('low', v)} />
+      <label className="check">
+        <input type="checkbox" checked={p.repeat} disabled={disabled} onChange={(e) => set('repeat', e.target.checked)} />
+        Repeat the frame
+      </label>
+      <Readout
+        items={[
+          ['Bit rate', formatSI(1 / p.bitTime, 'bit/s')],
+          ['Frame length', `${p.bits.length} bits · ${formatSI(p.bits.length * p.bitTime, 's')}`],
+        ]}
+      />
+      <p className="hint-text">
+        {p.encoding === 'manchester' && 'IEEE 802.3: 0 = high→low and 1 = low→high at mid-bit (G. E. Thomas uses the opposite).'}
+        {p.encoding === 'rz' && 'A 1 is high for the first half of its bit; a 0 stays low.'}
+        {p.encoding === 'nrz' && 'Each bit holds its level for the whole bit time. Idle level outside the frame: low.'}
+      </p>
+    </Group>
+  );
 }
 
 /** RMS of the AC component (offset excluded) for the shapes with a closed form. */
@@ -250,6 +405,21 @@ function TimingParams({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: Up
   const rawNet = sig.timing.delay - lead;
   // Hide floating-point residue (e.g. after alignment): below 1e-9 of a period counts as 0.
   const net = Math.abs(rawNet) < 1e-9 / f ? 0 : rawNet;
+
+  if (!isPeriodicKind(sig.generator) && sig.generator !== 'damped') {
+    return (
+      <Group title="Timing">
+        <NumberField
+          label="Start time"
+          title="Where the waveform starts on the global timeline (drag the trace to move it)"
+          unit="s"
+          value={sig.timing.delay}
+          disabled={disabled}
+          onCommit={setT('delay')}
+        />
+      </Group>
+    );
+  }
 
   return (
     <Group title="Timing">
@@ -300,7 +470,7 @@ function TimingParams({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: Up
         onCommit={(v) => setT('phaseDeg')(timeToPhase(v, f))}
       />
       <NumberField
-        label="Delay"
+        label={sig.generator === 'damped' ? 'Start time' : 'Delay'}
         title="Position on the global timeline; positive shifts right (later)"
         unit="s"
         value={sig.timing.delay}
@@ -522,11 +692,20 @@ function Slider(p: { min: number; max: number; step: number; value: number; disa
   );
 }
 
-export function TextField(p: { label: string; value: string; list?: string; title?: string; allowEmpty?: boolean; onCommit(v: string): void }) {
+export function TextField(p: {
+  label: string;
+  value: string;
+  list?: string;
+  title?: string;
+  allowEmpty?: boolean;
+  /** Return false to reject the text (the field then shows the stored value again). */
+  validate?(v: string): boolean;
+  onCommit(v: string): void;
+}) {
   const [key, setKey] = useState(0);
   const commit = (raw: string) => {
     const v = raw.trim();
-    if ((v || p.allowEmpty) && v !== p.value) p.onCommit(v);
+    if ((v || p.allowEmpty) && v !== p.value && (p.validate?.(v) ?? true)) p.onCommit(v);
     else setKey((k) => k + 1); // reset to the stored value
   };
   return (

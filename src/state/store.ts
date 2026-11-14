@@ -64,6 +64,10 @@ export const GENERATOR_LABELS: Record<GeneratorKind, string> = {
   triangle: 'Triangle',
   sawtooth: 'Sawtooth',
   dc: 'DC',
+  exponential: 'Exponential',
+  damped: 'Damped sine',
+  piecewise: 'Piecewise',
+  bits: 'Bits',
 };
 
 function initialState(project = emptyProject()): EditorState {
@@ -429,6 +433,21 @@ export const actions = {
           break;
         case 'dc':
           s.params.level = neg(s.params.level);
+          break;
+        case 'exponential':
+          s.params.initial = neg(s.params.initial);
+          s.params.final = neg(s.params.final);
+          break;
+        case 'damped':
+          s.params.amplitude = neg(s.params.amplitude);
+          s.params.offset = neg(s.params.offset);
+          break;
+        case 'piecewise':
+          s.params.points = s.params.points.map(([t, y]) => [t, neg(y)]);
+          break;
+        case 'bits':
+          s.params.high = neg(s.params.high);
+          s.params.low = neg(s.params.low);
           break;
       }
     });

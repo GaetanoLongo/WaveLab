@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { resolveTheme, type TraceInput } from '../core/plot/layout';
+import { isPeriodicKind } from '../core/model/signal-defs';
 import { ExportDialog } from './export/ExportDialog';
 import { AxesDialog } from './panels/AxesDialog';
 import { FigureSettingsDialog } from './panels/FigureSettings';
@@ -187,7 +188,7 @@ function PlotArea() {
           getTiming={(id) => {
             const s = findSignal(editor.getState().project, id);
             if (!s || s.kind !== 'generator') return null;
-            return { ...s.timing, periodic: s.generator !== 'dc' };
+            return { ...s.timing, periodic: isPeriodicKind(s.generator) };
           }}
           onMove={(id, delay, key) => actions.setDelay(id, delay, key)}
           cursors={cursorSpec}

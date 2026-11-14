@@ -133,15 +133,48 @@ export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
 const glyphCache = new Map<string, string>();
 
 /** Waveform glyph rendered from the real generator (1.5 cycles), so icons match the math. */
-export function WaveGlyph({ kind, falling = false, size = 28 }: { kind: GeneratorKind; falling?: boolean; size?: number }) {
-  const key = `${kind}${falling ? '-falling' : ''}`;
+/** Glyph parameters per toolbox entry (variant = entry label) on a 0…1.5 time span. */
+function glyphDef(kind: GeneratorKind, variant: string) {
+  const def = defaultGenerator(kind);
+  def.timing.frequency = 1;
+  switch (def.generator) {
+    case 'pulse':
+      def.params = { ...def.params, width: 0.25, rise: 0.05, fall: 0.05 };
+      break;
+    case 'dc':
+      def.params.level = 0.4;
+      break;
+    case 'sawtooth':
+      if (variant === 'Inverted sawtooth') def.params.slope = 'falling';
+      break;
+    case 'exponential':
+      def.params = variant === 'Exponential decay' ? { initial: 1, final: 0, tau: 0.3 } : { initial: 0, final: 1, tau: 0.3 };
+      def.timing.delay = 0.1;
+      break;
+    case 'damped':
+      def.timing.frequency = 2.4;
+      def.params.tau = 0.55;
+      break;
+    case 'piecewise':
+      def.params.points = [[0, 0], [0.15, 1], [0.45, 1], [0.6, 0], [0.75, 0]];
+      break;
+    case 'bits':
+      def.params = {
+        ...def.params,
+        bits: '1011',
+        bitTime: 0.35,
+        encoding: variant === 'RZ' ? 'rz' : variant === 'Manchester' ? 'manchester' : 'nrz',
+      };
+      break;
+  }
+  return def;
+}
+
+export function WaveGlyph({ kind, variant = '', size = 28 }: { kind: GeneratorKind; variant?: string; size?: number }) {
+  const key = `${kind}|${variant}`;
   let d = glyphCache.get(key);
   if (d === undefined) {
-    const def = defaultGenerator(kind);
-    def.timing.frequency = 1;
-    if (def.generator === 'pulse') def.params = { ...def.params, width: 0.25, rise: 0.05, fall: 0.05 };
-    if (def.generator === 'dc') def.params.level = 0.4;
-    if (def.generator === 'sawtooth' && falling) def.params.slope = 'falling';
+    const def = glyphDef(kind, variant);
     const W = 28;
     const H = 18;
     const { lines } = sampleSignal(compileGenerator(def), 0, 1.5, 40);

@@ -27,6 +27,7 @@ npm run e2e        # browser end-to-end checks: editor, snapping, files & export
 | — | Phone & tablet layout | ✅ |
 | M8 | Cursors and measurements | ✅ |
 | M9 | Axes, styles and figure settings | ✅ |
+| M10 | Exponential, damped sine, piecewise, bit sequences (NRZ/RZ/Manchester) | ✅ |
 
 See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the mathematical conventions.
 

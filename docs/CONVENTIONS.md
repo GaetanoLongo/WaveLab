@@ -108,3 +108,15 @@ These rules are part of the file format: changing them later needs a schema migr
 - Duty cycle = fraction of the interval above the mid level (max + min)/2; frequency = (n − 1)/(t_last − t_first)
   over same-direction crossings of that level (the direction with more crossings), "—" with fewer than two.
 - Cursors are view state like the zoom: saved in the file, not part of undo, not marking the project unsaved.
+
+## One-shot and table generators (M10)
+- These start at the signal's **start time** (stored as the delay, so dragging moves them).
+- Exponential: y = final + (initial − final)·e^(−(t − start)/τ) for t ≥ start, `initial` before.
+- Damped sinusoid: y = offset + A·e^(−u/τ)·sin(2πf·u + φ), u = t − start, `offset` before; peaks are exact
+  (tan(ωu + φ) = ωτ). Phase difference with other signals is not defined for it.
+- Piecewise: points (t relative to start, sorted); equal times = vertical step; linear or step (hold)
+  interpolation; repeat with period = last t − first t, otherwise the first/last values hold outside.
+- Bit sequences: NRZ (level for the whole bit), RZ (a 1 is high for the first half), Manchester per
+  IEEE 802.3 (0 = high→low, 1 = low→high at mid-bit; G. E. Thomas uses the opposite). Idle level outside a
+  non-repeating frame: low.
+- For fitting the view, exponential and damped signals report a region of interest of 5τ after the start.

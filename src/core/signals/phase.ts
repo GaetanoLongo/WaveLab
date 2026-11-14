@@ -32,7 +32,8 @@ export function intrinsicPhaseDeg(def: GeneratorDef): number | null {
       const center = Math.min(T, rise + width + fall) / 2; // symmetric approximation for rise ≠ fall
       return 90 - (360 * center) / T;
     }
-    case 'dc':
+    default:
+      // DC and non-periodic generators have no fundamental phase.
       return null;
   }
 }

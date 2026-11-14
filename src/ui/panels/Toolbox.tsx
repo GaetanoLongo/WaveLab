@@ -34,6 +34,18 @@ const BASIC: Entry[] = [
     title: 'Falling ramp with a rising edge each period',
   },
   { label: 'DC', kind: 'dc', title: 'Constant level' },
+  { label: 'Exponential rise', kind: 'exponential', name: 'Exp rise', title: 'First-order rise 0 → 1 with time constant τ' },
+  {
+    label: 'Exponential decay',
+    kind: 'exponential',
+    name: 'Exp decay',
+    customize: (d) => {
+      if (d.generator === 'exponential') Object.assign(d.params, { initial: 1, final: 0 });
+    },
+    title: 'First-order decay 1 → 0 with time constant τ',
+  },
+  { label: 'Damped sinusoid', kind: 'damped', title: 'A·e^(−t/τ)·sin(ωt + φ)' },
+  { label: 'Custom piecewise', kind: 'piecewise', title: 'Waveform through a table of points (linear or step), optionally repeating' },
 ];
 
 const DIGITAL: Entry[] = [
@@ -57,16 +69,28 @@ const DIGITAL: Entry[] = [
     },
     title: 'One 5 V pulse (a pulse train limited to one cycle)',
   },
+  { label: 'NRZ', kind: 'bits', name: 'NRZ', title: 'Bit sequence, non-return-to-zero' },
+  {
+    label: 'RZ',
+    kind: 'bits',
+    name: 'RZ',
+    customize: (d) => d.generator === 'bits' && void (d.params.encoding = 'rz'),
+    title: 'Bit sequence, return-to-zero (a 1 is high for half a bit)',
+  },
+  {
+    label: 'Manchester',
+    kind: 'bits',
+    name: 'Manchester',
+    customize: (d) => d.generator === 'bits' && void (d.params.encoding = 'manchester'),
+    title: 'Manchester code (IEEE 802.3: 0 = high→low, 1 = low→high)',
+  },
+  { label: 'Bit sequence', kind: 'bits', name: 'Bits', title: 'Arbitrary bit sequence: edit bits, bit time, levels and encoding' },
 ];
 
-const PLANNED_BASIC = ['Exponential rise', 'Exponential decay', 'Damped sinusoid', 'Custom piecewise'];
+const PLANNED_BASIC: string[] = [];
 const PLANNED_DIGITAL: Array<[string, string]> = [
-  ['PWM signal', 'M8'],
-  ['PPM', 'Phase 4'],
-  ['NRZ', 'Phase 4'],
-  ['RZ', 'Phase 4'],
-  ['Manchester', 'Phase 4'],
-  ['Bit sequence', 'Phase 4'],
+  ['PWM generator', 'PWM module'],
+  ['PPM', 'PWM module'],
 ];
 type Template = (a: string, b: string, ctx: { periodA?: number }) => string;
 const OPS: Array<[label: string, glyph: string, name: string, arity: 1 | 2, tpl: Template, title: string, unit?: (u: string) => string]> = [
@@ -97,7 +121,7 @@ const OPS: Array<[label: string, glyph: string, name: string, arity: 1 | 2, tpl:
 function EntryButton({ e }: { e: Entry }) {
   return (
     <button className="tool" title={e.title} onClick={() => actions.addSignal(e.kind, e.customize, e.name)}>
-      <WaveGlyph kind={e.kind} falling={e.label === 'Inverted sawtooth'} />
+      <WaveGlyph kind={e.kind} variant={e.label} />
       <span>{e.label}</span>
     </button>
   );

@@ -361,3 +361,11 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 .field-inline input[type='color'] { width: 64px; }
 .range-btn { border: 0; background: transparent; padding: 0; color: inherit; font: inherit; text-decoration: underline dotted; }
 @media (max-width: 760px) { .settings-grid { grid-template-columns: 1fr; } .field-pair { grid-template-columns: 1fr; } }
+
+/* ---------- M10: point table ---------- */
+table.points { width: 100%; border-collapse: collapse; }
+table.points th { text-align: left; font-weight: 500; color: var(--faint); font-size: 11.5px; padding: 0 2px 2px; }
+table.points td { padding: 1px 2px; }
+table.points .field { grid-template-columns: 0 minmax(0, 1fr); gap: 0; }
+table.points .field label { display: none; }
+table.points td:last-child { width: 28px; }

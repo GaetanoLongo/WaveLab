@@ -13,7 +13,22 @@
  *    upward, cosine is at its maximum.
  */
 
-export type GeneratorKind = 'sine' | 'cosine' | 'square' | 'pulse' | 'triangle' | 'sawtooth' | 'dc';
+export type GeneratorKind =
+  | 'sine'
+  | 'cosine'
+  | 'square'
+  | 'pulse'
+  | 'triangle'
+  | 'sawtooth'
+  | 'dc'
+  | 'exponential'
+  | 'damped'
+  | 'piecewise'
+  | 'bits';
+
+/** Generators that repeat with timing.frequency (the others are one-shot or define their own repetition). */
+export const PERIODIC_KINDS: GeneratorKind[] = ['sine', 'cosine', 'square', 'pulse', 'triangle', 'sawtooth'];
+export const isPeriodicKind = (k: GeneratorKind) => PERIODIC_KINDS.includes(k);
 
 export interface Timing {
   /** Hz. Ignored for DC. */
@@ -75,6 +90,52 @@ export interface DcParams {
   level: number;
 }
 
+/**
+ * First-order step response starting at the signal's start time (timing.delay):
+ * y = final + (initial − final)·e^(−(t − start)/τ) for t ≥ start, `initial` before.
+ */
+export interface ExponentialParams {
+  initial: number;
+  final: number;
+  /** Time constant τ in seconds (> 0). */
+  tau: number;
+}
+
+/**
+ * Damped sinusoid from the start time (timing.delay):
+ * y = offset + A·e^(−τ'/τ)·sin(2πf·τ' + φ), τ' = t − start, for t ≥ start; `offset` before.
+ */
+export interface DampedParams {
+  amplitude: number;
+  offset: number;
+  /** Decay time constant τ in seconds (> 0). */
+  tau: number;
+}
+
+/** Arbitrary waveform through points (t relative to the start time, sorted; equal t = vertical step). */
+export interface PiecewiseParams {
+  points: Array<[number, number]>;
+  interp: 'linear' | 'step';
+  /** Repeat with period = last t − first t; otherwise hold the end values outside. */
+  repeat: boolean;
+}
+
+export type BitEncoding = 'nrz' | 'rz' | 'manchester';
+
+/**
+ * Digital bit sequence from the start time.
+ *  NRZ: level for the whole bit. RZ: '1' is high for the first half of the bit, '0' stays low.
+ *  Manchester (IEEE 802.3): '0' = high→low at mid-bit, '1' = low→high at mid-bit.
+ */
+export interface BitsParams {
+  bits: string;
+  bitTime: number;
+  high: number;
+  low: number;
+  encoding: BitEncoding;
+  repeat: boolean;
+}
+
 interface GeneratorBase {
   timing: Timing;
   window: SignalWindow;
@@ -89,6 +150,10 @@ export type GeneratorDef = GeneratorBase &
     | { generator: 'triangle'; params: TriangleParams }
     | { generator: 'sawtooth'; params: SawtoothParams }
     | { generator: 'dc'; params: DcParams }
+    | { generator: 'exponential'; params: ExponentialParams }
+    | { generator: 'damped'; params: DampedParams }
+    | { generator: 'piecewise'; params: PiecewiseParams }
+    | { generator: 'bits'; params: BitsParams }
   );
 
 export const INFINITE: SignalWindow = { mode: 'infinite' };

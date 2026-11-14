@@ -20,7 +20,7 @@ import {
   type SignalDef,
   type SignalStyle,
 } from '../model/project';
-import type { GeneratorKind, SignalWindow, Timing } from '../model/signal-defs';
+import { isPeriodicKind, type GeneratorKind, type SignalWindow, type Timing } from '../model/signal-defs';
 import { createsCycle, directDeps } from '../model/deps';
 import type { AxisStyle, StyleOverrides } from '../plot/layout';
 import { ExprError, parseExpr } from '../expr/parse';
@@ -69,7 +69,7 @@ function migrate(file: Record<string, unknown>, _from: number): Record<string, u
 
 // ---------------------------------------------------------------------------
 
-const GENERATORS: GeneratorKind[] = ['sine', 'cosine', 'square', 'pulse', 'triangle', 'sawtooth', 'dc'];
+const GENERATORS: GeneratorKind[] = ['sine', 'cosine', 'square', 'pulse', 'triangle', 'sawtooth', 'dc', 'exponential', 'damped', 'piecewise', 'bits'];
 const DASHES: LineDash[] = ['solid', 'dashed', 'dotted', 'dashdot'];
 
 function readProject(v: unknown): Project {
@@ -111,7 +111,7 @@ function readSignal(v: unknown, path: string): SignalDef {
   if (s.kind !== 'generator') throw new ProjectFileError(`${path}.kind "${String(s.kind)}" is not supported by this version.`);
   const generator = s.generator as GeneratorKind;
   if (!GENERATORS.includes(generator)) throw new ProjectFileError(`${path}.generator "${String(s.generator)}" is unknown.`);
-  const timing = readTiming(s.timing, `${path}.timing`, generator !== 'dc');
+  const timing = readTiming(s.timing, `${path}.timing`, isPeriodicKind(generator) || generator === 'damped');
   const window = readWindow(s.window, `${path}.window`);
   const pp = obj(s.params, `${path}.params`);
   const n = (k: string) => num(pp[k], `${path}.params.${k}`);
@@ -150,6 +150,46 @@ function readSignal(v: unknown, path: string): SignalDef {
       };
     case 'dc':
       return { ...base, generator, params: { level: n('level') } };
+    case 'exponential': {
+      const tau = n('tau');
+      if (!(tau > 0)) throw new ProjectFileError(`${path}.params.tau must be positive.`);
+      return { ...base, generator, params: { initial: n('initial'), final: n('final'), tau } };
+    }
+    case 'damped': {
+      const tau = n('tau');
+      if (!(tau > 0)) throw new ProjectFileError(`${path}.params.tau must be positive.`);
+      return { ...base, generator, params: { amplitude: n('amplitude'), offset: n('offset'), tau } };
+    }
+    case 'piecewise': {
+      const raw = arr(pp.points, `${path}.params.points`);
+      const points = raw.map((q, i) => {
+        const pair = arr(q, `${path}.params.points[${i}]`);
+        if (pair.length !== 2) throw new ProjectFileError(`${path}.params.points[${i}] must be [t, y].`);
+        return [num(pair[0], `${path}.params.points[${i}][0]`), num(pair[1], `${path}.params.points[${i}][1]`)] as [number, number];
+      });
+      if (points.length < 2) throw new ProjectFileError(`${path}.params.points needs at least 2 points.`);
+      for (let i = 1; i < points.length; i++) {
+        if (points[i]![0] < points[i - 1]![0]) throw new ProjectFileError(`${path}.params.points must be sorted by time.`);
+      }
+      const interp = pp.interp;
+      if (interp !== 'linear' && interp !== 'step') throw new ProjectFileError(`${path}.params.interp must be "linear" or "step".`);
+      return { ...base, generator, params: { points, interp, repeat: bool(pp.repeat, `${path}.params.repeat`) } };
+    }
+    case 'bits': {
+      const bitsStr = str(pp.bits, `${path}.params.bits`);
+      if (!/^[01]+$/.test(bitsStr)) throw new ProjectFileError(`${path}.params.bits must contain only 0 and 1.`);
+      const bitTime = n('bitTime');
+      if (!(bitTime > 0)) throw new ProjectFileError(`${path}.params.bitTime must be positive.`);
+      const encoding = pp.encoding;
+      if (encoding !== 'nrz' && encoding !== 'rz' && encoding !== 'manchester') {
+        throw new ProjectFileError(`${path}.params.encoding must be "nrz", "rz" or "manchester".`);
+      }
+      return {
+        ...base,
+        generator,
+        params: { bits: bitsStr, bitTime, high: n('high'), low: n('low'), encoding, repeat: bool(pp.repeat, `${path}.params.repeat`) },
+      };
+    }
   }
 }
 

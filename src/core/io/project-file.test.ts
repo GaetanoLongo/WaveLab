@@ -173,3 +173,24 @@ describe('style and axis settings in project files', () => {
     expect(() => parseProjectFile(JSON.stringify(f))).toThrow(/legend is not a valid position/);
   });
 });
+
+describe('new generators in project files (M10)', () => {
+  it('round-trip exponential, damped, piecewise and bits; reject bad bits', () => {
+    const p = sample();
+    p.signals = [
+      sig('e', 'exponential', (d) => d.generator === 'exponential' && Object.assign(d.params, { initial: 2, final: -1, tau: 0.003 })),
+      sig('d', 'damped', (d) => (d.timing.frequency = 200)),
+      sig('p', 'piecewise', (d) => d.generator === 'piecewise' && (d.params.interp = 'step')),
+      sig('b', 'bits', (d) => d.generator === 'bits' && Object.assign(d.params, { bits: '1101', encoding: 'manchester', repeat: true })),
+    ];
+    p.figures[0]!.panels[0]!.traces = p.signals.map((s) => ({ signalId: s.id }));
+    const back = parseProjectFile(serializeProject(p)).project;
+    expect(back.signals).toEqual(p.signals);
+    const f = JSON.parse(serializeProject(p));
+    f.project.signals[3].params.bits = '10a1';
+    expect(() => parseProjectFile(JSON.stringify(f))).toThrow(/only 0 and 1/);
+    const g = JSON.parse(serializeProject(p));
+    g.project.signals[2].params.points = [[0.01, 0], [0, 1]];
+    expect(() => parseProjectFile(JSON.stringify(g))).toThrow(/sorted by time/);
+  });
+});

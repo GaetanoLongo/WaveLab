@@ -8,6 +8,7 @@
  */
 
 import type { GeneratorDef, SignalWindow } from '../model/signal-defs';
+import { compileExtra } from './extra';
 import { shapeFor, shapeLeftValue, type PeriodicShape } from './shapes';
 import { DEFAULT_MAX_FEATURES, type Feature, type FeatureQuery, type SignalEval } from './types';
 
@@ -36,6 +37,8 @@ function activeRange(w: SignalWindow, frequency: number): ActiveRange {
 }
 
 export function compileGenerator(def: GeneratorDef): SignalEval {
+  const extra = compileExtra(def);
+  if (extra) return extra;
   const isDc = def.generator === 'dc';
   const f = isDc ? 1 : def.timing.frequency;
   if (!(f > 0) || !Number.isFinite(f)) return invalidSignal();

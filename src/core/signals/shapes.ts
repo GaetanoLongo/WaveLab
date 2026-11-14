@@ -143,6 +143,9 @@ export function shapeFor(def: GeneratorDef): PeriodicShape {
       return sawtoothShape(def.params);
     case 'dc':
       return constantShape(def.params.level);
+    default:
+      // Non-periodic generators are compiled in extra.ts and never reach here.
+      return constantShape(NaN);
   }
 }
 
