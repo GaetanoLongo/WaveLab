@@ -10,7 +10,8 @@ import { loadFile } from './fileio';
 import { formatSI } from '../core/units/si';
 import { compiled } from '../state/compiled';
 import { useSettings } from '../state/settings';
-import { actions, editor, figureGroups, findSignal, isDirty, orderedSignals, useActiveFigure, useEditor } from '../state/store';
+import { actions, editor, figureGroups, findSignal, isDirty, orderedSignals, useActiveFigure, useEditor, viewOf } from '../state/store';
+import { gridColumns } from '../core/model/project';
 import { FigureTabs } from './panels/FigureTabs';
 import { PropertiesPanel } from './panels/PropertiesPanel';
 import { MeasurePanel } from './panels/MeasurePanel';
@@ -127,90 +128,34 @@ function PhoneWorkspace() {
 
 function PlotArea() {
   const phoneLayout = useMediaQuery(PHONE_QUERY);
-  const project = useEditor((s) => s.project);
-  const selectedId = useEditor((s) => s.selectedId);
   const view = useEditor((s) => s.view);
   const notice = useEditor((s) => s.notice);
-  const fig = useActiveFigure();
-  const mode = fig.mode;
+  const gridView = useEditor((s) => s.gridView && s.project.figures.length > 1);
+  const figures = useEditor((s) => s.project.figures);
+  const activeId = useActiveFigure().id;
+  const grid = useEditor((s) => s.project.grid);
   const [cursor, setCursor] = useState<CursorInfo | null>(null);
-  const snap = useSettings((s) => s.snap);
-  const visibleIds = orderedSignals(project).filter((s) => s.style.visible).map((s) => s.id);
-  const yTraceId =
-    (view.cursors.target && visibleIds.includes(view.cursors.target) ? view.cursors.target : null) ??
-    (selectedId && visibleIds.includes(selectedId) ? selectedId : null) ??
-    visibleIds[0] ??
-    null;
-  const theme = useMemo(() => resolveTheme(fig.stylePreset, fig.style), [fig.stylePreset, fig.style]);
-  const cursorSpec = useMemo(
-    () => ({ t: view.cursors.t, y: view.cursors.y, yTraceId }),
-    [view.cursors.t, view.cursors.y, yTraceId],
-  );
-
-  const groups = useMemo(() => {
-    const toTrace = (s: (typeof project.signals)[number]): TraceInput => ({
-      id: s.id,
-      name: s.name,
-      signal: compiled(s, project),
-      color: s.style.color,
-      lineWidth: s.style.lineWidth,
-      dash: s.style.dash,
-      unit: s.unit,
-      showInLegend: s.style.showInLegend,
-      highlight: s.id === selectedId,
-    });
-    return figureGroups(project, fig.id).map(({ group, signals }) => ({
-      id: group.id,
-      name: group.name,
-      share: group.share,
-      traces: signals.filter((s) => s.style.visible).map(toTrace),
-    }));
-  }, [project, fig.id, selectedId]);
-  const traces = useMemo(() => groups.flatMap((g) => g.traces), [groups]);
+  const cols = gridColumns(figures.length, grid);
 
   return (
     <main className="plot-column">
       <FigureTabs />
-      <div className="plot-area">
-        <PlotView
-          traces={traces}
-          mode={mode}
-          xRange={view.xRange}
-          onXRangeChange={actions.setXRange}
-          yRanges={view.yRanges}
-          onYRangeChange={actions.setYRange}
-          onFit={actions.fitAll}
-          theme={theme}
-          axes={fig.axes}
-          showLegend={fig.showLegend}
-          groups={groups}
-          onCursor={setCursor}
-          onSelect={actions.select}
-          snap={snap}
-          canMove={(id) => {
-            const s = findSignal(editor.getState().project, id);
-            return !!s && !s.locked && s.kind === 'generator';
-          }}
-          getTiming={(id) => {
-            const s = findSignal(editor.getState().project, id);
-            if (!s || s.kind !== 'generator') return null;
-            return { ...s.timing, periodic: isPeriodicKind(s.generator) };
-          }}
-          onMove={(id, delay, key) => actions.setDelay(id, delay, key)}
-          cursors={cursorSpec}
-          onCursorMove={actions.setCursor}
-          onAxisDoubleClick={openAxes}
-          emptyMessage={
-            project.signals.length > 0 && orderedSignals(project, fig.id).length === 0
-              ? 'This figure is empty: add a waveform, or add existing signals from the signal list.'
-              : project.signals.length === 0
-              ? phoneLayout
-                ? 'Add a waveform from the “Add” tab below.'
-                : 'Add a waveform from the toolbox on the left.'
-              : 'All signals are hidden.'
-          }
-        />
-      </div>
+      {gridView ? (
+        <div className="figure-grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+          {figures.map((f) => (
+            <div key={f.id} className={`grid-cell${f.id === activeId ? ' active' : ''}`}>
+              <button className="cell-head" onClick={() => actions.switchFigure(f.id)} title="Make this the active figure">
+                {f.name}
+              </button>
+              <FigurePlot figId={f.id} active={f.id === activeId} onCursor={setCursor} phoneLayout={phoneLayout} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="plot-area">
+          <FigurePlot figId={activeId} active onCursor={setCursor} phoneLayout={phoneLayout} />
+        </div>
+      )}
       {!phoneLayout && <MeasurePanel />}
       <footer className="status">
         <button className="range-btn" title="Set the visible time interval (Axes)" onClick={() => openAxes('x')}>
@@ -228,5 +173,95 @@ function PlotArea() {
         )}
       </footer>
     </main>
+  );
+}
+
+const noop = () => {};
+
+/**
+ * One figure's plot. The active figure is interactive; in grid view the others are drawn
+ * read-only and become active on the first pointer press.
+ */
+function FigurePlot({ figId, active, onCursor, phoneLayout }: { figId: string; active: boolean; onCursor(c: CursorInfo | null): void; phoneLayout: boolean }) {
+  const project = useEditor((s) => s.project);
+  const selectedId = useEditor((s) => s.selectedId);
+  // Select only stored objects (a freshly built default view would re-render forever).
+  const stored = useEditor((s) => (s.activeFigureId === figId ? s.view : s.views[figId]));
+  const fallback = useMemo(() => viewOf({ ...editor.getState(), project }, figId), [project, figId]);
+  const view = stored ?? fallback;
+  const fig = project.figures.find((f) => f.id === figId) ?? project.figures[0]!;
+  const snap = useSettings((s) => s.snap);
+  const visibleIds = orderedSignals(project, fig.id).filter((s) => s.style.visible).map((s) => s.id);
+  const yTraceId =
+    (view.cursors.target && visibleIds.includes(view.cursors.target) ? view.cursors.target : null) ??
+    (active && selectedId && visibleIds.includes(selectedId) ? selectedId : null) ??
+    visibleIds[0] ??
+    null;
+  const theme = useMemo(() => resolveTheme(fig.stylePreset, fig.style), [fig.stylePreset, fig.style]);
+  const cursorSpec = useMemo(() => ({ t: view.cursors.t, y: view.cursors.y, yTraceId }), [view.cursors.t, view.cursors.y, yTraceId]);
+
+  const groups = useMemo(() => {
+    const toTrace = (s: (typeof project.signals)[number]): TraceInput => ({
+      id: s.id,
+      name: s.name,
+      signal: compiled(s, project),
+      color: s.style.color,
+      lineWidth: s.style.lineWidth,
+      dash: s.style.dash,
+      unit: s.unit,
+      showInLegend: s.style.showInLegend,
+      highlight: active && s.id === selectedId,
+    });
+    return figureGroups(project, fig.id).map(({ group, signals }) => ({
+      id: group.id,
+      name: group.name,
+      share: group.share,
+      traces: signals.filter((s) => s.style.visible).map(toTrace),
+    }));
+  }, [project, fig.id, selectedId, active]);
+  const traces = useMemo(() => groups.flatMap((g) => g.traces), [groups]);
+
+  return (
+    <div className="figure-plot" onPointerDownCapture={() => !active && actions.switchFigure(figId)}>
+      <PlotView
+        traces={traces}
+        mode={fig.mode}
+        xRange={view.xRange}
+        onXRangeChange={active ? actions.setXRange : noop}
+        yRanges={view.yRanges}
+        onYRangeChange={active ? actions.setYRange : noop}
+        onFit={active ? actions.fitAll : noop}
+        theme={theme}
+        axes={fig.axes}
+        showLegend={fig.showLegend}
+        groups={groups}
+        onCursor={active ? onCursor : undefined}
+        onSelect={active ? actions.select : undefined}
+        snap={snap}
+        canMove={(id) => {
+          if (!active) return false;
+          const s = findSignal(editor.getState().project, id);
+          return !!s && !s.locked && s.kind === 'generator';
+        }}
+        getTiming={(id) => {
+          const s = findSignal(editor.getState().project, id);
+          if (!s || s.kind !== 'generator') return null;
+          return { ...s.timing, periodic: isPeriodicKind(s.generator) };
+        }}
+        onMove={active ? (id, delay, key) => actions.setDelay(id, delay, key) : undefined}
+        cursors={cursorSpec}
+        onCursorMove={active ? actions.setCursor : undefined}
+        onAxisDoubleClick={active ? openAxes : undefined}
+        emptyMessage={
+          project.signals.length > 0 && visibleIds.length === 0 && orderedSignals(project, fig.id).length === 0
+            ? 'This figure is empty: add a waveform, or add existing signals from the signal list.'
+            : project.signals.length === 0
+              ? phoneLayout
+                ? 'Add a waveform from the “Add” tab below.'
+                : 'Add a waveform from the toolbox on the left.'
+              : 'All signals are hidden.'
+        }
+      />
+    </div>
   );
 }

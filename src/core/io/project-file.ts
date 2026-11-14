@@ -101,12 +101,22 @@ function readProject(v: unknown): Project {
     if (figIds.has(f.id)) throw new ProjectFileError(`Duplicate figure id "${f.id}".`);
     figIds.add(f.id);
   }
+  let grid: Project['grid'];
+  if (p.grid !== undefined) {
+    const g = obj(p.grid, 'project.grid');
+    const columns = g.columns === null || g.columns === undefined ? null : Math.round(num(g.columns, 'project.grid.columns'));
+    if (columns !== null && (columns < 1 || columns > 12)) throw new ProjectFileError('project.grid.columns must be between 1 and 12.');
+    const link = g.link ?? 'none';
+    if (link !== 'none' && link !== 'columns' && link !== 'all') throw new ProjectFileError('project.grid.link must be none, columns or all.');
+    grid = { columns, link };
+  }
   return {
     schemaVersion: SCHEMA_VERSION,
     appVersion: __APP_VERSION__,
     name: str(p.name, 'project.name') || 'Untitled',
     signals,
     figures,
+    ...(grid ? { grid } : {}),
   };
 }
 

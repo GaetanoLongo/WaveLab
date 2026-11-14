@@ -437,3 +437,43 @@ describe('groups and figures (M11)', () => {
 });
 
 const g_ = (id: string) => findSignal(editor.getState().project, id)!;
+
+describe('grid of figures', () => {
+  it('links time axes per column or for all figures (grid view only)', () => {
+    actions.addSignal('sine');
+    const f1 = st().activeFigureId;
+    const f2 = actions.addFigure();
+    const f3 = actions.addFigure();
+    actions.switchFigure(f1);
+    actions.setGrid({ columns: 2, link: 'columns' });
+    actions.setGridView(true);
+    actions.setXRange([0, 0.007]);
+    // 2 columns: f1 and f3 share column 0, f2 is in column 1.
+    expect(st().views[f3]!.xRange).toEqual([0, 0.007]);
+    expect(st().views[f2]?.xRange).not.toEqual([0, 0.007]);
+    actions.setGrid({ link: 'all' });
+    actions.setXRange([0, 0.003]);
+    expect(st().views[f2]!.xRange).toEqual([0, 0.003]);
+    actions.setGridView(false);
+    actions.setXRange([0, 0.009]);
+    expect(st().views[f2]!.xRange).toEqual([0, 0.003]); // no linking outside grid view
+    const back = parseProjectFile(serializeProject(st().project)).project;
+    expect(back.grid).toEqual({ columns: 2, link: 'all' });
+  });
+
+  it('composeScenes offsets items and prefixes clip ids', async () => {
+    const { composeScenes } = await import('../core/plot/scene');
+    const cell = {
+      width: 100,
+      height: 50,
+      background: '#fff',
+      fontFamily: 'Inter',
+      clips: [{ id: 'clip-0', x: 10, y: 5, w: 80, h: 40 }],
+      items: [{ type: 'path' as const, polylines: [[10, 5, 20, 15]], stroke: '#000', width: 1, dash: 'solid' as const, clipId: 'clip-0' }],
+    };
+    const s = composeScenes([{ scene: cell, x: 0, y: 0 }, { scene: cell, x: 100, y: 50 }], 200, 100, '#fff');
+    expect(s.clips.map((c) => [c.id, c.x, c.y])).toEqual([['c0-clip-0', 10, 5], ['c1-clip-0', 110, 55]]);
+    const p = s.items.filter((i) => i.type === 'path')[1]!;
+    expect(p.type === 'path' && [p.clipId, p.polylines[0]]).toEqual(['c1-clip-0', [110, 55, 120, 65]]);
+  });
+});

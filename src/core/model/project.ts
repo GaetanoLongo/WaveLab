@@ -117,12 +117,24 @@ export interface SavedView {
   activeFigure?: string;
 }
 
+/** Grid view of all figures: columns (null = automatic) and time-axis linking. */
+export interface GridSettings {
+  columns: number | null;
+  link: 'none' | 'columns' | 'all';
+}
+
 export interface Project {
   schemaVersion: number;
   appVersion: string;
   name: string;
   signals: SignalDef[];
   figures: Figure[];
+  grid?: GridSettings;
+}
+
+/** Number of grid columns for n figures. */
+export function gridColumns(n: number, g?: GridSettings): number {
+  return Math.max(1, Math.min(n, g?.columns ?? Math.ceil(Math.sqrt(n))));
 }
 
 export function emptyProject(name = 'Untitled'): Project {

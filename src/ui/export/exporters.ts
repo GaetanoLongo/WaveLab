@@ -7,7 +7,9 @@ import type { Scene } from '../../core/plot/scene';
 import { buildFigure, panelsForGroups, resolveTheme, type PlotTheme, type TraceInput } from '../../core/plot/layout';
 import { sceneToSvg } from '../../core/plot/svg';
 import { compiled } from '../../state/compiled';
-import { actions, activeFigure, editor, figureGroups } from '../../state/store';
+import { actions, activeFigure, editor, figureGroups, orderedSignals, viewOf } from '../../state/store';
+import { gridColumns } from '../../core/model/project';
+import { composeScenes } from '../../core/plot/scene';
 import { downloadBlob } from '../fileio';
 
 export type ExportFormat = 'png' | 'svg' | 'pdf';
@@ -30,6 +32,8 @@ export interface ExportOptions {
   fileName: string;
   /** Draw the measurement cursors into the exported figure. */
   includeCursors: boolean;
+  /** The current figure, or all figures as a grid (one image). */
+  content: 'figure' | 'grid';
 }
 
 export const DEFAULT_EXPORT: Omit<ExportOptions, 'fileName'> = {
@@ -44,6 +48,7 @@ export const DEFAULT_EXPORT: Omit<ExportOptions, 'fileName'> = {
   orientation: 'landscape',
   fit: true,
   includeCursors: false,
+  content: 'figure',
 };
 
 const PAGE_MM: Record<'A4' | 'A3' | 'Letter', [number, number]> = {
@@ -56,9 +61,29 @@ const PX_TO_PT = 0.75; // 96 dpi
 const MARGIN_MM = 10;
 
 /** Scene of the current project at the export size (no selection halo). */
-export function buildExportScene(width: number, height: number, transparent: boolean, includeCursors = false): Scene {
+/** Scene of the current figure, or of all figures as a grid, at the export size. */
+export function buildExportScene(width: number, height: number, transparent: boolean, includeCursors = false, content: 'figure' | 'grid' = 'figure'): Scene {
   const st = editor.getState();
-  const fig = activeFigure(st.project, st.activeFigureId);
+  if (content === 'grid' && st.project.figures.length > 1) {
+    const figs = st.project.figures;
+    const cols = gridColumns(figs.length, st.project.grid);
+    const rows = Math.ceil(figs.length / cols);
+    const cw = width / cols;
+    const ch = height / rows;
+    const cells = figs.map((f, i) => ({
+      scene: buildFigureScene(f.id, cw, ch, transparent, includeCursors),
+      x: (i % cols) * cw,
+      y: Math.floor(i / cols) * ch,
+    }));
+    return composeScenes(cells, width, height, transparent ? null : cells[0]!.scene.background);
+  }
+  return buildFigureScene(st.activeFigureId, width, height, transparent, includeCursors);
+}
+
+function buildFigureScene(figId: string, width: number, height: number, transparent: boolean, includeCursors: boolean): Scene {
+  const st = editor.getState();
+  const fig = activeFigure(st.project, figId);
+  const view = viewOf(st, figId);
   const base: PlotTheme = resolveTheme(fig.stylePreset, fig.style);
   const theme: PlotTheme = transparent ? { ...base, background: null, plotBackground: 'none' } : base;
   const groups = figureGroups(st.project, fig.id).map(({ group, signals }) => ({
@@ -83,19 +108,21 @@ export function buildExportScene(width: number, height: number, transparent: boo
   return buildFigure({
     width,
     height,
-    panels: panelsForGroups(fig.mode, groups, st.view.yRanges),
-    xRange: st.view.xRange,
+    panels: panelsForGroups(fig.mode, groups, view.yRanges),
+    xRange: view.xRange,
     xTitle: 'Time',
     showLegend: fig.showLegend,
     theme,
-    cursors: includeCursors ? cursorSpecFor() : undefined,
+    cursors: includeCursors ? cursorSpecFor(figId) : undefined,
     axes: fig.axes,
   }).scene;
 }
 
-function cursorSpecFor() {
+function cursorSpecFor(figId: string) {
   const st = editor.getState();
-  return { t: st.view.cursors.t, y: st.view.cursors.y, yTraceId: actions.measureTarget()?.id ?? null };
+  const v = viewOf(st, figId);
+  const target = figId === st.activeFigureId ? actions.measureTarget()?.id : orderedSignals(st.project, figId).find((s) => s.style.visible)?.id;
+  return { t: v.cursors.t, y: v.cursors.y, yTraceId: v.cursors.target ?? target ?? null };
 }
 
 // --- fonts ---------------------------------------------------------------------
@@ -135,7 +162,7 @@ async function fontFaceCss(): Promise<string> {
 // --- exporters -------------------------------------------------------------------
 
 export function svgString(o: ExportOptions): string {
-  return sceneToSvg(buildExportScene(o.width, o.height, o.transparent, o.includeCursors), { xmlDeclaration: true, idPrefix: 'wl-' });
+  return sceneToSvg(buildExportScene(o.width, o.height, o.transparent, o.includeCursors, o.content), { xmlDeclaration: true, idPrefix: 'wl-' });
 }
 
 export async function exportSvg(o: ExportOptions): Promise<void> {
@@ -143,7 +170,7 @@ export async function exportSvg(o: ExportOptions): Promise<void> {
 }
 
 export async function renderPng(o: ExportOptions): Promise<Blob> {
-  const scene = buildExportScene(o.width, o.height, o.transparent, o.includeCursors);
+  const scene = buildExportScene(o.width, o.height, o.transparent, o.includeCursors, o.content);
   const svg = sceneToSvg(scene, { css: await fontFaceCss(), pixelScale: o.scale, idPrefix: 'wl-' });
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
   try {
@@ -207,7 +234,7 @@ export async function renderPdf(o: ExportOptions): Promise<Blob> {
   const x = (pw - w) / 2;
   const y = (ph - h) / 2;
 
-  const svgText = sceneToSvg(buildExportScene(o.width, o.height, o.transparent, o.includeCursors), { idPrefix: 'wlpdf-' });
+  const svgText = sceneToSvg(buildExportScene(o.width, o.height, o.transparent, o.includeCursors, o.content), { idPrefix: 'wlpdf-' });
   const host = document.createElement('div');
   host.style.cssText = 'position:fixed;left:-10000px;top:0;visibility:hidden';
   host.innerHTML = svgText;

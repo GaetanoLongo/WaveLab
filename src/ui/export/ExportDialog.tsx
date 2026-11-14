@@ -68,10 +68,10 @@ function Dialog() {
 
   // Preview uses exactly the export scene.
   const preview = useMemo(() => {
-    const svg = sceneToSvg(buildExportScene(o.width, o.height, o.transparent, o.includeCursors), { idPrefix: 'wlprev-' });
+    const svg = sceneToSvg(buildExportScene(o.width, o.height, o.transparent, o.includeCursors, o.content), { idPrefix: 'wlprev-' });
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
     // project/view are dependencies because buildExportScene reads them from the store.
-  }, [o.width, o.height, o.transparent, o.includeCursors, project, view]);
+  }, [o.width, o.height, o.transparent, o.includeCursors, o.content, project, view]);
 
   const doExport = async () => {
     setBusy(true);
@@ -124,6 +124,15 @@ function Dialog() {
             </p>
 
             <h3>Figure</h3>
+            {project.figures.length > 1 && (
+              <div className="field">
+                <label>Content</label>
+                <select value={o.content} onChange={(e) => set({ content: e.target.value as 'figure' | 'grid' })}>
+                  <option value="figure">Current figure</option>
+                  <option value="grid">All figures (grid)</option>
+                </select>
+              </div>
+            )}
             <div className="field">
               <label>Style</label>
               <select value={fig.stylePreset} onChange={(e) => actions.setStylePreset(e.target.value)}>

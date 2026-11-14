@@ -8,6 +8,8 @@ export function FigureTabs() {
   const figures = useEditor((s) => s.project.figures);
   const active = useEditor((s) => s.activeFigureId);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const gridView = useEditor((s) => s.gridView);
+  const grid = useEditor((s) => s.project.grid);
 
   return (
     <div className="figure-tabs" role="tablist" aria-label="Figures">
@@ -55,6 +57,44 @@ export function FigureTabs() {
       <button className="fig-add" title="New figure" aria-label="New figure" onClick={() => actions.addFigure()}>
         +
       </button>
+      {figures.length > 1 && (
+        <div className="grid-controls">
+          <button
+            className={`toggle${gridView ? ' on' : ''}`}
+            aria-pressed={gridView}
+            title="Show all figures side by side"
+            onClick={() => actions.setGridView(!gridView)}
+          >
+            ⊞ Grid
+          </button>
+          {gridView && (
+            <>
+              <select
+                aria-label="Grid columns"
+                value={grid?.columns ?? 'auto'}
+                onChange={(e) => actions.setGrid({ columns: e.target.value === 'auto' ? null : Number(e.target.value) })}
+              >
+                <option value="auto">Auto columns</option>
+                {[1, 2, 3, 4, 5, 6].map((n) => (
+                  <option key={n} value={n}>
+                    {n} column{n > 1 ? 's' : ''}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Time axis linking"
+                value={grid?.link ?? 'none'}
+                onChange={(e) => actions.setGrid({ link: e.target.value as 'none' | 'columns' | 'all' })}
+                title="Zooming the active figure also zooms the linked ones"
+              >
+                <option value="none">Independent time axes</option>
+                <option value="columns">Link time per column</option>
+                <option value="all">Link all time axes</option>
+              </select>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

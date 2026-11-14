@@ -29,6 +29,7 @@ npm run e2e        # browser end-to-end checks: editor, snapping, files & export
 | M9 | Axes, styles and figure settings | ✅ |
 | M10 | Exponential, damped sine, piecewise, bit sequences (NRZ/RZ/Manchester) | ✅ |
 | M11 | Signal groups and multiple figures | ✅ |
+| — | Grid of figures (matrix view, linked time axes, grid export) | ✅ |
 
 See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the mathematical conventions.
 
@@ -46,6 +47,9 @@ from samples. Cursors are saved in the project file and are left out of exports 
 - **Figures** (tabs above the plot): each has its own signals and groups, overlay/stacked mode, style, axes,
   zoom and cursors. Signals belong to the project and can appear in several figures ("Not in this figure" lists
   the others; ⊖ removes a signal from the current figure only). Export applies to the current figure.
+- **Grid** (with two or more figures): all figures side by side; automatic or 1–6 columns; time axes
+  independent, linked per column or all linked; click a cell to make it active. Export can produce the
+  whole grid as one image ("Content: All figures").
 
 ## Axes and figure style
 - **Axes** (toolbar button, click the time range in the status bar, or double-click an axis): exact visible

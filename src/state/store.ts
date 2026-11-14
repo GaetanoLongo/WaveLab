@@ -18,6 +18,8 @@ import {
   emptyProject,
   type DerivedSignalDef,
   type Figure,
+  type GridSettings,
+  gridColumns,
   type Panel,
   type GeneratorSignalDef,
   type Project,
@@ -59,6 +61,8 @@ export interface EditorState {
   activeFigureId: string;
   /** Saved views of the other figures (zoom and cursors are per figure). */
   views: Record<string, ViewState>;
+  /** Show all figures as a grid. */
+  gridView: boolean;
   /** Short message shown in the status bar (e.g. "Signal is locked"). */
   notice: string | null;
 }
@@ -89,6 +93,7 @@ function initialState(project = emptyProject()): EditorState {
     view: { xRange: [0, 0.04], yRanges: {}, cursors: NO_CURSORS },
     activeFigureId: project.figures[0]!.id,
     views: {},
+    gridView: false,
     notice: null,
   };
 }
@@ -851,7 +856,31 @@ export const actions = {
   // --- view (not undoable) ---
 
   setXRange(r: Range) {
-    set((s) => ({ view: { ...s.view, xRange: r } }));
+    const st = get();
+    set({ view: { ...st.view, xRange: r } });
+    // Grid view with linked time axes: apply the same range to the linked figures.
+    const link = st.project.grid?.link ?? 'none';
+    if (!st.gridView || link === 'none') return;
+    const figs = st.project.figures;
+    const cols = gridColumns(figs.length, st.project.grid);
+    const ai = figs.findIndex((f) => f.id === st.activeFigureId);
+    const views = { ...st.views };
+    figs.forEach((f, i) => {
+      if (f.id === st.activeFigureId) return;
+      if (link === 'columns' && i % cols !== ai % cols) return;
+      views[f.id] = { ...(views[f.id] ?? defaultView(st.project, f.id)), xRange: r };
+    });
+    set({ views });
+  },
+
+  setGridView(on: boolean) {
+    set({ gridView: on });
+  },
+
+  setGrid(patch: Partial<GridSettings>) {
+    commit((d) => {
+      d.grid = { columns: null, link: 'none', ...(d.grid ?? {}), ...patch };
+    });
   },
 
   setYRange(panelId: string, r: Range | null) {
@@ -939,4 +968,9 @@ export function astToDisplay(p: Project, ast: Node): string {
     const s = p.signals.find((x) => x.id === id);
     return s ? nameToken(s.name) : '[missing signal]';
   });
+}
+
+/** View of any figure: the live view for the active one, the saved (or default) view otherwise. */
+export function viewOf(st: EditorState, figId: string): ViewState {
+  return figId === st.activeFigureId ? st.view : (st.views[figId] ?? defaultView(st.project, figId));
 }
