@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
-import { resolveTheme, type TraceInput } from '../core/plot/layout';
+import { panelsForGroups, resolveTheme, type TraceInput } from '../core/plot/layout';
 import { isPeriodicKind } from '../core/model/signal-defs';
 import { ExportDialog } from './export/ExportDialog';
 import { AxesDialog } from './panels/AxesDialog';
@@ -22,6 +22,7 @@ import { Toolbox } from './panels/Toolbox';
 import { PlotView, type CursorInfo } from './plot/PlotView';
 import { Toolbar } from './Toolbar';
 import { useShortcuts } from './useShortcuts';
+import { discardRecovery, restoreRecovery, startRecovery, useRecovery } from '../state/recovery';
 import { PHONE_QUERY, useMediaQuery } from './useMediaQuery';
 
 type PhoneTab = 'add' | 'signals' | 'props' | 'measure';
@@ -30,6 +31,7 @@ export const usePhoneTab = create<{ tab: PhoneTab }>(() => ({ tab: 'add' }));
 
 export function App() {
   useShortcuts();
+  useEffect(startRecovery, []);
   const phone = useMediaQuery(PHONE_QUERY);
   const [dropping, setDropping] = useState(false);
   const hasFile = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files');
@@ -63,6 +65,7 @@ export function App() {
       <SpectrumDialog />
       <PwmDialog />
       <AxesDialog />
+      <RecoveryBanner />
       <Toolbar compact={phone} />
       {phone ? (
         <PhoneWorkspace />
@@ -82,6 +85,24 @@ export function App() {
   );
 }
 
+/** Offer to restore unsaved work found from a previous session. */
+function RecoveryBanner() {
+  const found = useRecovery((s) => s.found);
+  if (!found) return null;
+  const when = new Date(found.savedAt).toLocaleString();
+  return (
+    <div className="recovery-banner" role="alert">
+      <span>
+        Unsaved work from {when} (“{found.name}”) was found in this browser.
+      </span>
+      <button className="primary" onClick={restoreRecovery}>
+        Restore
+      </button>
+      <button onClick={discardRecovery}>Discard</button>
+    </div>
+  );
+}
+
 const TABS: Array<[PhoneTab, string]> = [
   ['add', 'Add'],
   ['signals', 'Signals'],
@@ -97,7 +118,8 @@ function PhoneWorkspace() {
   const tab = usePhoneTab((s) => s.tab);
   const selectedId = useEditor((s) => s.selectedId);
   const count = useEditor((s) => s.project.signals.length);
-  const prevSel = useRef(selectedId);
+  // Starts at null so a signal already selected when the phone layout appears shows its properties.
+  const prevSel = useRef<string | null>(null);
   useEffect(() => {
     if (selectedId && selectedId !== prevSel.current) usePhoneTab.setState({ tab: 'props' });
     prevSel.current = selectedId;
@@ -224,9 +246,13 @@ function FigurePlot({ figId, active, onCursor, phoneLayout }: { figId: string; a
     }));
   }, [project, fig.id, selectedId, active]);
   const traces = useMemo(() => groups.flatMap((g) => g.traces), [groups]);
+  // Stacked panels keep a readable minimum height; beyond that the plot area scrolls
+  // (on touch screens a vertical swipe scrolls, a horizontal one still pans time).
+  const nPanels = fig.mode === 'stacked' ? panelsForGroups('stacked', groups, {}).length : 1;
+  const minHeight = nPanels > 1 ? nPanels * 40 + 70 : undefined;
 
   return (
-    <div className="figure-plot" onPointerDownCapture={() => !active && actions.switchFigure(figId)}>
+    <div className="figure-plot" style={minHeight ? { minHeight } : undefined} onPointerDownCapture={() => !active && actions.switchFigure(figId)}>
       <PlotView
         traces={traces}
         mode={fig.mode}

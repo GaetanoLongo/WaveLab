@@ -170,6 +170,19 @@ export function findSignal(p: Project, id: string | null): SignalDef | undefined
   return id ? p.signals.find((s) => s.id === id) : undefined;
 }
 
+/**
+ * Why `name` cannot be used for signal `id` (null if it can): names must be non-empty,
+ * unique (expressions refer to signals by name) and free of “]” (names are written in
+ * brackets inside expressions).
+ */
+export function signalNameError(p: Project, id: string, name: string): string | null {
+  const n = name.trim();
+  if (!n) return 'A signal name cannot be empty.';
+  if (n.includes(']')) return 'Signal names cannot contain “]”.';
+  if (p.signals.some((s) => s.id !== id && s.name === n)) return `Another signal is already called “${n}”.`;
+  return null;
+}
+
 function uniqueName(p: Project, base: string): string {
   const names = new Set(p.signals.map((s) => s.name));
   if (!names.has(base)) return base;
@@ -283,7 +296,7 @@ export const actions = {
     const active = view?.activeFigure && project.figures.some((f) => f.id === view.activeFigure) ? view.activeFigure : project.figures[0]!.id;
     const views: Record<string, ViewState> = {};
     for (const [id, v] of Object.entries(view?.byFigure ?? {})) if (id !== active) views[id] = toView(v);
-    set({ activeFigureId: active, views });
+    set({ activeFigureId: active, views, gridView: !!view?.gridView && project.figures.length > 1 });
     if (view) set({ view: toView(view) });
     else actions.fitAll();
   },
@@ -306,6 +319,7 @@ export const actions = {
       ...pack(v),
       yRanges,
       ...(st.project.figures.length > 1 ? { activeFigure: st.activeFigureId } : {}),
+      ...(st.gridView && st.project.figures.length > 1 ? { gridView: true } : {}),
       ...(others.length ? { byFigure: Object.fromEntries(others.map(([id, w]) => [id, pack(w)])) } : {}),
     };
   },
@@ -877,6 +891,18 @@ export const actions = {
     return def.id;
   },
 
+  /** Rename a signal; refused (with a notice) if the name is empty, taken or contains “]”. */
+  renameSignal(id: string, name: string): boolean {
+    const p = get().project;
+    const err = signalNameError(p, id, name);
+    if (err) {
+      editor.setState({ notice: err });
+      return false;
+    }
+    actions.updateSignal(id, (d) => void (d.name = name.trim()));
+    return true;
+  },
+
   /**
    * Set a derived signal's expression from display text ("Name = expr" allowed).
    * Returns an error (message + position) or null on success.
@@ -900,6 +926,10 @@ export const actions = {
     if (createsCycle(p, id, refs)) return { message: 'This would create a circular dependency.', pos: offset };
     const stored = print(ast, storedRef);
     const newName = name?.trim();
+    if (newName) {
+      const err = signalNameError(p, id, newName);
+      if (err) return { message: err, pos: 0 };
+    }
     actions.updateSignal(id, (s) => {
       if (s.kind !== 'derived') return;
       s.expr = stored;

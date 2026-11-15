@@ -1,3 +1,4 @@
+import { plainText } from '../../core/plot/mathtext';
 /** Contextual parameter editor for the selected signal. Every change applies immediately. */
 
 import { useState, type ReactNode } from 'react';
@@ -33,7 +34,8 @@ export function GeneralGroup({ sig, upd }: { sig: SignalDef; upd: UpdAny }) {
         label="Name"
         value={sig.name}
         title="Supports math markup: V_{out}, I^2, \omega"
-        onCommit={(v) => upd((s) => void (s.name = v))}
+        validate={(v) => actions.renameSignal(sig.id, v)}
+        onCommit={() => {}}
       />
       <TextField
         label="Unit"
@@ -521,7 +523,7 @@ function AlignParams({ sig, disabled }: { sig: GeneratorSignalDef; disabled: boo
         <select value={ref.id} onChange={(e) => setRefId(e.target.value)}>
           {others.map((o) => (
             <option key={o.id} value={o.id}>
-              {o.name}
+              {plainText(o.name)}
             </option>
           ))}
         </select>

@@ -144,8 +144,10 @@ export function buildPwm(c: PwmConfig, newId: (prefix: string) => string, colorS
     if (c.deadTime > 0) {
       gates.push(der(`S_{${name}+}`, '', `and(${g}, delay(${g}, ${td}))`));
       if (c.complementary) gates.push(der(`S_{${name}-}`, '', `and(!${g}, delay(!${g}, ${td}))`));
-    } else if (c.complementary) {
-      gates.push(der(`S_{${name}-}`, '', `!${g}`));
+    } else {
+      // Without dead time the upper switch follows the leg command; listed for symmetry.
+      gates.push(der(`S_{${name}+}`, '', g));
+      if (c.complementary) gates.push(der(`S_{${name}-}`, '', `!${g}`));
     }
   }
 

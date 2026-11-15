@@ -248,6 +248,12 @@ export async function renderPdf(o: ExportOptions): Promise<Blob> {
   try {
     const el = host.querySelector('svg');
     if (!el) throw new Error('SVG generation failed');
+    // Only Inter is embedded; other families map to the standard PDF fonts, whose encoding
+    // has no Greek letters, minus sign or other symbols. Text needing them uses Inter.
+    for (const t of Array.from(el.querySelectorAll('text'))) {
+      const family = getComputedStyle(t).fontFamily;
+      if (!/^\s*["']?Inter/i.test(family) && /[^\u0000-\u00ff]/.test(t.textContent ?? '')) t.setAttribute('font-family', 'Inter');
+    }
     await doc.svg(el, { x, y, width: w, height: h });
   } finally {
     host.remove();

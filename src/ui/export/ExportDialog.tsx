@@ -144,8 +144,6 @@ function Dialog() {
                     {t.label}
                   </option>
                 ))}
-                <option disabled>Dark technical (M9)</option>
-                <option disabled>Presentation (M9)</option>
               </select>
             </div>
             <label className="check">

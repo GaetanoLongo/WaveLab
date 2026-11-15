@@ -87,7 +87,10 @@ type Tok =
   | { t: 'op'; v: string; pos: number }
   | { t: 'end'; pos: number };
 
-const SI: Record<string, number> = { p: 1e-12, n: 1e-9, u: 1e-6, 'µ': 1e-6, 'μ': 1e-6, m: 1e-3, k: 1e3, M: 1e6, G: 1e9 };
+const SI: Record<string, number> = { f: 1e-15, p: 1e-12, n: 1e-9, u: 1e-6, 'µ': 1e-6, 'μ': 1e-6, m: 1e-3, k: 1e3, M: 1e6, G: 1e9, T: 1e12 };
+
+/** Largest magnitude accepted for a time argument (delay, window, t0, rise time…), in seconds. */
+export const MAX_TIME_ARG = 1e6;
 const ID_START = /[\p{L}_]/u;
 const ID_PART = /[\p{L}\p{N}_]/u;
 
@@ -113,6 +116,8 @@ function tokenize(src: string): Tok[] {
         text += p;
         i++;
       }
+      if (/[0-9.]/.test(src[i] ?? '')) throw new ExprError(`Invalid number “${src.slice(start, i + 1)}…”`, start);
+      if (!Number.isFinite(v)) throw new ExprError(`Number out of range: ${text}`, start);
       out.push({ t: 'num', v, text, pos: start });
     } else if (ID_START.test(c)) {
       while (i < src.length && ID_PART.test(src[i]!)) i++;
@@ -120,8 +125,8 @@ function tokenize(src: string): Tok[] {
     } else if (c === '[') {
       const end = src.indexOf(']', i + 1);
       if (end < 0) throw new ExprError('Missing “]”', i);
-      const name = src.slice(i + 1, end);
-      if (!name.trim()) throw new ExprError('Empty signal name', i);
+      const name = src.slice(i + 1, end).trim();
+      if (!name) throw new ExprError('Empty signal name', i);
       out.push({ t: 'name', v: name, pos: start });
       i = end + 1;
     } else if (c === '#' && src[i + 1] === '{') {
@@ -210,6 +215,16 @@ export function parseExpr(src: string, resolve: NameResolver): Node {
           const positive: Record<string, number> = { dfinite: 1, dnum: 1, movavg: 1, rms: 1 };
           const pi = positive[t.v];
           if (pi !== undefined && !(constValue(args[pi]!) > 0)) throw new ExprError(`${t.v}() needs a positive time as argument ${pi + 1}`, t.pos);
+          // Time arguments: finite and within ±MAX_TIME_ARG (larger values only exhaust
+          // floating-point precision and computation time).
+          const timeArgs: Record<string, number[]> = { delay: [1], integral: [1], dfinite: [1], dnum: [1], movavg: [1], rms: [1] };
+          for (const i of timeArgs[t.v] ?? []) {
+            if (!args[i]) continue;
+            const v = constValue(args[i]!);
+            if (!Number.isFinite(v)) throw new ExprError(`${t.v}(): argument ${i + 1} is not a finite number`, t.pos);
+            if (Math.abs(v) > MAX_TIME_ARG) throw new ExprError(`${t.v}(): argument ${i + 1} must be within ±1 Ms (1e6 s)`, t.pos);
+          }
+          if (t.v === 'integral' && args[2] && !Number.isFinite(constValue(args[2]))) throw new ExprError('integral(): the initial value must be a finite number', t.pos);
           return { k: 'call', fn: t.v, args };
         }
         if (t.v === 't') return { k: 'time' };
@@ -278,6 +293,22 @@ export function parseExpr(src: string, resolve: NameResolver): Node {
   return root;
 }
 
+/** Pure math functions usable on constants (e.g. delay(x, abs(-5m))). */
+const CONST_FNS: Record<string, (...a: number[]) => number> = {
+  abs: Math.abs,
+  sqrt: Math.sqrt,
+  exp: Math.exp,
+  ln: Math.log,
+  log10: Math.log10,
+  sin: Math.sin,
+  cos: Math.cos,
+  tan: Math.tan,
+  sign: Math.sign,
+  min: Math.min,
+  max: Math.max,
+  clip: (x, lo, hi) => Math.min(Math.max(x, lo!), hi!),
+};
+
 /** Value of a constant expression (numbers, pi, e, + − * / ^, unary −). NaN if not constant. */
 export function constValue(n: Node): number {
   switch (n.k) {
@@ -304,6 +335,12 @@ export function constValue(n: Node): number {
         default:
           return NaN;
       }
+    }
+    case 'call': {
+      const f = CONST_FNS[n.fn];
+      if (!f) return NaN;
+      const v = n.args.map(constValue);
+      return v.some(Number.isNaN) ? NaN : f(...v);
     }
     default:
       return NaN;

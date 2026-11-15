@@ -41,7 +41,7 @@ describe('niceTicks', () => {
   it('always gives at least 3 labelled ticks, even in small panels', () => {
     const t = niceTicks(-351, 351, 3, 'V');
     expect(t.major.length).toBeGreaterThanOrEqual(3);
-    expect(t.labels).toEqual(['-200', '0', '200']);
+    expect(t.labels).toEqual(['\u2212200', '0', '200']);
   });
 
   it('handles symmetric ranges without "-0"', () => {
@@ -283,5 +283,12 @@ describe('M9: axis options, log scale, styles', () => {
     const texts = outside.scene.items.filter((i) => i.type === 'text').map((i) => (i.type === 'text' ? i.text : ''));
     expect(texts).toContain('t (ms)');
     expect(texts).toContain('v_{out} (V)');
+  });
+});
+
+describe('tick label decimals', () => {
+  it('follow a fixed step that is not a power of ten', () => {
+    expect(niceTicks(0, 0.02, 8, 's', 1e12, { step: 0.0025 }).labels.slice(0, 4)).toEqual(['0.0', '2.5', '5.0', '7.5']);
+    expect(niceTicks(0, 1, 4, 'V', 1e12, { step: 0.25 }).labels).toEqual(['0.00', '0.25', '0.50', '0.75', '1.00']);
   });
 });

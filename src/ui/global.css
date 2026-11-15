@@ -45,12 +45,14 @@ input.invalid { border-color: var(--danger); background: #fdf1f0; }
 .toolbox { border-right: 1px solid var(--border); }
 .inspector { border-left: 1px solid var(--border); display: flex; flex-direction: column; }
 .plot-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.plot-area { flex: 1; min-height: 0; padding: 10px; }
+.plot-area { flex: 1; min-height: 0; padding: 10px; overflow-y: auto; }
 
 @media (max-width: 980px) {
-  .workspace { grid-template-columns: 1fr; grid-template-rows: auto minmax(360px, 1fr) auto; overflow-y: auto; }
-  .toolbox { border-right: none; border-bottom: 1px solid var(--border); max-height: 220px; }
-  .inspector { border-left: none; border-top: 1px solid var(--border); }
+  /* One scrolling column. Scroll containers have no automatic minimum height in a grid,
+     so the toolbox gets a fixed height and the inspector grows with its content. */
+  .workspace { grid-template-columns: 1fr; grid-template-rows: auto minmax(min(360px, 85vh), 1fr) auto; overflow-y: auto; }
+  .toolbox { border-right: none; border-bottom: 1px solid var(--border); height: min(220px, 45vh); }
+  .inspector { border-left: none; border-top: 1px solid var(--border); overflow: visible; }
 }
 
 /* ---------- toolbar ---------- */
@@ -85,7 +87,8 @@ input.invalid { border-color: var(--danger); background: #fdf1f0; }
   border: 1px solid transparent; background: transparent; justify-content: flex-start;
   padding: 4px 6px; gap: 8px; color: var(--fg); width: 100%; text-align: left;
 }
-.tool:hover:not(:disabled) { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+/* Hover only with a real pointer: on touch screens it would stick after a tap. */
+@media (hover: hover) { .tool:hover:not(:disabled) { background: var(--accent-soft); border-color: transparent; color: var(--accent); } }
 .tool svg { flex: none; color: var(--accent); }
 .tool.planned { opacity: 0.55; }
 .tool.planned:disabled { opacity: 0.5; }
@@ -272,7 +275,14 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 
 /* ---------- Phone layout (≤ 760 px) ---------- */
 .phone-workspace { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.phone-workspace .plot-column { flex: 0 0 auto; height: 52vh; min-height: 260px; }
+.phone-workspace .plot-column { flex: 0 0 auto; height: 52vh; height: 52dvh; min-height: 220px; }
+/* Landscape phones (short screens): plot on the left, tabs and panel on the right. */
+@media (max-width: 760px) and (max-height: 520px), (max-height: 520px) and (orientation: landscape) and (pointer: coarse) {
+  .phone-workspace { display: grid; grid-template-columns: minmax(0, 1fr) min(330px, 46vw); grid-template-rows: auto minmax(0, 1fr); }
+  .phone-workspace .plot-column { grid-column: 1; grid-row: 1 / 3; height: auto; min-height: 0; }
+  .phone-workspace .phone-tabs { grid-column: 2; grid-row: 1; }
+  .phone-workspace .phone-panel { grid-column: 2; grid-row: 2; border-left: 1px solid var(--border); }
+}
 .phone-workspace .plot-area { padding: 6px; }
 .phone-tabs {
   display: flex; background: var(--panel); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
@@ -308,7 +318,7 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
   .popover { position: fixed; top: 48px; right: 8px; left: auto; width: min(340px, calc(100vw - 16px)); max-height: calc(100vh - 64px); overflow-y: auto; }
   .popover.menu { width: min(240px, calc(100vw - 16px)); }
   .modal-backdrop { padding: 0; }
-  .modal { max-height: 100vh; height: 100%; border-radius: 0; }
+  .modal { max-height: 100vh; max-height: 100dvh; height: 100%; border-radius: 0; }
   .field { grid-template-columns: 96px minmax(0, 1fr); }
   .slider { width: calc(100% - 104px); margin-left: 104px; }
 }
@@ -379,7 +389,7 @@ table.points td:last-child { width: 28px; }
 .fig-tab.on .fig-name { color: var(--accent); }
 .fig-act { padding: 2px 4px; font-size: 12px; }
 .fig-add { border: 1px dashed var(--border); border-radius: 6px 6px 0 0; padding: 3px 10px; background: transparent; }
-.phone-workspace .figure-tabs { padding: 4px 6px 0; }
+.phone-workspace .figure-tabs { padding: 4px 6px 0; flex-wrap: wrap; overflow-x: visible; row-gap: 4px; }
 .signal-list h2 .group-add { margin-left: auto; font-size: 11px; padding: 1px 8px; text-transform: none; letter-spacing: 0; }
 .group-head { display: flex; align-items: center; gap: 4px; padding: 3px 6px 3px 2px; background: var(--panel-2); border-top: 1px solid var(--border); }
 .group-head .chev { width: 22px; padding: 2px; }
@@ -394,11 +404,13 @@ table.points td:last-child { width: 28px; }
 
 /* ---------- grid of figures ---------- */
 .figure-grid { flex: 1; min-height: 0; display: grid; gap: 8px; padding: 8px 10px 10px; grid-auto-rows: minmax(180px, 1fr); overflow-y: auto; }
-.grid-cell { display: flex; flex-direction: column; min-height: 0; min-width: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+.grid-cell { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
 .grid-cell.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .cell-head { border: 0; border-bottom: 1px solid var(--border); border-radius: 6px 6px 0 0; background: var(--panel-2); justify-content: flex-start; padding: 3px 8px; font-weight: 600; font-size: 12px; }
 .grid-cell.active .cell-head { color: var(--accent); }
 .figure-plot { flex: 1; min-height: 0; height: 100%; }
+/* Plots taller than their area (many stacked panels): vertical swipes scroll the area. */
+.plot-area .figure-plot[style] .plot-host, .grid-cell .figure-plot[style] .plot-host { touch-action: pan-y; }
 .grid-cell .figure-plot { padding: 2px; }
 .grid-cell .plot-host { border: 0; border-radius: 0 0 6px 6px; }
 .grid-controls { margin-left: auto; display: flex; gap: 6px; align-items: center; padding-bottom: 3px; }
@@ -426,3 +438,26 @@ table.harmonics td { padding: 2px 6px; border-bottom: 1px solid var(--panel-2); 
 @media (max-width: 760px) { .spectrum-body { grid-template-columns: 1fr; } }
 
 .pwm-dialog { width: min(780px, 100%); }
+
+/* Recovery banner (unsaved work from a previous session) */
+.recovery-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  font-size: 13px;
+}
+.recovery-banner span {
+  flex: 1 1 220px;
+}

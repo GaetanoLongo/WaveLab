@@ -93,6 +93,7 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
       default:
         sig = NAN_SIGNAL;
     }
+    for (const w of sig.warnings ?? []) warnings.add(w);
     opCache.set(n, sig);
     return sig;
   };

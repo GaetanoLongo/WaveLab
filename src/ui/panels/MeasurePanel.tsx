@@ -1,3 +1,4 @@
+import { plainText } from '../../core/plot/mathtext';
 /**
  * Measurement panel: cursor readouts and exact interval measurements of the target
  * signal (between time cursors 1–2, or over the visible window when they are off).
@@ -50,10 +51,10 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
         onChange={(e) => actions.setCursors({ target: e.target.value || null })}
         title="Signal measured by the cursors"
       >
-        <option value="">Selected signal{target && !c.target ? ` (${target.name})` : ''}</option>
+        <option value="">Selected signal{target && !c.target ? ` (${plainText(target.name)})` : ''}</option>
         {visible.map((s) => (
           <option key={s.id} value={s.id}>
-            {s.name}
+            {plainText(s.name)}
           </option>
         ))}
       </select>
@@ -97,7 +98,7 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
                   <dt>1/Δt</dt>
                   <dd>{fmt(1 / Math.abs(t2! - t1!), 'Hz')}</dd>
                   <dt>ΔY</dt>
-                  <dd>{fmt(v2 - v1, unit)}</dd>
+                  <dd>{fmt(Math.abs(v2 - v1) <= 1e-10 * Math.max(Math.abs(v1), Math.abs(v2)) ? 0 : v2 - v1, unit)}</dd>
                 </dl>
               )}
             </div>

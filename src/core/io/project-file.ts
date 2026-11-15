@@ -51,6 +51,7 @@ export function parseProjectFile(text: string): { project: Project; view?: Saved
   const f = obj(raw, 'file');
   if (f.format !== FORMAT_ID) throw new ProjectFileError('This is not a WaveLab project file.');
   const version = num(f.schemaVersion, 'schemaVersion');
+  if (!Number.isInteger(version) || version < 1) throw new ProjectFileError('schemaVersion must be a positive whole number.');
   if (version > SCHEMA_VERSION) {
     throw new ProjectFileError(
       `This project was saved by a newer WaveLab (file format ${version}, this app reads up to ${SCHEMA_VERSION}). Please update the app.`,
@@ -76,9 +77,21 @@ function readProject(v: unknown): Project {
   const p = obj(v, 'project');
   const signals = arr(p.signals, 'project.signals').map((s, i) => readSignal(s, `signals[${i}]`));
   const ids = new Set<string>();
+  const names = new Set<string>();
   for (const s of signals) {
+    if (!/^[^\s{}#\[\]]+$/.test(s.id)) throw new ProjectFileError(`Signal id "${s.id}" is invalid (no spaces, braces, brackets or #).`);
     if (ids.has(s.id)) throw new ProjectFileError(`Duplicate signal id "${s.id}".`);
     ids.add(s.id);
+    // Names must be unique and may not contain “]” (expressions show names in brackets):
+    // repair instead of refusing the file.
+    let name = s.name.replace(/\]/g, ')').trim() || 'Signal';
+    if (names.has(name)) {
+      let k = 2;
+      while (names.has(`${name} (${k})`)) k++;
+      name = `${name} (${k})`;
+    }
+    names.add(name);
+    s.name = name;
   }
   // Derived signals: every reference must exist and the graph must be acyclic.
   const partial = { signals } as Project;
@@ -166,12 +179,12 @@ function readSignal(v: unknown, path: string): SignalDef {
     case 'dc':
       return { ...base, generator, params: { level: n('level') } };
     case 'exponential': {
-      const tau = n('tau');
+      const tau = time(pp.tau, `${path}.params.tau`);
       if (!(tau > 0)) throw new ProjectFileError(`${path}.params.tau must be positive.`);
       return { ...base, generator, params: { initial: n('initial'), final: n('final'), tau } };
     }
     case 'damped': {
-      const tau = n('tau');
+      const tau = time(pp.tau, `${path}.params.tau`);
       if (!(tau > 0)) throw new ProjectFileError(`${path}.params.tau must be positive.`);
       return { ...base, generator, params: { amplitude: n('amplitude'), offset: n('offset'), tau } };
     }
@@ -180,12 +193,13 @@ function readSignal(v: unknown, path: string): SignalDef {
       const points = raw.map((q, i) => {
         const pair = arr(q, `${path}.params.points[${i}]`);
         if (pair.length !== 2) throw new ProjectFileError(`${path}.params.points[${i}] must be [t, y].`);
-        return [num(pair[0], `${path}.params.points[${i}][0]`), num(pair[1], `${path}.params.points[${i}][1]`)] as [number, number];
+        return [time(pair[0], `${path}.params.points[${i}][0]`), num(pair[1], `${path}.params.points[${i}][1]`)] as [number, number];
       });
       if (points.length < 2) throw new ProjectFileError(`${path}.params.points needs at least 2 points.`);
       for (let i = 1; i < points.length; i++) {
         if (points[i]![0] < points[i - 1]![0]) throw new ProjectFileError(`${path}.params.points must be sorted by time.`);
       }
+      if (!(points[points.length - 1]![0] > points[0]![0])) throw new ProjectFileError(`${path}.params.points must span a time interval longer than 0.`);
       const interp = pp.interp;
       if (interp !== 'linear' && interp !== 'step') throw new ProjectFileError(`${path}.params.interp must be "linear" or "step".`);
       return { ...base, generator, params: { points, interp, repeat: bool(pp.repeat, `${path}.params.repeat`) } };
@@ -193,7 +207,7 @@ function readSignal(v: unknown, path: string): SignalDef {
     case 'bits': {
       const bitsStr = str(pp.bits, `${path}.params.bits`);
       if (!/^[01]+$/.test(bitsStr)) throw new ProjectFileError(`${path}.params.bits must contain only 0 and 1.`);
-      const bitTime = n('bitTime');
+      const bitTime = time(pp.bitTime, `${path}.params.bitTime`);
       if (!(bitTime > 0)) throw new ProjectFileError(`${path}.params.bitTime must be positive.`);
       const encoding = pp.encoding;
       if (encoding !== 'nrz' && encoding !== 'rz' && encoding !== 'manchester') {
@@ -239,8 +253,8 @@ function readDerived(s: Record<string, unknown>, path: string): SignalDef {
 function readTiming(v: unknown, path: string, periodic: boolean): Timing {
   const t = obj(v, path);
   const frequency = num(t.frequency, `${path}.frequency`);
-  if (periodic && !(frequency > 0)) throw new ProjectFileError(`${path}.frequency must be a positive number.`);
-  return { frequency, phaseDeg: num(t.phaseDeg, `${path}.phaseDeg`), delay: num(t.delay, `${path}.delay`) };
+  if (periodic && !(frequency >= MIN_FREQ && frequency <= MAX_FREQ)) throw new ProjectFileError(`${path}.frequency must be between 1 µHz and 1 THz.`);
+  return { frequency, phaseDeg: num(t.phaseDeg, `${path}.phaseDeg`), delay: time(t.delay, `${path}.delay`) };
 }
 
 function readWindow(v: unknown, path: string): SignalWindow {
@@ -254,15 +268,15 @@ function readWindow(v: unknown, path: string): SignalWindow {
     case 'infinite':
       return { mode: 'infinite' };
     case 'interval': {
-      const start = num(w.start, `${path}.start`);
-      const end = num(w.end, `${path}.end`);
+      const start = time(w.start, `${path}.start`);
+      const end = time(w.end, `${path}.end`);
       if (end < start) throw new ProjectFileError(`${path}.end must not be before start.`);
       return { mode: 'interval', start, end, outside: outside() };
     }
     case 'cycles': {
       const cycles = num(w.cycles, `${path}.cycles`);
-      if (!(cycles > 0)) throw new ProjectFileError(`${path}.cycles must be a positive number.`);
-      return { mode: 'cycles', start: num(w.start, `${path}.start`), cycles, outside: outside() };
+      if (!(cycles > 0 && cycles <= 1e9)) throw new ProjectFileError(`${path}.cycles must be a positive number up to 1e9.`);
+      return { mode: 'cycles', start: time(w.start, `${path}.start`), cycles, outside: outside() };
     }
     default:
       throw new ProjectFileError(`${path}.mode "${String(w.mode)}" is unknown.`);
@@ -307,6 +321,11 @@ function readFigure(v: unknown, path: string, ids: Set<string>): Figure {
     };
   });
   if (panels.length === 0) panels.push({ id: 'panel-1', traces: [], yAxis: autoAxis('') });
+  const panelIds = new Set<string>();
+  for (const pa of panels) {
+    if (panelIds.has(pa.id)) throw new ProjectFileError(`${path}: duplicate panel id "${pa.id}".`);
+    panelIds.add(pa.id);
+  }
   return {
     id: f.id === undefined ? 'fig-1' : str(f.id, `${path}.id`),
     name: f.name === undefined ? 'Figure 1' : str(f.name, `${path}.name`),
@@ -328,6 +347,9 @@ function readView(v: unknown, path: string): SavedView {
     const lo = num(a[0], `${p}[0]`);
     const hi = num(a[1], `${p}[1]`);
     if (!(hi > lo)) throw new ProjectFileError(`${p} must have max > min.`);
+    if (p.endsWith('xRange') && (Math.abs(lo) > MAX_TIME || Math.abs(hi) > MAX_TIME || hi - lo < 1e-15)) {
+      throw new ProjectFileError(`${p} must lie within ±1e6 s and span at least 1 fs.`);
+    }
     return [lo, hi];
   };
   const yRanges: Record<string, [number, number]> = {};
@@ -352,6 +374,7 @@ function readView(v: unknown, path: string): SavedView {
   }
   const out: SavedView = { xRange: range(w.xRange, `${path}.xRange`), yRanges, ...(cursors ? { cursors } : {}) };
   if (w.activeFigure !== undefined) out.activeFigure = str(w.activeFigure, `${path}.activeFigure`);
+  if (w.gridView !== undefined) out.gridView = bool(w.gridView, `${path}.gridView`);
   if (w.byFigure !== undefined) {
     out.byFigure = {};
     for (const [id, v] of Object.entries(obj(w.byFigure, `${path}.byFigure`))) {
@@ -374,9 +397,23 @@ function arr(v: unknown, path: string): unknown[] {
   return v;
 }
 
+/** Sanity limits: beyond these, floating-point precision and computation time run out. */
+const MAX_ABS = 1e15;
+const MAX_TIME = 1e6;
+const MIN_FREQ = 1e-6;
+const MAX_FREQ = 1e12;
+
 function num(v: unknown, path: string): number {
   if (typeof v !== 'number' || !Number.isFinite(v)) throw new ProjectFileError(`${path} must be a finite number.`);
+  if (Math.abs(v) > MAX_ABS) throw new ProjectFileError(`${path} is too large (limit ±1e15).`);
   return v;
+}
+
+/** A time value in seconds (delay, window edge, breakpoint time…). */
+function time(v: unknown, path: string): number {
+  const n = num(v, path);
+  if (Math.abs(n) > MAX_TIME) throw new ProjectFileError(`${path} must be within ±1e6 s.`);
+  return n;
 }
 
 function nonNeg(v: unknown, path: string): number {

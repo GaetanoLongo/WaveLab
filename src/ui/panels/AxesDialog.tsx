@@ -3,6 +3,8 @@
 import { useEffect, useRef } from 'react';
 import { autoLogRange, panelsForGroups, type AxisStyle } from '../../core/plot/layout';
 import { compiled } from '../../state/compiled';
+import { niceTicks } from '../../core/plot/ticks';
+import { autoYRange } from '../../core/plot/viewport';
 import { actions, figureGroups, useActiveFigure, useEditor } from '../../state/store';
 import { NumberField } from '../fields/NumberField';
 import { MathLabel } from '../MathLabel';
@@ -48,14 +50,15 @@ function Dialog({ focus }: { focus: string }) {
             <NumberField label="From" unit="s" value={t0} max={t1} onCommit={(v) => v < t1 && actions.setXRange([v, t1])} title="Zoom to a time interval" />
             <NumberField label="To" unit="s" value={t1} min={t0} onCommit={(v) => v > t0 && actions.setXRange([t0, v])} />
           </div>
-          <AxisFields axis="x" style={fig.axes?.x} autoTitle="Time (automatic unit)" />
+          <AxisFields axis="x" style={fig.axes?.x} autoTitle="Time (automatic unit)" span={[t0, t1]} />
         </section>
 
         {panels.length === 0 && <p className="hint-text">No visible signals.</p>}
         {panels.map((p) => {
           const r = view.yRanges[p.id] ?? null;
-          const canLog = autoLogRange(p.sigs.map((s) => compiled(s, project))) !== null || (r !== null && r[0] > 0);
+          const canLog = autoLogRange(p.sigs.map((s) => compiled(s, project)), view.xRange) !== null || (r !== null && r[0] > 0);
           const style = fig.axes?.y?.[p.id];
+          const ySpan = r ?? autoYRange(p.sigs.map((s) => compiled(s, project)));
           return (
             <section key={p.id} data-axis={p.id} className={focus === p.id ? 'focused' : ''}>
               <h3>
@@ -81,7 +84,7 @@ function Dialog({ focus }: { focus: string }) {
                 Logarithmic scale
               </label>
               {style?.log && !canLog && <p className="warn">The data is not strictly positive here, so the axis stays linear.</p>}
-              <AxisFields axis={p.id} style={style} autoTitle="Signal name and unit" logScale={!!style?.log && canLog} />
+              <AxisFields axis={p.id} style={style} autoTitle="Signal name and unit" logScale={!!style?.log && canLog} span={ySpan} />
             </section>
           );
         })}
@@ -90,8 +93,23 @@ function Dialog({ focus }: { focus: string }) {
   );
 }
 
-function AxisFields({ axis, style, autoTitle, logScale = false }: { axis: string; style?: AxisStyle; autoTitle: string; logScale?: boolean }) {
+function AxisFields({
+  axis,
+  style,
+  autoTitle,
+  logScale = false,
+  span,
+}: {
+  axis: string;
+  style?: AxisStyle;
+  autoTitle: string;
+  logScale?: boolean;
+  /** Current axis range: seeds a fixed step with the automatic one, warns about too many ticks. */
+  span: readonly [number, number];
+}) {
   const set = (patch: AxisStyle) => actions.setAxisStyle(axis, patch);
+  const autoStep = niceTicks(span[0], span[1], axis === 'x' ? 8 : 5).step || 1;
+  const tooMany = !!style?.tickStep && (span[1] - span[0]) / style.tickStep > 500;
   return (
     <>
       <TextField label="Title" value={style?.title ?? ''} allowEmpty title={`Empty = automatic (${autoTitle}). Supports V_{out}, \\omega`} onCommit={(v) => set({ title: v })} />
@@ -101,14 +119,15 @@ function AxisFields({ axis, style, autoTitle, logScale = false }: { axis: string
             <label>Tick step</label>
             <div className="field-inline">
               <label className="check">
-                <input type="checkbox" checked={!style?.tickStep} onChange={(e) => set({ tickStep: e.target.checked ? null : 1 })} />
+                <input type="checkbox" checked={!style?.tickStep} onChange={(e) => set({ tickStep: e.target.checked ? null : autoStep })} />
                 Auto
               </label>
             </div>
           </div>
           {style?.tickStep ? (
-            <NumberField label="Step" unit={axis === 'x' ? 's' : ''} positive value={style.tickStep} onCommit={(v) => set({ tickStep: v })} />
+            <NumberField label="Step" unit={axis === 'x' ? 's' : ''} plain={axis !== 'x'} positive value={style.tickStep} onCommit={(v) => set({ tickStep: v })} />
           ) : null}
+          {tooMany && <p className="warn">This step gives more than 500 ticks in the current range, so the automatic step is used.</p>}
           <div className="field">
             <label>Decimals</label>
             <select value={style?.decimals ?? 'auto'} onChange={(e) => set({ decimals: e.target.value === 'auto' ? null : Number(e.target.value) })}>

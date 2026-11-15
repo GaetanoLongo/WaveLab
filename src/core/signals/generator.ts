@@ -44,10 +44,14 @@ export function compileGenerator(def: GeneratorDef): SignalEval {
   if (!(f > 0) || !Number.isFinite(f)) return invalidSignal();
 
   const shape: PeriodicShape = shapeFor(def);
-  const delay = def.timing.delay;
-  const phaseCycles = isDc ? 0 : def.timing.phaseDeg / 360;
   const range = activeRange(def.window, f);
   const infinite = range.a === -Infinity && range.b === Infinity;
+  // Infinite periodic signals: whole cycles of delay or phase change nothing, so reduce
+  // them to [0, 1) cycle. This keeps cycle coordinates small (huge delays or phases
+  // would otherwise exhaust floating-point precision).
+  const rawPhase = isDc ? 0 : def.timing.phaseDeg / 360;
+  const phaseCycles = infinite ? rawPhase - Math.floor(rawPhase) : rawPhase;
+  const delay = infinite && !isDc ? def.timing.delay - Math.floor(def.timing.delay * f) / f : def.timing.delay;
 
   const cycleCoord = (t: number) => f * (t - delay) + phaseCycles;
   const cyclePos = (t: number) => {
@@ -85,7 +89,10 @@ export function compileGenerator(def: GeneratorDef): SignalEval {
     if (shape.features.length > 0 && hi >= lo) {
       const kStart = Math.floor(cycleCoord(lo)) - 1;
       const kEnd = Math.ceil(cycleCoord(hi)) + 1;
-      outer: for (let k = kStart; k <= kEnd; k++) {
+      // Beyond 2^52 cycles consecutive cycle numbers are no longer representable: the
+      // features cannot be resolved (report truncation instead of looping forever).
+      if (!(Math.abs(kStart) < 2 ** 52 && Math.abs(kEnd) < 2 ** 52)) truncated = true;
+      else outer: for (let k = kStart; k <= kEnd; k++) {
         for (const lf of shape.features) {
           const t = delay + (k + lf.u - phaseCycles) / f;
           if (t < lo - tol || t > hi + tol) continue;

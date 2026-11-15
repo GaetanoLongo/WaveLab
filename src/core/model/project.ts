@@ -115,6 +115,8 @@ export interface SavedView {
   byFigure?: Record<string, { xRange: [number, number]; yRanges: Record<string, [number, number]>; cursors?: Cursors }>;
   /** Figure shown when the project was saved. */
   activeFigure?: string;
+  /** Figures shown as a grid when the project was saved. */
+  gridView?: boolean;
 }
 
 /** Grid view of all figures: columns (null = automatic) and time-axis linking. */

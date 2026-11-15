@@ -237,7 +237,7 @@ export function PlotView(props: PlotViewProps) {
     const [a, b] = [...pointers.current.values()];
     if (!a || !b) return;
     setGuide(null);
-    setDrag({ kind: 'pinch', startDist: Math.max(10, Math.abs(a.x - b.x)), startMid: (a.x + b.x) / 2, startRange: props.xRange });
+    setDrag({ kind: 'pinch', startDist: Math.max(PINCH_MIN_DX, Math.abs(a.x - b.x)), startMid: (a.x + b.x) / 2, startRange: props.xRange });
   };
 
   /** Snap targets for a cursor drag, collected once at the start of the gesture. */
@@ -283,12 +283,14 @@ export function PlotView(props: PlotViewProps) {
       setDrag({ kind: 'box', startX: x, startY: y, curX: x, curY: y });
       return;
     }
-    const ch = props.onCursorMove ? cursorHit(layout, props.cursors, x, y) : null;
+    // Fingers are less precise than a mouse: larger grab zones for touch.
+    const tol = e.pointerType === 'touch' ? 18 : 6;
+    const ch = props.onCursorMove ? cursorHit(layout, props.cursors, x, y, tol) : null;
     if (ch) {
       setDrag(startCursorDrag(ch.kind, ch.index));
       return;
     }
-    const hit = hitTest(layout, props.traces, x, y);
+    const hit = hitTest(layout, props.traces, x, y, tol);
     if (hit && props.onMove && props.canMove?.(hit)) {
       props.onSelect?.(hit);
       const d = startMove(hit, x);
@@ -306,7 +308,7 @@ export function PlotView(props: PlotViewProps) {
     if (drag?.kind === 'pinch') {
       const [a, b] = [...pointers.current.values()];
       if (!a || !b) return;
-      const dist = Math.max(10, Math.abs(a.x - b.x));
+      const dist = Math.max(PINCH_MIN_DX, Math.abs(a.x - b.x));
       const mid = (a.x + b.x) / 2;
       const r0 = drag.startRange;
       const span0 = r0[1] - r0[0];
@@ -519,14 +521,20 @@ function reportCursor(l: FigureLayout, x: number, y: number, p: PlotViewProps) {
   });
 }
 
-/** Nearest trace within 6 px of the pointer (vertical distance, or on a vertical edge). */
-function hitTest(l: FigureLayout, traces: TraceInput[], x: number, y: number): string | null {
+/**
+ * Pinch zoom uses the horizontal finger distance, floored: two fingers placed one above
+ * the other (tiny horizontal distance) would otherwise give huge zoom factors.
+ */
+const PINCH_MIN_DX = 48;
+
+/** Nearest trace within `tol` px of the pointer (vertical distance, or on a vertical edge). */
+function hitTest(l: FigureLayout, traces: TraceInput[], x: number, y: number, tol = 6): string | null {
   const panel = panelAt(l, y);
   if (!panel || x < l.plotX || x > l.plotX + l.plotW) return null;
   const t = pxToT(l, x);
   const pxT = (l.xRange[1] - l.xRange[0]) / l.plotW;
   let best: string | null = null;
-  let bestD = 6;
+  let bestD = tol;
   for (const tr of traces) {
     if (!panel.traceIds.includes(tr.id)) continue;
     const v = tr.signal.value(t);
@@ -536,11 +544,12 @@ function hitTest(l: FigureLayout, traces: TraceInput[], x: number, y: number): s
       best = tr.id;
     }
     // Vertical edges: a jump within ±3 px whose span covers the pointer.
-    for (const f of tr.signal.features(t - 3 * pxT, t + 3 * pxT, 50).features) {
+    const e = tol / 2;
+    for (const f of tr.signal.features(t - e * pxT, t + e * pxT, 50).features) {
       if (f.kind !== 'jump') continue;
       const ya = yToPx(panel, f.left);
       const yb = yToPx(panel, f.right);
-      if (y >= Math.min(ya, yb) - 3 && y <= Math.max(ya, yb) + 3 && bestD > 0.5) {
+      if (y >= Math.min(ya, yb) - e && y <= Math.max(ya, yb) + e && bestD > 0.5) {
         bestD = 0.5;
         best = tr.id;
       }
@@ -549,21 +558,21 @@ function hitTest(l: FigureLayout, traces: TraceInput[], x: number, y: number): s
   return best;
 }
 
-/** Cursor line under the pointer (within 6 px; time cursors first). */
-function cursorHit(l: FigureLayout, c: CursorSpec | undefined, x: number, y: number): { kind: 't' | 'y'; index: 0 | 1 } | null {
+/** Cursor line under the pointer (within `tol` px; time cursors first). */
+function cursorHit(l: FigureLayout, c: CursorSpec | undefined, x: number, y: number, tol = 6): { kind: 't' | 'y'; index: 0 | 1 } | null {
   if (!c) return null;
   const first = l.panels[0];
   const last = l.panels[l.panels.length - 1];
   if (!first || !last || y < first.y - 2 || y > last.y + last.h + 2) return null;
   for (const i of [0, 1] as const) {
     const t = c.t[i];
-    if (t != null && Math.abs(tToPx(l, t) - x) <= 6) return { kind: 't', index: i };
+    if (t != null && Math.abs(tToPx(l, t) - x) <= tol) return { kind: 't', index: i };
   }
   const panel = c.yTraceId ? l.panels.find((p) => p.traceIds.includes(c.yTraceId!)) : undefined;
   if (panel && x >= panel.x && x <= panel.x + panel.w) {
     for (const i of [0, 1] as const) {
       const v = c.y[i];
-      if (v != null && Math.abs(yToPx(panel, v) - y) <= 6) return { kind: 'y', index: i };
+      if (v != null && Math.abs(yToPx(panel, v) - y) <= tol) return { kind: 'y', index: i };
     }
   }
   return null;

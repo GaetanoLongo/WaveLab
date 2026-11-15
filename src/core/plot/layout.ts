@@ -4,11 +4,11 @@
  */
 
 import type { SignalEval } from '../signals/types';
-import type { Range } from './range';
+import { rangeOf, type Range } from './range';
 import { sampleSignal } from './sampler';
 import type { Dash, Scene, SceneItem } from './scene';
 import { formatSI } from '../units/si';
-import { estimateWidth } from './mathtext';
+import { estimateWidth, plainText } from './mathtext';
 import { logTicks, niceTicks } from './ticks';
 import { autoYRange } from './viewport';
 
@@ -363,15 +363,18 @@ export function computeLayout(input: FigureInput): FigureLayout {
   const plotX = M.left;
   const plotW = Math.max(10, width - M.left - M.right);
   const n = Math.max(1, input.panels.length);
-  const gap = Math.round(PANEL_GAP * (th.fontSize / 12));
+  // Gaps shrink when there are many panels, so the panels always fit the figure.
+  const gap = Math.min(Math.round(PANEL_GAP * (th.fontSize / 12)), Math.max(1, Math.floor((height - M.top - M.bottom) / (n * 5))));
   const avail = height - M.top - M.bottom - gap * (n - 1);
-  const h = Math.max(30, avail / n);
+  // No minimum: panels always fit the figure (crowded panels get smaller text instead;
+  // on screen the plot is given a minimum height per panel and scrolls).
+  const h = Math.max(4, avail / n);
   const panels: PanelLayout[] = input.panels.map((p, i) => {
     const wantLog = !!input.axes?.y?.[p.id]?.log;
     let yRange = p.yRange ?? autoYRange(p.traces.map((t) => t.signal));
     let log = false;
     if (wantLog) {
-      if (!p.yRange) yRange = autoLogRange(p.traces.map((t) => t.signal)) ?? yRange;
+      if (!p.yRange) yRange = autoLogRange(p.traces.map((t) => t.signal), input.xRange) ?? yRange;
       log = yRange[0] > 0 && yRange[1] > yRange[0];
     }
     return { id: p.id, x: plotX, y: M.top + i * (h + gap), w: plotW, h, yRange, traceIds: p.traces.map((t) => t.id), log };
@@ -383,10 +386,25 @@ export function computeLayout(input: FigureInput): FigureLayout {
 }
 
 /** Automatic positive range for a log axis (null if any visible value is ≤ 0). */
-export function autoLogRange(signals: SignalEval[]): Range | null {
+/**
+ * Automatic log range. Besides each signal's full range (as for linear axes) it includes
+ * the visible time window: on a log axis a decaying tail (e.g. an exponential beyond
+ * the 5τ fitting region) is exactly what the reader looks at.
+ */
+export function autoLogRange(signals: SignalEval[], visible?: Range): Range | null {
   const r = autoYRangeRaw(signals);
   if (!r || !(r[0] > 0)) return null;
-  return [r[0] / 1.3, r[1] * 1.3];
+  let [lo, hi] = r;
+  if (visible) {
+    for (const s of signals) {
+      const v = rangeOf(s, visible[0], visible[1]);
+      if (v && v[0] > 0) {
+        lo = Math.min(lo, v[0]);
+        hi = Math.max(hi, v[1]);
+      }
+    }
+  }
+  return [lo / 1.3, hi * 1.3];
 }
 
 function autoYRangeRaw(signals: SignalEval[]): Range | null {
@@ -421,11 +439,14 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
     const units = new Set(traces.map((t) => t.unit));
     const unit = units.size === 1 ? [...units][0]! : '';
     const ys = input.axes?.y?.[pl.id];
+    // Text size inside this panel: the theme's size, reduced when panels are short.
+    const pfs = Math.max(6.5, Math.min(fs, pl.h / 3.2));
     const yt = pl.log
       ? logTicks(pl.yRange[0], pl.yRange[1], unit)
-      : niceTicks(pl.yRange[0], pl.yRange[1], Math.max(2, Math.floor(pl.h / (fs * 3))), unit, 1e12, {
+      : niceTicks(pl.yRange[0], pl.yRange[1], Math.max(2, Math.floor(pl.h / (pfs * 3))), unit, 1e12, {
           step: ys?.tickStep,
           decimals: ys?.decimals,
+          minCount: pl.h >= pfs * 4 ? 3 : 2,
         });
 
     // Grid.
@@ -490,14 +511,18 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
     // Frame.
     items.push({ type: 'rect', x: pl.x, y: pl.y, w: pl.w, h: pl.h, stroke: th.axisColor, strokeWidth: 1 });
 
-    // Y tick labels and title.
+    // Y tick labels and title. In short panels, label only every k-th tick (multiples of
+    // k steps, so 0 keeps its label) to keep labels from overlapping.
+    const spacing = yt.major.length > 1 ? Math.abs(yToPx(pl, yt.major[1]!) - yToPx(pl, yt.major[0]!)) : Infinity;
+    const every = pl.log ? 1 : Math.max(1, Math.ceil((pfs * 1.15) / Math.max(spacing, 1e-9)));
     yt.major.forEach((v, i) => {
+      if (every > 1 && Math.round(v / yt.step) % every !== 0) return;
       items.push({
         type: 'text',
         x: pl.x - 6,
         y: yToPx(pl, v),
         text: yt.labels[i]!,
-        size: fs * 0.92,
+        size: pfs * 0.92,
         fill: th.mutedText,
         anchor: 'end',
         baseline: 'middle',
@@ -505,14 +530,14 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
     });
     const yTitleBase = pin?.title ?? (traces.length === 1 ? traces[0]!.name : '');
     const autoTitle = yt.unitLabel ? (yTitleBase ? `${yTitleBase} (${yt.unitLabel})` : yt.unitLabel) : yTitleBase;
-    const yTitle = ys?.title?.trim() ? ys.title : autoTitle;
+    const yTitle = fitTitle(ys?.title?.trim() ? ys.title : autoTitle, yTitleBase, pl.h, pfs);
     if (yTitle) {
       items.push({
         type: 'text',
         x: Math.max(fs * 1.1, 14),
         y: pl.y + pl.h / 2,
-        text: yTitle,
-        size: fs,
+        text: yTitle.text,
+        size: yTitle.size,
         fill: th.text,
         anchor: 'middle',
         baseline: 'middle',
@@ -522,7 +547,29 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
 
     // Legend (overlay mode): corner inside the panel, or outside on the right.
     const entries = legendEntries(input, pin);
-    if (entries.length > 0) {
+    if (entries.length > 0 && legendSize(entries, pfs).h > pl.h - 8 && th.legend !== 'outside-right') {
+      // Too short for a column of entries: one row along the top (as many as fit).
+      const lfs = pfs * 0.92;
+      const rowH = Math.min(LEGEND_ROW(pfs), pl.h - 4);
+      const widths = entries.map((e) => 32 + estimateWidth(e.name, lfs) + 10);
+      let n = 0;
+      let boxW = 0;
+      while (n < entries.length && boxW + widths[n]! <= pl.w - 16) boxW += widths[n++]!;
+      if (n > 0) {
+        const left = th.legend === 'top-left' || th.legend === 'bottom-left';
+        const bx = left ? pl.x + 8 : pl.x + pl.w - boxW - 8;
+        const by = pl.y + 2;
+        items.push({ type: 'rect', x: bx, y: by, w: boxW, h: rowH, fill: th.plotBackground, stroke: th.gridMajor, strokeWidth: 0.8, opacity: 0.92 });
+        let x = bx;
+        for (let i = 0; i < n; i++) {
+          const e = entries[i]!;
+          const cy = by + rowH / 2;
+          items.push({ type: 'line', x1: x + 8, y1: cy, x2: x + 26, y2: cy, stroke: e.color, width: e.lineWidth * scale, dash: e.dash });
+          items.push({ type: 'text', x: x + 32, y: cy, text: e.name, size: lfs, fill: th.text, anchor: 'start', baseline: 'middle' });
+          x += widths[i]!;
+        }
+      }
+    } else if (entries.length > 0) {
       const rowH = LEGEND_ROW(fs);
       const { w: boxW, h: boxH } = legendSize(entries, fs);
       const pos = th.legend;
@@ -575,6 +622,22 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
     items,
   };
   return { scene, layout };
+}
+
+/**
+ * A vertical axis title that fits the panel height: full size, then smaller (down to
+ * 75 %), then without the unit, then shortened with an ellipsis; null if nothing fits.
+ */
+function fitTitle(full: string, base: string, h: number, fs: number): { text: string; size: number } | null {
+  if (!full) return null;
+  const room = h - 4;
+  for (const text of base && base !== full ? [full, base] : [full]) {
+    for (const size of [fs, fs * 0.85, fs * 0.75]) if (estimateWidth(text, size) <= room) return { text, size };
+  }
+  const size = fs * 0.75;
+  const plain = plainText(base || full);
+  const chars = Math.floor(room / (size * 0.58)) - 1;
+  return chars >= 2 ? { text: `${plain.slice(0, chars)}…`, size } : null;
 }
 
 /** Time-axis ticks exactly as drawn (shared with snapping so the grid matches). */

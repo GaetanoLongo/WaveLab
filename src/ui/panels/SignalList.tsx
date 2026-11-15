@@ -208,7 +208,7 @@ function Row({ s, selected, dropBefore, dropAfter, onDragStart, onDragOverRow, o
   const finishRename = (value: string) => {
     setRenaming(false);
     const v = value.trim();
-    if (v && v !== s.name) actions.updateSignal(s.id, (d) => void (d.name = v));
+    if (v && v !== s.name) actions.renameSignal(s.id, v);
   };
 
   return (

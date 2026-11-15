@@ -41,7 +41,7 @@ function gl5(f: (t: number) => number, a: number, b: number): number {
  * absolute, relative to ∫|f| over the whole interval: a purely relative test never
  * converges on pieces whose integral is (close to) zero and would recurse to full depth.
  */
-function integrateSmooth(f: (t: number) => number, a: number, b: number, depth = 0, whole?: number, tol?: number): number {
+function integrateSmooth(f: (t: number) => number, a: number, b: number, depth = 0, whole?: number, tol?: number, prevErr = Infinity): number {
   if (b === a) return 0;
   const w = whole ?? gl5(f, a, b);
   const eps = tol ?? 1e-12 * Math.max(Math.abs(gl5((t) => Math.abs(f(t)), a, b)), 1e-300);
@@ -49,10 +49,11 @@ function integrateSmooth(f: (t: number) => number, a: number, b: number, depth =
   const l = gl5(f, a, m);
   const r = gl5(f, m, b);
   const sum = l + r;
-  // Depth cap: 2^10 panels of 5-point GL are far beyond what smooth segments need; it also
-  // bounds the cost when rounding noise (e.g. sin at a large phase) exceeds the tolerance.
-  if (depth >= 10 || Math.abs(sum - w) <= eps) return sum;
-  return integrateSmooth(f, a, m, depth + 1, l, eps / 2) + integrateSmooth(f, m, b, depth + 1, r, eps / 2);
+  const err = Math.abs(sum - w);
+  // Stop at the tolerance, at the depth cap, or when halving no longer reduces the error
+  // estimate (for a smooth integrand it shrinks ~1000×): rounding noise dominates there.
+  if (err <= eps || depth >= 10 || (depth >= 3 && err > prevErr / 4)) return sum;
+  return integrateSmooth(f, a, m, depth + 1, l, eps / 2, err / 2) + integrateSmooth(f, m, b, depth + 1, r, eps / 2, err / 2);
 }
 
 /** ∫_a^b x over intervals that may contain features (a < b), plus impulses in (a, b]. */
@@ -287,6 +288,18 @@ export function derivativeOf(x: SignalEval): SignalEval {
 }
 
 export function finiteRiseDerivativeOf(x: SignalEval, tr: number): SignalEval {
+  // Ramps longer than the input's time scale overlap many edges: not a rise time any more,
+  // and each evaluation would visit a huge number of edges.
+  const sc = x.scale ?? x.period;
+  if (sc !== undefined && tr > sc) {
+    const nan = () => NaN;
+    return {
+      value: nan,
+      left: nan,
+      features: () => ({ features: [], truncated: false }),
+      warnings: [`dfinite(): the rise time (${tr} s) must not exceed the input's period/time scale (${sc} s).`],
+    };
+  }
   const half = tr / 2;
   // Ramps are centred on the jump: [tj − tr/2, tj + tr/2).
   const ramps = (t: number, isLeft: boolean) =>
@@ -361,9 +374,11 @@ function windowed(x: SignalEval, W: number, post: (mean: number) => number, inte
     value,
     left,
     features: (a, b, maxCount = DEFAULT_MAX_FEATURES) => {
-      const q = x.features(a - W, b, maxCount);
-      if (q.truncated) return { features: [], truncated: true };
-      const bps = q.features.flatMap((f) => [f.t, f.t + W]);
+      // mean(t) = (I(t) − I(t − W)) / W breaks only where x has a feature at t or at t − W.
+      const q = x.features(a, b, maxCount);
+      const qw = x.features(a - W, b - W, maxCount);
+      if (q.truncated || qw.truncated) return { features: [], truncated: true };
+      const bps = [...q.features.map((f) => f.t), ...qw.features.map((f) => f.t + W)];
       return scannedFeatures(bps, a, b, maxCount, value, left, x.scale ?? x.period);
     },
     period: x.period,

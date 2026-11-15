@@ -46,6 +46,8 @@ export interface Spectrum {
   thd: number;
   /** True if the signal is periodic with a period that divides the window exactly. */
   exactWindow: boolean;
+  /** The window holds too many edges/breakpoints to integrate exactly: no result. */
+  unresolved?: boolean;
 }
 
 const GL_X = [-0.906179845938664, -0.5384693101056831, 0, 0.5384693101056831, 0.906179845938664];
@@ -61,7 +63,14 @@ export function harmonicSpectrum(s: SignalEval, o: SpectrumOptions): Spectrum {
   const im = new Float64Array(K + 1);
 
   // Segments between features (exact limits at the ends).
-  const { features } = s.features(a, b, DEFAULT_MAX_FEATURES);
+  const { features, truncated } = s.features(a, b, DEFAULT_MAX_FEATURES);
+  if (truncated || !(T > 0) || !Number.isFinite(T)) {
+    const nan = Array.from({ length: K + 1 }, () => NaN);
+    return {
+      f1: o.f1, window: [a, b], orders: nan.map((_, k) => k / N), amp: nan, phaseDeg: nan,
+      dc: NaN, rms: NaN, fundamental: NaN, thd: NaN, exactWindow: false, unresolved: true,
+    };
+  }
   const cuts = [a, ...features.map((f) => f.t).filter((t) => t > a && t < b), b];
   const scale = Math.max(1e-300, ...features.map((f) => Math.max(Math.abs(f.left), Math.abs(f.right))), Math.abs(s.value(a)));
 
@@ -98,8 +107,12 @@ export function harmonicSpectrum(s: SignalEval, o: SpectrumOptions): Spectrum {
     const cr = re[k]! / T;
     const ci = im[k]! / T;
     orders.push(k / N);
-    amp.push(k === 0 ? cr : 2 * Math.hypot(cr, ci));
-    phaseDeg.push(k === 0 ? 0 : (Math.atan2(ci, cr) * 180) / Math.PI);
+    let A = k === 0 ? cr : 2 * Math.hypot(cr, ci);
+    // Rounding residue relative to the signal's scale is an exact zero (no phase either).
+    const zero = Math.abs(A) <= 1e-10 * scale;
+    if (zero) A = 0;
+    amp.push(A);
+    phaseDeg.push(k === 0 || zero ? 0 : (Math.atan2(ci, cr) * 180) / Math.PI);
   }
   const dc = amp[0]!;
   const fundamental = amp[N] ?? 0;

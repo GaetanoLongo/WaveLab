@@ -178,10 +178,18 @@ function ExpressionField({ sig }: { sig: DerivedSignalDef }) {
     const consts = [
       { label: 't', insert: 't', detail: 'time' },
       { label: 'pi', insert: 'pi', detail: 'π' },
+      { label: 'e', insert: 'e', detail: 'Euler’s number' },
     ];
     const pool = prefix.startsWith('[') ? sigs : [...sigs, ...fns, ...consts];
     return pool.filter((x) => x.label.toLowerCase().startsWith(q) && x.insert !== prefix).slice(0, 8);
   }, [draft, prefix, dismissed, project, sig.id]);
+
+  // The word before the caret is already a complete token (t, e, pi or a signal name):
+  // Enter then applies the expression instead of taking a longer suggestion (t → tan()).
+  const prefixComplete = useMemo(
+    () => ['t', 'e', 'pi'].includes(prefix) || project.signals.some((s) => s.id !== sig.id && nameToken(s.name) === prefix),
+    [prefix, project, sig.id],
+  );
 
   const accept = (sug: Suggestion) => {
     const before = text.slice(0, caret - prefix.length);
@@ -239,7 +247,7 @@ function ExpressionField({ sig }: { sig: DerivedSignalDef }) {
                 setActive((a) => (a + (e.key === 'ArrowDown' ? 1 : suggestions.length - 1)) % suggestions.length);
                 return;
               }
-              if (e.key === 'Tab' || e.key === 'Enter') {
+              if (e.key === 'Tab' || (e.key === 'Enter' && !prefixComplete)) {
                 e.preventDefault();
                 accept(suggestions[active]!);
                 return;

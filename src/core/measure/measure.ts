@@ -87,16 +87,22 @@ export function measureInterval(s: SignalEval, a0: number, b0: number): Interval
   if (!(b > a)) return nan;
   const r = rangeOf(s, a, b);
   if (!r) return nan;
-  const [min, max] = r;
+  // Rounding residue (e.g. 1e-16 of the signal's scale) is shown as an exact 0, and a
+  // signal flat to that precision has no duty cycle or frequency.
+  const mag = Math.max(Math.abs(r[0]), Math.abs(r[1]));
+  const clean = (v: number) => (Math.abs(v) <= 1e-10 * mag ? 0 : v);
+  const min = clean(r[0]);
+  const max = clean(r[1]);
   const span = b - a;
-  const mean = integrateRange(s, a, b) / span;
-  const rms = Math.sqrt(Math.max(0, integrateRange(squareOf(s), a, b) / span));
+  const mean = clean(integrateRange(s, a, b) / span);
+  const rms = clean(Math.sqrt(Math.max(0, integrateRange(squareOf(s), a, b) / span)));
   const threshold = (max + min) / 2;
+  const flat = max - min <= 1e-9 * mag;
 
   let duty = NaN;
   let frequency = NaN;
   let rising = 0;
-  if (max > min) {
+  if (!flat) {
     const r = aboveThreshold(s, a, b, threshold);
     duty = r.high / span;
     rising = r.ups.length;
@@ -104,5 +110,5 @@ export function measureInterval(s: SignalEval, a0: number, b0: number): Interval
     const use = r.ups.length >= r.downs.length ? r.ups : r.downs;
     if (use.length >= 2) frequency = (use.length - 1) / (use[use.length - 1]! - use[0]!);
   }
-  return { a, b, max, min, peakToPeak: max - min, mean, rms, threshold, duty, frequency, risingCrossings: rising };
+  return { a, b, max, min, peakToPeak: flat ? 0 : max - min, mean, rms, threshold, duty, frequency, risingCrossings: rising };
 }

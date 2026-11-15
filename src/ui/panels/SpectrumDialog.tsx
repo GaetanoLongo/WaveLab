@@ -1,5 +1,7 @@
 /** Harmonic spectrum of a signal: exact Fourier series, THD, bar chart, table, CSV. */
 
+import { autoFundamental } from '../../state/fundamental';
+import { plainText } from '../../core/plot/mathtext';
 import { useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { harmonicSpectrum, type Spectrum } from '../../core/measure/spectrum';
@@ -30,19 +32,17 @@ function Dialog() {
   const [sigId, setSigId] = useState(() => actions.measureTarget()?.id ?? selectedId ?? visible[0]?.id ?? '');
   const sig = findSignal(project, sigId) ?? visible[0];
   const ev = sig ? compiled(sig, project) : null;
-  const autoF1 = ev?.period ? 1 / ev.period : 1 / (view.xRange[1] - view.xRange[0]);
-  const [f1, setF1] = useState<number | null>(null); // null = automatic
-  const [periods, setPeriods] = useState(1);
+  const auto = sig && ev ? autoFundamental(project, sig, ev, view.xRange[1] - view.xRange[0]) : { f1: 1, periods: 1, source: 'span' as const };
+  const [f1, setF1] = useState<number | null>(null); // null = automatic (fundamental and periods)
+  const [periodsSet, setPeriods] = useState(1);
+  const periods = f1 === null ? auto.periods : periodsSet;
   const [t0, setT0] = useState(0);
   const [maxOrder, setMaxOrder] = useState(50);
   const [scale, setScale] = useState<Scale>('peak');
   const [showDc, setShowDc] = useState(false);
-  const fund = f1 ?? autoF1;
+  const fund = f1 ?? auto.f1;
 
-  const spec = useMemo(
-    () => (ev ? harmonicSpectrum(ev, { f1: fund, periods, t0, maxOrder }) : null),
-    [ev, fund, periods, t0, maxOrder],
-  );
+  const spec = useMemo(() => (ev ? harmonicSpectrum(ev, { f1: fund, periods, t0, maxOrder }) : null), [ev, fund, periods, t0, maxOrder]);
   const unit = sig?.unit ?? '';
 
   const value = (s: Spectrum, k: number): number => {
@@ -53,13 +53,7 @@ function Dialog() {
     return s.fundamental > 0 ? 20 * Math.log10(Math.max(Math.abs(a), 1e-300) / s.fundamental) : NaN;
   };
   const fmtVal = (v: number) =>
-    !Number.isFinite(v)
-      ? '—'
-      : scale === 'percent'
-        ? `${v.toPrecision(4)} %`
-        : scale === 'db'
-          ? `${v.toFixed(1)} dB`
-          : formatSI(v, unit, 5);
+    !Number.isFinite(v) ? '—' : scale === 'percent' ? `${v.toPrecision(4)} %` : scale === 'db' ? `${v.toFixed(1)} dB` : formatSI(v, unit, 5);
 
   const exportCsv = () => {
     if (!spec || !sig) return;
@@ -83,7 +77,21 @@ function Dialog() {
     : [];
 
   return (
-    <Modal title="Spectrum" onClose={close} className="spectrum-dialog" footer={<><button onClick={exportCsv} disabled={!spec}>Export CSV</button><button className="primary" onClick={close}>Done</button></>}>
+    <Modal
+      title="Spectrum"
+      onClose={close}
+      className="spectrum-dialog"
+      footer={
+        <>
+          <button onClick={exportCsv} disabled={!spec}>
+            Export CSV
+          </button>
+          <button className="primary" onClick={close}>
+            Done
+          </button>
+        </>
+      }
+    >
       {!sig || !ev || !spec ? (
         <p className="hint-text">Add a visible signal first.</p>
       ) : (
@@ -94,16 +102,43 @@ function Dialog() {
               <select value={sig.id} onChange={(e) => setSigId(e.target.value)}>
                 {visible.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name}
+                    {plainText(s.name)}
                   </option>
                 ))}
               </select>
             </div>
-            <NumberField label="Fundamental" unit="Hz" positive value={fund} onCommit={(v) => setF1(v)} title="Harmonic orders are multiples of this frequency" />
+            <NumberField
+              label="Fundamental"
+              unit="Hz"
+              positive
+              value={fund}
+              onCommit={(v) => {
+                if (f1 === null) setPeriods(periods);
+                setF1(v);
+              }}
+              title="Harmonic orders are multiples of this frequency"
+            />
             <button className="link-btn" onClick={() => setF1(null)} disabled={f1 === null}>
-              Auto ({ev.period ? `1 / period = ${formatSI(1 / ev.period, 'Hz')}` : 'visible span'})
+              Auto (
+              {auto.source === 'input'
+                ? `${auto.inputName ? plainText(auto.inputName) : 'input'} ${formatSI(auto.f1, 'Hz')}${auto.periods > 1 ? `, ${auto.periods} periods` : ''}`
+                : auto.source === 'period'
+                  ? `1 / period = ${formatSI(auto.f1, 'Hz')}`
+                  : 'visible span'}
+              )
             </button>
-            <NumberField label="Periods" plain min={1} max={1000} value={periods} onCommit={(v) => setPeriods(Math.max(1, Math.round(v)))} title="Window = periods / fundamental" />
+            <NumberField
+              label="Periods"
+              plain
+              min={1}
+              max={1000}
+              value={periods}
+              onCommit={(v) => {
+                setF1(fund);
+                setPeriods(Math.max(1, Math.round(v)));
+              }}
+              title="Window = periods / fundamental"
+            />
             <NumberField label="Start t₀" unit="s" value={t0} onCommit={setT0} />
             <NumberField label="Max order" plain min={1} max={2000} value={maxOrder} onCommit={(v) => setMaxOrder(Math.max(1, Math.round(v)))} />
             <div className="field">
@@ -145,10 +180,11 @@ function Dialog() {
                 </dd>
               </div>
             </dl>
-            {!spec.exactWindow && (
+            {spec.unresolved && <p className="warn">The window holds too many edges to compute exactly. Use a higher fundamental or fewer periods.</p>}
+            {!spec.exactWindow && !spec.unresolved && (
               <p className="warn">
-                The window is not a whole number of the signal's periods{ev.period ? '' : ' (the signal is not periodic)'}: the result is the Fourier
-                series of this window repeated, so expect spectral spreading.
+                The window is not a whole number of the signal's periods
+                {ev.period ? '' : ' (the signal is not periodic)'}: the result is the Fourier series of this window repeated, so expect spectral spreading.
               </p>
             )}
             <p className="hint-text">Exact Fourier series (no FFT). THD from the exact RMS, independent of the max order.</p>
@@ -197,11 +233,11 @@ function BarChart({ spec, value, scale, showDc, unit }: { spec: Spectrum; value(
   const top = db ? 5 : Math.max(1e-300, ...vals.filter(Number.isFinite).map(Math.abs)) * 1.08;
   const bottom = db ? floor : 0;
   const maxH = spec.orders[spec.orders.length - 1]!;
-  const minH = showDc ? 0 : spec.orders[1] ?? 0;
+  const minH = showDc ? 0 : (spec.orders[1] ?? 0);
   const x = (h: number) => m.l + ((h - minH) / Math.max(1e-12, maxH - minH)) * (W - m.l - m.r);
   const y = (v: number) => m.t + (1 - (Math.max(bottom, Math.min(top, v)) - bottom) / (top - bottom)) * (H - m.t - m.b);
   const bw = Math.max(1, Math.min(14, ((W - m.l - m.r) / Math.max(1, ks.length)) * 0.6));
-  const yTicks = db ? [0, -20, -40, -60, -80] : [0, 0.25, 0.5, 0.75, 1].map((f) => f * top / 1.08);
+  const yTicks = db ? [0, -20, -40, -60, -80] : [0, 0.25, 0.5, 0.75, 1].map((f) => (f * top) / 1.08);
   // Round tick steps (1, 2, 5, 10, 20, 50 …) and the fundamental.
   const raw = Math.max(1, maxH / 10);
   const mag = 10 ** Math.floor(Math.log10(raw));
@@ -234,7 +270,14 @@ function BarChart({ spec, value, scale, showDc, unit }: { spec: Spectrum; value(
         if (!Number.isFinite(v)) return null;
         const yv = y(db ? v : Math.abs(v));
         return (
-          <rect key={k} x={x(spec.orders[k]!) - bw / 2} y={Math.min(yv, y(bottom))} width={bw} height={Math.abs(y(bottom) - yv)} className={k === Math.round(spec.orders.indexOf(1)) ? 'bar fund' : 'bar'}>
+          <rect
+            key={k}
+            x={x(spec.orders[k]!) - bw / 2}
+            y={Math.min(yv, y(bottom))}
+            width={bw}
+            height={Math.abs(y(bottom) - yv)}
+            className={k === Math.round(spec.orders.indexOf(1)) ? 'bar fund' : 'bar'}
+          >
             <title>
               order {Number(spec.orders[k]!.toPrecision(6))}: {db ? `${v.toFixed(1)} dB` : formatSI(v, scale === 'percent' ? '%' : unit, 4)}
             </title>

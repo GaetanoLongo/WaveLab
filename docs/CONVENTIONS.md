@@ -129,3 +129,22 @@ These rules are part of the file format: changing them later needs a schema migr
 - THD = √(RMS² − DC² − V1²/2) / (V1/√2), with the exact RMS of the window.
 - If the window is not a whole number of the signal's periods (or the signal is aperiodic) the result is the
   Fourier series of the window repeated, which spreads energy into neighbouring orders — flagged in the dialog.
+
+## Value limits
+
+Beyond these, floating-point precision (and computation time) run out, so they are
+refused in the parameter fields, in expressions and when opening a file:
+
+- times (delay, window edges, breakpoints, τ, bit time, expression time arguments,
+  view range): within ±10⁶ s; the smallest positive time is 1 fs;
+- frequency: 1 µHz to 1 THz;
+- any other value: within ±10¹⁵.
+
+`dfinite(x, tr)` requires a rise time no longer than the input's period. Signal names
+must be unique and may not contain `]`.
+
+## Recovery copy
+
+While a project has unsaved changes, a copy is kept in this browser's local storage
+and offered for restore at the next start. It is removed once the project is saved
+or the changes are discarded.

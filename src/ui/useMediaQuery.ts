@@ -15,4 +15,5 @@ export function useMediaQuery(query: string): boolean {
   return matches;
 }
 
-export const PHONE_QUERY = '(max-width: 760px)';
+/** Phone layout: narrow screens, or short touch screens (phones in landscape). */
+export const PHONE_QUERY = '(max-width: 760px), (max-height: 520px) and (pointer: coarse)';

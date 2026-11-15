@@ -35,6 +35,13 @@ export function formatField(v: number, unit: string, plain: boolean, digits: num
   return formatSI(v, unit, digits);
 }
 
+/** Default magnitude limits per unit (overridable with min/max). */
+const LIMITS: Record<string, { maxAbs: number; minPositive: number }> = {
+  s: { maxAbs: 1e6, minPositive: 1e-15 },
+  Hz: { maxAbs: 1e12, minPositive: 1e-6 },
+  '': { maxAbs: 1e15, minPositive: 1e-300 },
+};
+
 export function NumberField(p: NumberFieldProps) {
   const unit = p.unit ?? '';
   const scale = p.scale ?? 1;
@@ -53,6 +60,10 @@ export function NumberField(p: NumberFieldProps) {
     if (!r) return { err: unit ? `Enter a number, optionally with an SI prefix and “${unit}”` : 'Enter a number' };
     const v = r.value / scale;
     if (p.positive && !(v > 0)) return { err: 'Must be greater than 0' };
+    // Sanity limits by unit: beyond these, floating-point precision (and computation time) run out.
+    const lim = LIMITS[unit] ?? LIMITS['']!;
+    if (!Number.isFinite(v) || Math.abs(v) > lim.maxAbs) return { err: `Must be within ±${formatField(lim.maxAbs * scale, unit, p.plain ?? false, 4)}` };
+    if (p.positive && v < lim.minPositive) return { err: `Minimum is ${formatField(lim.minPositive * scale, unit, p.plain ?? false, 4)}` };
     if (p.min !== undefined && v < p.min) return { err: `Minimum is ${formatField(p.min * scale, unit, p.plain ?? false, 4)}` };
     if (p.max !== undefined && v > p.max) return { err: `Maximum is ${formatField(p.max * scale, unit, p.plain ?? false, 4)}` };
     return { v };

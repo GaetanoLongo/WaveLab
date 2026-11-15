@@ -18,6 +18,19 @@ export interface TickOptions {
   step?: number | null;
   /** Fixed number of decimals in labels; null/undefined = automatic. */
   decimals?: number | null;
+  /** Fewest labelled ticks to aim for (default 3; 2 for very short panels). */
+  minCount?: number;
+}
+
+/** Fewest decimals that write x exactly (2.5 → 1, 0.25 → 2, 5 → 0), at most 12. */
+export function decimalsFor(x: number): number {
+  const a = Math.abs(x);
+  if (!(a > 0) || !Number.isFinite(a)) return 0;
+  for (let d = Math.max(0, Math.ceil(-Math.log10(a) - 1e-9)); d <= 12; d++) {
+    const scaled = a * 10 ** d;
+    if (Math.abs(scaled - Math.round(scaled)) <= 1e-6 * Math.max(1, scaled)) return d;
+  }
+  return 12;
 }
 
 export function niceTicks(
@@ -52,7 +65,7 @@ export function niceTicks(
     mag = 10 ** Math.floor(Math.log10(forced));
     nice = forced / mag;
   }
-  for (let i = 0; !forced && i < 4 && major.length < 3; i++) {
+  for (let i = 0; !forced && i < 4 && major.length < (opts.minCount ?? 3); i++) {
     if (nice === 10) nice = 5;
     else if (nice === 5) nice = 2;
     else if (nice === 2) nice = 1;
@@ -72,8 +85,9 @@ export function niceTicks(
 
   const absMax = Math.max(Math.abs(min), Math.abs(max));
   const [factor, prefix] = prefixFactorFor(absMax, maxPrefixFactor);
-  const decimals = opts.decimals ?? Math.max(0, Math.ceil(-Math.log10(step / factor) - 1e-9));
-  const labels = major.map((v) => formatFixed(v, factor, decimals));
+  const decimals = opts.decimals ?? decimalsFor(step / factor);
+  // Typographic minus sign (U+2212) for negative labels, as in print.
+  const labels = major.map((v) => formatFixed(v, factor, decimals).replace(/^-/, "\u2212"));
   return { major, minor, step, minorStep, labels, unitLabel: prefix + unit };
 }
 

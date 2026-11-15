@@ -84,7 +84,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   const [ch2] = await Promise.all([p.waitForEvent('filechooser'), p.click('button[aria-label^="Open project"]')]);
   await ch2.setFiles(bad);
   await p.waitForTimeout(300);
-  assert((await p.locator('.notice').innerText()).includes('signals[0].timing.frequency must be a positive number'), 'invalid file rejected with field path');
+  assert((await p.locator('.notice').innerText()).includes('signals[0].timing.frequency must be between 1 µHz and 1 THz'), 'invalid file rejected with field path');
   assert((await p.locator('.signal-list .row').count()) === 3, 'current project kept after a failed open');
 
   // --- Export dialog ---
