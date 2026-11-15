@@ -7,7 +7,7 @@ import { sceneToSvg } from '../../core/plot/svg';
 import { actions, useActiveFigure, useEditor } from '../../state/store';
 import { NumberField } from '../fields/NumberField';
 import { safeFileName } from '../fileio';
-import { buildExportScene, DEFAULT_EXPORT, pageSizePt, runExport, type ExportFormat, type ExportOptions, type PageSize } from './exporters';
+import { buildExportScene, copyExport, DEFAULT_EXPORT, pageSizePt, runExport, type ExportFormat, type ExportOptions, type PageSize } from './exporters';
 
 export const useExportDialog = create<{ open: boolean }>(() => ({ open: false }));
 export const openExportDialog = () => useExportDialog.setState({ open: true });
@@ -73,6 +73,7 @@ function Dialog() {
     // project/view are dependencies because buildExportScene reads them from the store.
   }, [o.width, o.height, o.transparent, o.includeCursors, o.content, project, view]);
 
+  const [copied, setCopied] = useState<string | null>(null);
   const doExport = async () => {
     setBusy(true);
     setError(null);
@@ -113,9 +114,16 @@ function Dialog() {
           </div>
           <div className="options">
             <div className="seg fmt" role="group" aria-label="Format">
-              {(['png', 'svg', 'pdf', 'csv'] as ExportFormat[]).map((f) => (
-                <button key={f} className={o.format === f ? 'on' : ''} onClick={() => set({ format: f })}>
-                  {f.toUpperCase()}
+              {(['png', 'svg', 'pdf', 'csv', 'tex'] as ExportFormat[]).map((f) => (
+                <button
+                  key={f}
+                  className={o.format === f ? 'on' : ''}
+                  onClick={() => {
+                    set({ format: f });
+                    setCopied(null);
+                  }}
+                >
+                  {f === 'tex' ? 'TikZ' : f.toUpperCase()}
                 </button>
               ))}
             </div>
@@ -124,6 +132,8 @@ function Dialog() {
               {o.format === 'svg' && 'True vector with editable text and paths. Text uses the Inter font if installed, otherwise a system sans-serif.'}
               {o.format === 'pdf' && 'Vector PDF with the Inter font embedded (Greek letters and symbols included).'}
               {o.format === 'csv' && 'Numerical samples of the visible signals over the visible time range (one column per signal).'}
+              {o.format === 'tex' &&
+                'LaTeX source (pgfplots): axes, labels and annotations are typeset by LaTeX in your document’s font. Current figure only.'}
             </p>
 
             <h3>Figure</h3>
@@ -176,6 +186,15 @@ function Dialog() {
             <NumberField label="Width" unit="px" plain min={200} max={8000} value={o.width} onCommit={(v) => set({ width: Math.round(v) })} />
             <NumberField label="Height" unit="px" plain min={150} max={8000} value={o.height} onCommit={(v) => set({ height: Math.round(v) })} />
 
+            {o.format === 'tex' && (
+              <>
+                <h3>TikZ</h3>
+                <label className="check" title="Otherwise only the tikzpicture, for \input in your document (preamble lines are listed in the file)">
+                  <input type="checkbox" checked={o.tikzStandalone} onChange={(e) => set({ tikzStandalone: e.target.checked })} />
+                  Standalone document (compiles on its own)
+                </label>
+              </>
+            )}
             {o.format === 'csv' && (
               <>
                 <h3>CSV</h3>
@@ -252,7 +271,21 @@ function Dialog() {
           </div>
         </div>
         <footer>
+          {copied && <span className="hint-text copied">{copied}</span>}
           <button onClick={close}>Cancel</button>
+          <button
+            onClick={async () => {
+              setError(null);
+              try {
+                setCopied(await copyExport({ ...o, fileName: safeFileName(fileName) }));
+              } catch (e) {
+                setError(`copy failed: ${(e as Error).message}`);
+              }
+            }}
+            title={o.format === 'png' || o.format === 'pdf' ? 'Copy the figure as a PNG image' : 'Copy the file contents as text'}
+          >
+            Copy {o.format === 'pdf' ? 'as PNG' : ''}
+          </button>
           <button className="primary" onClick={doExport} disabled={busy || !fileName.trim()}>
             {busy ? 'Exporting…' : `Export ${o.format.toUpperCase()}`}
           </button>

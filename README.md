@@ -35,6 +35,7 @@ npm run e2e        # browser end-to-end checks: editor, snapping, files & export
 | S1 | Stabilisation (stress tests: freezes, limits, recovery copy, layout fixes) | ✅ |
 | F1 | Power electronics II: rectifiers / phase control, SVPWM / DPWM / third harmonic, R-L-E load current, power metrics | ✅ |
 | F2 | Signal generation: chirp (linear/log), seeded noise, PRBS, quantize, sample & hold, AM / DSB-SC / FM / PM | ✅ |
+| F3 | Annotations (labels, arrows, Δt/ΔV dimensions), TikZ/pgfplots export, copy to clipboard, LaTeX-style labels | ✅ |
 
 See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the mathematical conventions.
 
@@ -95,6 +96,14 @@ voltage: P, S, PF, non-active power N = √(S² − P²), and from the fundament
 - **AM / FM / PM…**: AM (with envelope), DSB-SC, FM and PM of a sine, square or triangle message; the exact
   spectrum shows the Bessel lines J_n(β) of FM/PM.
 
+## Annotations
+Toolbar → Annotations: **text labels** (click), **arrows** (drag to the point), **Δt** and **ΔV dimension
+markers** (drag; they snap to edges, peaks, zero crossings and signal levels — Alt = free), or a Δt / ΔV marker
+straight **from the cursors**. Annotations live in data coordinates of their signal's panel (they follow zoom and
+plot mode), can be dragged, deleted (Delete) and edited (double-click, or "Edit annotations…": text, panel,
+colour, exact positions). Dimension labels are automatic (Δt = 10 ms) unless you type one. They are saved in the
+project and drawn in every export.
+
 ## Spectrum and CSV
 - **Spectrum** (toolbar, "⋯" menu on phones, or the measurement panel): exact Fourier series of any signal
   over N periods of a chosen fundamental (automatic from the signal's period) — no FFT, no leakage for
@@ -117,9 +126,18 @@ drag with two fingers to pan, drag a trace with one finger to move it, double-ta
 - **Export** (Ctrl+Shift+S): PNG (1×/2×/4×, transparent option), SVG (vector, editable text),
   PDF (vector, Inter font embedded; page = figure size, A4, A3, Letter or custom).
 
+## TikZ and clipboard
+Export → **TikZ** writes the current figure as pgfplots source (standalone document or a snippet for `\input`):
+one groupplot panel per stacked panel, exact samples with vertical edges, the same unit prefixes, axis titles,
+log axes, legends and annotations; labels are converted to LaTeX. **Copy** puts the export on the clipboard
+(PNG/PDF as a PNG image; SVG, CSV and TikZ as text).
+
 ## Math in labels
 Signal names (shown in legends and axis titles) accept a small LaTeX-like markup:
-`V_{out}`, `I_{RMS}^2`, `\omega t`, `\Delta t`, `\varphi`, `90^\circ`. Write `\_` for a literal underscore.
+`V_{out}`, `I_{RMS}^2`, `\omega t`, `\Delta t`, `\varphi`, `90^\circ`, about 100 LaTeX symbols, accents
+(`\hat{v}`, `\bar{x}`, `\vec{E}`, `\dot{x}`, `\tilde{H}`, `\overline{AB}`) and font commands (`\mathrm{}`,
+`\text{}`…); `$…$` delimiters are ignored, so labels can be pasted from LaTeX. Write `\_` for a literal underscore.
+Not supported (no MathJax): fractions, roots and stacked layouts — they need a typesetting engine.
 
 ## Derived signals
 Operations in the toolbox create new signals from the selected signal (A) and the next one in the

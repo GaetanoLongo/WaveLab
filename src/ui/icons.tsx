@@ -92,6 +92,7 @@ const P: Record<string, ReactNode> = {
   spectrum: <path d="M4 20h17M6 20v-4M10 20V8M14 20v-7M18 20v-3" />,
   axes: <path d="M4 3v17h17M8 16l4-5 3 3 5-7" />,
   magnet: <path d="M6 3v8a6 6 0 0 0 12 0V3M6 7h4M14 7h4" />,
+  annotate: <path d="M4 20l4-1 11-11-3-3L5 16zM14 6l3 3M4 4h7" />,
   export: (
     <>
       <path d="M12 3v12M7 8l5-5 5 5" />

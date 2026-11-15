@@ -24,6 +24,8 @@ import { Toolbox } from './panels/Toolbox';
 import { PlotView, type CursorInfo } from './plot/PlotView';
 import { Toolbar } from './Toolbar';
 import { useShortcuts } from './useShortcuts';
+import { editAnnotation, selectAnnotation, useAnnotate } from './annotate';
+import { AnnotationsDialog } from './panels/AnnotationsDialog';
 import { discardRecovery, restoreRecovery, startRecovery, useRecovery } from '../state/recovery';
 import { PHONE_QUERY, useMediaQuery } from './useMediaQuery';
 
@@ -68,6 +70,7 @@ export function App() {
       <PwmDialog />
       <RectifierDialog />
       <ModulationDialog />
+      <AnnotationsDialog />
       <AxesDialog />
       <RecoveryBanner />
       <Toolbar compact={phone} />
@@ -221,6 +224,8 @@ function FigurePlot({ figId, active, onCursor, phoneLayout }: { figId: string; a
   const view = stored ?? fallback;
   const fig = project.figures.find((f) => f.id === figId) ?? project.figures[0]!;
   const snap = useSettings((s) => s.snap);
+  const annTool = useAnnotate((s) => s.tool);
+  const annSel = useAnnotate((s) => s.selected);
   const visibleIds = orderedSignals(project, fig.id).filter((s) => s.style.visible).map((s) => s.id);
   const yTraceId =
     (view.cursors.target && visibleIds.includes(view.cursors.target) ? view.cursors.target : null) ??
@@ -286,6 +291,20 @@ function FigurePlot({ figId, active, onCursor, phoneLayout }: { figId: string; a
         cursors={cursorSpec}
         onCursorMove={active ? actions.setCursor : undefined}
         onAxisDoubleClick={active ? openAxes : undefined}
+        annotations={fig.annotations}
+        selectedAnnotation={active ? annSel : null}
+        annotateTool={active ? annTool : null}
+        onAnnotationCreate={
+          active
+            ? (a) => {
+                const id = actions.addAnnotation(a);
+                useAnnotate.setState({ tool: null, selected: id });
+              }
+            : undefined
+        }
+        onAnnotationChange={active ? (id, patch, key) => actions.updateAnnotation(id, patch, key) : undefined}
+        onAnnotationSelect={active ? selectAnnotation : undefined}
+        onAnnotationEdit={active ? editAnnotation : undefined}
         emptyMessage={
           project.signals.length > 0 && visibleIds.length === 0 && orderedSignals(project, fig.id).length === 0
             ? 'This figure is empty: add a waveform, or add existing signals from the signal list.'

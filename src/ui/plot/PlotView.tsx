@@ -35,6 +35,9 @@ import { panRange, zoomRange } from '../../core/plot/viewport';
 import { cycleStarts, snapPoints, type PointOptions, type SnapPoint } from '../../core/snap/points';
 import { computeSnap, gridPoints, type SnapSettings } from '../../core/snap/snap';
 import { formatSI } from '../../core/units/si';
+import type { Annotation } from '../../core/model/project';
+import { annotationAt, resolveAnnotations } from '../../core/plot/annotations';
+import type { AnnotateTool } from '../annotate';
 
 export interface CursorInfo {
   t: number;
@@ -79,6 +82,14 @@ export interface PlotViewProps {
   axes?: FigureInputAxes;
   /** Double-click on an axis area: 'x' or a panel id (instead of fit-all). */
   onAxisDoubleClick?(axis: string): void;
+  /** Annotations of the figure, the selected one, and the placement tool (if any). */
+  annotations?: Annotation[];
+  selectedAnnotation?: string | null;
+  annotateTool?: AnnotateTool | null;
+  onAnnotationCreate?(a: Omit<Annotation, 'id'>): void;
+  onAnnotationChange?(id: string, patch: Partial<Annotation>, key: string): void;
+  onAnnotationSelect?(id: string | null): void;
+  onAnnotationEdit?(id: string): void;
 }
 
 type FigureInputAxes = { x?: AxisStyle; y?: Record<string, AxisStyle> };
@@ -88,6 +99,8 @@ type Drag =
   | { kind: 'box'; startX: number; startY: number; curX: number; curY: number }
   | { kind: 'pinch'; startDist: number; startMid: number; startRange: Range }
   | { kind: 'cursor'; ck: 't' | 'y'; index: 0 | 1; targets: SnapPoint[]; levels: Array<{ v: number; label: string }> }
+  | { kind: 'place'; tool: AnnotateTool; on: string | null; panelId: string; t0: number; y0: number; t1: number; y1: number; snapT: number[]; snapY: number[] }
+  | { kind: 'annmove'; id: string; panelId: string; startX: number; startY: number; orig: Annotation; key: string; moved: boolean }
   | {
       kind: 'move';
       id: string;
@@ -138,6 +151,11 @@ export function PlotView(props: PlotViewProps) {
     [props.mode, props.traces, props.groups, props.yRanges],
   );
 
+  const [preview, setPreview] = useState<Omit<Annotation, 'id'> | null>(null);
+  const annList = useMemo(
+    () => (preview ? [...(props.annotations ?? []), { ...preview, id: '__preview' }] : props.annotations),
+    [props.annotations, preview],
+  );
   const { scene, layout } = useMemo(
     () =>
       buildFigure({
@@ -150,8 +168,14 @@ export function PlotView(props: PlotViewProps) {
         theme: props.theme,
         cursors: props.cursors,
         axes: props.axes,
+        annotations: annList,
+        selectedAnnotation: props.selectedAnnotation,
       }),
-    [size, panels, props.xRange, props.theme, props.showLegend, props.cursors, props.axes],
+    [size, panels, props.xRange, props.theme, props.showLegend, props.cursors, props.axes, annList, props.selectedAnnotation],
+  );
+  const resolvedAnns = useMemo(
+    () => resolveAnnotations(props.annotations, layout, (id) => props.traces.find((t) => t.id === id)?.unit),
+    [props.annotations, layout, props.traces],
   );
   const svg = useMemo(() => sceneToSvg(scene, `p${uid}-`), [scene, uid]);
 
@@ -285,6 +309,33 @@ export function PlotView(props: PlotViewProps) {
     }
     // Fingers are less precise than a mouse: larger grab zones for touch.
     const tol = e.pointerType === 'touch' ? 18 : 6;
+    if (props.annotateTool && props.onAnnotationCreate) {
+      const panel = panelAt(layout, y);
+      if (panel && x >= layout.plotX && x <= layout.plotX + layout.plotW) {
+        // Snap targets: signal features in view (times) and feature levels of the panel's signals.
+        const cd = props.snap?.enabled ? startCursorDrag('t', 0) : null;
+        const tv = cd?.kind === 'cursor' ? cd.targets.map((p) => p.t) : [];
+        const lv: number[] = [];
+        if (props.snap?.enabled) {
+          for (const tr of props.traces.filter((t) => panel.traceIds.includes(t.id))) {
+            for (const f of tr.signal.features(layout.xRange[0], layout.xRange[1], 2000).features) lv.push(f.left, f.right);
+          }
+        }
+        const t = snapTo(pxToT(layout, x), tv, (8 * (layout.xRange[1] - layout.xRange[0])) / layout.plotW);
+        const v = snapTo(pxToY(panel, y), lv, Math.abs(pxToY(panel, y + 8) - pxToY(panel, y)));
+        const d: Drag = { kind: 'place', tool: props.annotateTool, on: panel.traceIds[0] ?? null, panelId: panel.id, t0: t, y0: v, t1: t, y1: v, snapT: tv, snapY: lv };
+        setDrag(d);
+        if (props.annotateTool !== 'text') setPreview(placed(d));
+        return;
+      }
+    }
+    const ah = props.onAnnotationSelect ? annotationAt(resolvedAnns, layout, x, y, tol) : null;
+    if (ah) {
+      props.onAnnotationSelect?.(ah.a.id);
+      setDrag({ kind: 'annmove', id: ah.a.id, panelId: ah.panel.id, startX: x, startY: y, orig: ah.a, key: `drag:ann-${ah.a.id}-${++gestureCounter}`, moved: false });
+      return;
+    }
+    if (props.selectedAnnotation) props.onAnnotationSelect?.(null);
     const ch = props.onCursorMove ? cursorHit(layout, props.cursors, x, y, tol) : null;
     if (ch) {
       setDrag(startCursorDrag(ch.kind, ch.index));
@@ -325,6 +376,32 @@ export function PlotView(props: PlotViewProps) {
       setHoverCursor(ch?.kind ?? null);
       const hit = !ch && props.onMove ? hitTest(layout, props.traces, x, y) : null;
       setHoverMovable(!!hit && !!props.canMove?.(hit));
+      return;
+    }
+    if (drag.kind === 'place') {
+      const panel = layout.panels.find((p) => p.id === drag.panelId);
+      if (!panel || drag.tool === 'text') return;
+      const free = e.altKey;
+      const thrT = (8 * (layout.xRange[1] - layout.xRange[0])) / layout.plotW;
+      const t = free ? pxToT(layout, clampX(layout, x)) : snapTo(pxToT(layout, clampX(layout, x)), drag.snapT, thrT);
+      const yy = Math.max(panel.y, Math.min(panel.y + panel.h, y));
+      const v = free ? pxToY(panel, yy) : snapTo(pxToY(panel, yy), drag.snapY, Math.abs(pxToY(panel, yy + 8) - pxToY(panel, yy)));
+      const d = { ...drag, t1: t, y1: v };
+      setDrag(d);
+      setPreview(placed(d));
+      if (drag.tool === 'dim-t') setGuide({ t: null, label: `Δt = ${formatSI(Math.abs(t - drag.t0), 's', 4)}`, x, y });
+      if (drag.tool === 'dim-y') setGuide({ t: null, label: `Δ = ${formatSI(Math.abs(v - drag.y0), '', 4)}`, x, y });
+      return;
+    }
+    if (drag.kind === 'annmove') {
+      const panel = layout.panels.find((p) => p.id === drag.panelId);
+      if (!panel) return;
+      if (!drag.moved && Math.hypot(x - drag.startX, y - drag.startY) < 3) return;
+      if (!drag.moved) setDrag({ ...drag, moved: true });
+      const dt = pxToT(layout, x) - pxToT(layout, drag.startX);
+      const dv = pxToY(panel, y) - pxToY(panel, drag.startY);
+      const o = drag.orig;
+      props.onAnnotationChange?.(drag.id, { t0: o.t0 + dt, t1: o.t1 + dt, y0: o.y0 + dv, y1: o.y1 + dv }, drag.key);
       return;
     }
     if (drag.kind === 'cursor') {
@@ -408,6 +485,24 @@ export function PlotView(props: PlotViewProps) {
       return;
     }
     if (pointers.current.size > 0) return;
+    if (drag?.kind === 'place') {
+      setPreview(null);
+      const a = placed(drag);
+      const panel = layout.panels.find((p) => p.id === drag.panelId);
+      const dx = Math.abs(tToPx(layout, drag.t1) - tToPx(layout, drag.t0));
+      const dy = panel ? Math.abs(yToPx(panel, drag.y1) - yToPx(panel, drag.y0)) : 0;
+      // A plain click does not create a marker: it must be dragged out.
+      const big = drag.tool === 'dim-t' ? dx > 4 : drag.tool === 'dim-y' ? dy > 4 : Math.hypot(dx, dy) > 6;
+      if (drag.tool === 'text') {
+        const text = window.prompt('Annotation text (math markup allowed, e.g. v_{out}, \\omega):', '');
+        if (text && text.trim()) props.onAnnotationCreate?.({ ...a, text: text.trim() });
+      } else if (big) {
+        props.onAnnotationCreate?.(a);
+      }
+      setDrag(null);
+      setGuide(null);
+      return;
+    }
     if (drag?.kind === 'pan' && !drag.moved) {
       props.onSelect?.(hitTest(layout, props.traces, drag.startX, drag.startY));
     }
@@ -435,6 +530,7 @@ export function PlotView(props: PlotViewProps) {
     'plot-host',
     drag?.kind === 'pan' && drag.moved && 'panning',
     drag?.kind === 'move' && 'moving',
+    (props.annotateTool || drag?.kind === 'place') && 'annotating',
     !drag && hoverMovable && 'can-move',
     (drag?.kind === 'cursor' ? drag.ck : !drag ? hoverCursor : null) === 't' && 'cursor-t',
     (drag?.kind === 'cursor' ? drag.ck : !drag ? hoverCursor : null) === 'y' && 'cursor-y',
@@ -457,6 +553,9 @@ export function PlotView(props: PlotViewProps) {
       onPointerLeave={() => props.onCursor?.(null)}
       onDoubleClick={(e) => {
         const { x, y } = localPos(e.currentTarget, e);
+        const ah = props.onAnnotationEdit ? annotationAt(resolvedAnns, layout, x, y) : null;
+        if (ah) return props.onAnnotationEdit?.(ah.a.id);
+        if (props.annotateTool) return;
         const last = layout.panels[layout.panels.length - 1];
         if (props.onAxisDoubleClick && last && y > last.y + last.h && x >= layout.plotX) return props.onAxisDoubleClick('x');
         if (props.onAxisDoubleClick && x < layout.plotX) {
@@ -519,6 +618,35 @@ function reportCursor(l: FigureLayout, x: number, y: number, p: PlotViewProps) {
     panelId: panel.id,
     unit: units.size === 1 ? [...units][0]! : '',
   });
+}
+
+/** Nearest candidate within `thr`, else the raw value. */
+function snapTo(raw: number, candidates: number[], thr: number): number {
+  let best = raw;
+  let bd = thr;
+  for (const c of candidates) {
+    const d = Math.abs(c - raw);
+    if (d < bd) {
+      bd = d;
+      best = c;
+    }
+  }
+  return best;
+}
+
+/** The annotation a placement drag describes. */
+function placed(d: Extract<Drag, { kind: 'place' }>): Omit<Annotation, 'id'> {
+  const base = { on: d.on, text: '', color: '#1c2330' };
+  switch (d.tool) {
+    case 'text':
+      return { ...base, kind: 'text', t0: d.t0, y0: d.y0, t1: d.t0, y1: d.y0 };
+    case 'arrow':
+      return { ...base, kind: 'arrow', t0: d.t0, y0: d.y0, t1: d.t1, y1: d.y1 };
+    case 'dim-t':
+      return { ...base, kind: 'dim-t', t0: Math.min(d.t0, d.t1), t1: Math.max(d.t0, d.t1), y0: d.y0, y1: d.y0 };
+    case 'dim-y':
+      return { ...base, kind: 'dim-y', t0: d.t0, t1: d.t0, y0: Math.min(d.y0, d.y1), y1: Math.max(d.y0, d.y1) };
+  }
 }
 
 /**

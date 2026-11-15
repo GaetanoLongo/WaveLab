@@ -9,6 +9,7 @@ import { useSpectrum } from './panels/SpectrumDialog';
 import { usePwmDialog } from './panels/PwmDialog';
 import { useRectifierDialog } from './panels/RectifierDialog';
 import { useModulationDialog } from './panels/ModulationDialog';
+import { useAnnotate } from './annotate';
 
 function isTyping(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
@@ -35,7 +36,7 @@ export function useShortcuts() {
         void openProject();
         return;
       }
-      if (useExportDialog.getState().open || anyDialogOpen() || useSpectrum.getState().open || usePwmDialog.getState().open || useRectifierDialog.getState().open || useModulationDialog.getState().open) return; // modals handle their own keys
+      if (useExportDialog.getState().open || anyDialogOpen() || useSpectrum.getState().open || usePwmDialog.getState().open || useRectifierDialog.getState().open || useModulationDialog.getState().open || useAnnotate.getState().editing !== null) return; // modals handle their own keys
       if (isTyping(e.target)) return;
 
       if (mod && k === 'z' && !e.shiftKey) {
@@ -54,9 +55,14 @@ export function useShortcuts() {
         actions.duplicate();
       } else if (!mod && (e.key === 'Delete' || e.key === 'Backspace')) {
         e.preventDefault();
-        actions.deleteSignal();
+        const ann = useAnnotate.getState().selected;
+        if (ann) {
+          actions.deleteAnnotation(ann);
+          useAnnotate.setState({ selected: null });
+        } else actions.deleteSignal();
       } else if (e.key === 'Escape') {
-        actions.select(null);
+        if (useAnnotate.getState().selected) useAnnotate.setState({ selected: null });
+        else actions.select(null);
       }
     };
     const onBeforeUnload = (e: BeforeUnloadEvent) => {

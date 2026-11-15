@@ -462,3 +462,16 @@ table.harmonics td { padding: 2px 6px; border-bottom: 1px solid var(--panel-2); 
   flex: 1 1 220px;
 }
 .m-group.power h4 select { font-size: 12px; padding: 1px 4px; max-width: 160px; }
+
+/* ---------- F3: annotations ---------- */
+.plot-host.annotating { cursor: copy; }
+.annotate-menu button.on { background: var(--accent-soft); color: var(--accent); }
+.annotations-dialog { width: min(640px, 100%); }
+.ann-list { display: flex; flex-direction: column; gap: 10px; }
+.ann-item { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+.ann-item.focused { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.ann-item header { display: flex; gap: 8px; align-items: baseline; margin-bottom: 6px; }
+.ann-item header .muted { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-btn.danger { color: var(--danger); }
+.ann-item header .link-btn { padding: 0; }
+.export-dialog footer .copied { margin-right: auto; color: var(--accent); }

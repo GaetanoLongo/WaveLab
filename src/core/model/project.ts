@@ -79,6 +79,26 @@ export interface Panel {
   collapsed?: boolean;
 }
 
+/**
+ * Annotation in data coordinates (it stays attached to the data when zooming).
+ *  - text:  `text` at (t0, y0)
+ *  - arrow: from (t0, y0) to (t1, y1), optional `text` at the tail
+ *  - dim-t: horizontal dimension between t0 and t1 at height y0 (label: Δt unless `text`)
+ *  - dim-y: vertical dimension between y0 and y1 at time t0 (label: ΔV / Δy unless `text`)
+ * `on` = signal whose panel (and vertical units) the annotation uses; null = first panel.
+ */
+export interface Annotation {
+  id: string;
+  kind: 'text' | 'arrow' | 'dim-t' | 'dim-y';
+  on: string | null;
+  t0: number;
+  y0: number;
+  t1: number;
+  y1: number;
+  text: string;
+  color: string;
+}
+
 export interface Figure {
   id: string;
   name: string;
@@ -93,6 +113,8 @@ export interface Figure {
   style?: StyleOverrides;
   /** Axis presentation: time axis and vertical axes by panel id ("overlay" or "stack-<signal id>"). */
   axes?: { x?: AxisStyle; y?: Record<string, AxisStyle> };
+  /** Labels, arrows and dimension markers drawn on the plot and in exports. */
+  annotations?: Annotation[];
 }
 
 /** Measurement cursors: two time cursors (all panels) and two level cursors (target's panel). */

@@ -3,6 +3,7 @@ import { zoomRange } from '../core/plot/viewport';
 import { actions, canRedo, canUndo, editor, isDirty, useActiveFigure, useEditor } from '../state/store';
 import { Icon, type IconName } from './icons';
 import { SnapMenu } from './panels/SnapMenu';
+import { AnnotateMenu } from './panels/AnnotateMenu';
 import { openSpectrum } from './panels/SpectrumDialog';
 import { openExportDialog } from './export/ExportDialog';
 import { openAxes, openSettings } from './Modal';
@@ -107,6 +108,7 @@ function CompactToolbar() {
         onClick={() => actions.setMode(mode === 'overlay' ? 'stacked' : 'overlay')}
       />
       <SnapMenu />
+      <AnnotateMenu />
       <Btn icon="export" label="Export PNG / SVG / PDF" onClick={openExportDialog} />
       <div className="popover-anchor" ref={ref}>
         <button className="icon tb more" aria-label="More actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
@@ -188,6 +190,7 @@ export function Toolbar({ compact = false }: { compact?: boolean }) {
       <div className="sep" />
       <div className="tb-group">
         <SnapMenu />
+        <AnnotateMenu />
         <Btn icon="export" label={`Export PNG / SVG / PDF (${MOD}Shift+S)`} onClick={openExportDialog} />
         <Btn icon="settings" label="Figure settings (style, fonts, legend)" onClick={openSettings} />
       </div>

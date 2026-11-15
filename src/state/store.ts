@@ -14,6 +14,7 @@ import { paletteColor } from '../core/model/palette';
 import { createsCycle, dependents, storedAst } from '../core/model/deps';
 import {
   NO_CURSORS,
+  type Annotation,
   type Cursors,
   emptyProject,
   type DerivedSignalDef,
@@ -353,6 +354,50 @@ export const actions = {
     commit((d) => {
       delete activeFigure(d).style;
     });
+  },
+
+  /** Add an annotation to the active figure; returns its id. */
+  addAnnotation(a: Omit<Annotation, 'id'>): string {
+    const id = newId('a');
+    commit((d) => {
+      const fig = activeFigure(d);
+      (fig.annotations ??= []).push({ ...a, id });
+    });
+    return id;
+  },
+
+  /** Change an annotation of the active figure (drags coalesce with a `drag:` key). */
+  updateAnnotation(id: string, patch: Partial<Omit<Annotation, 'id'>>, key?: string) {
+    commit((d) => {
+      const a = activeFigure(d).annotations?.find((x) => x.id === id);
+      if (a) Object.assign(a, patch);
+    }, key);
+  },
+
+  deleteAnnotation(id: string) {
+    commit((d) => {
+      const fig = activeFigure(d);
+      fig.annotations = (fig.annotations ?? []).filter((x) => x.id !== id);
+    });
+  },
+
+  /**
+   * Dimension marker from the cursors: Δt between time cursors 1–2 (drawn at 85 % of the
+   * measured signal's range), or ΔV between level cursors A–B (at time cursor 1 or the view centre).
+   */
+  dimensionFromCursors(kind: 'dim-t' | 'dim-y', yLevel: number): string | null {
+    const st = get();
+    const c = st.view.cursors;
+    const on = c.target ?? st.selectedId ?? null;
+    if (kind === 'dim-t') {
+      const [t0, t1] = c.t;
+      if (t0 == null || t1 == null) return null;
+      return actions.addAnnotation({ kind, on, t0, t1, y0: yLevel, y1: yLevel, text: '', color: '#1c2330' });
+    }
+    const [y0, y1] = c.y;
+    if (y0 == null || y1 == null) return null;
+    const t = c.t[0] ?? (st.view.xRange[0] + st.view.xRange[1]) / 2;
+    return actions.addAnnotation({ kind, on, t0: t, t1: t, y0, y1, text: '', color: '#1c2330' });
   },
 
   /** Merge axis options for the time axis ('x') or a panel id. */

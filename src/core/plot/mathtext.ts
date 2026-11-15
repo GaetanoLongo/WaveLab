@@ -6,6 +6,9 @@
  *   \omega \Delta \phi  Greek letters and common symbols (LaTeX names)
  *   90^\circ            degree sign
  *   \_ \^ \\ \{ \}      literal characters
+ *   \hat{v} \bar{x} \vec{E} \dot{x} \tilde{H} \overline{AB}   accents (combining characters)
+ *   \mathrm{max} \text{rms}  font commands: the argument is shown in the label font
+ *   $…$                LaTeX math delimiters are ignored, so labels can be pasted from LaTeX
  *
  * Output is a list of runs rendered as SVG <tspan>s (still editable text in SVG
  * exports) or as HTML <sub>/<sup>. Sub/superscripts do not nest: markup inside
@@ -36,11 +39,36 @@ export const SYMBOLS: Record<string, string> = {
 
 const LITERAL_ESCAPES = new Set(['_', '^', '\\', '{', '}', '$', '%', '#', '&']);
 
+/** Accents rendered with Unicode combining characters (after each character of the argument). */
+const ACCENTS: Record<string, string> = {
+  hat: '\u0302',
+  widehat: '\u0302',
+  bar: '\u0304',
+  overline: '\u0305',
+  dot: '\u0307',
+  ddot: '\u0308',
+  tilde: '\u0303',
+  widetilde: '\u0303',
+  vec: '\u20d7',
+};
+/** Font commands: the argument is shown as is (the label font is used). */
+const FONT_COMMANDS = new Set(['mathrm', 'text', 'textrm', 'mathit', 'mathbf', 'textbf', 'textit', 'mathsf', 'operatorname']);
+
 /** Read "\name" (letters) or "\x" (single non-letter) starting at i (pointing at the backslash). */
 function readCommand(src: string, i: number): { text: string; end: number } {
   const m = /^[A-Za-z]+/.exec(src.slice(i + 1));
   if (m) {
     const name = m[0];
+    if (ACCENTS[name] !== undefined || FONT_COMMANDS.has(name)) {
+      let j = i + 1 + name.length;
+      while (src[j] === ' ') j++;
+      const arg = readArgument(src, j);
+      if (arg) {
+        const mark = ACCENTS[name];
+        const text = mark ? [...arg.text].map((c) => c + mark).join('') : arg.text;
+        return { text, end: arg.end };
+      }
+    }
     const sym = SYMBOLS[name];
     return { text: sym ?? `\\${name}`, end: i + 1 + name.length };
   }
@@ -100,6 +128,11 @@ export function parseMath(src: string): Run[] {
 
   for (let i = 0; i < src.length; ) {
     const ch = src[i]!;
+    if (ch === '$') {
+      // LaTeX math delimiters ($…$) are accepted and ignored.
+      i++;
+      continue;
+    }
     if (ch === '\\') {
       const c = readCommand(src, i);
       push(c.text, 'none');

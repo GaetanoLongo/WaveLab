@@ -4,7 +4,8 @@
  */
 
 import type { Scene } from '../../core/plot/scene';
-import { buildFigure, panelsForGroups, resolveTheme, type PlotTheme, type TraceInput } from '../../core/plot/layout';
+import { buildFigure, panelsForGroups, resolveTheme, type FigureInput, type PlotTheme, type TraceInput } from '../../core/plot/layout';
+import { figureToTikz } from '../../core/export/tikz';
 import { sceneToSvg } from '../../core/plot/svg';
 import { compiled } from '../../state/compiled';
 import { actions, activeFigure, editor, figureGroups, orderedSignals, viewOf } from '../../state/store';
@@ -12,7 +13,7 @@ import { gridColumns } from '../../core/model/project';
 import { composeScenes } from '../../core/plot/scene';
 import { downloadBlob } from '../fileio';
 
-export type ExportFormat = 'png' | 'svg' | 'pdf' | 'csv';
+export type ExportFormat = 'png' | 'svg' | 'pdf' | 'csv' | 'tex';
 export type PageSize = 'plot' | 'A4' | 'A3' | 'Letter' | 'custom';
 
 export interface ExportOptions {
@@ -38,6 +39,8 @@ export interface ExportOptions {
   csvSamples: number;
   /** CSV: add the exact edge/corner times of all signals (a jump gives two rows: before and after). */
   csvEdges: boolean;
+  /** TikZ: a complete standalone document (else only the tikzpicture). */
+  tikzStandalone: boolean;
 }
 
 export const DEFAULT_EXPORT: Omit<ExportOptions, 'fileName'> = {
@@ -55,6 +58,7 @@ export const DEFAULT_EXPORT: Omit<ExportOptions, 'fileName'> = {
   content: 'figure',
   csvSamples: 1001,
   csvEdges: true,
+  tikzStandalone: true,
 };
 
 const PAGE_MM: Record<'A4' | 'A3' | 'Letter', [number, number]> = {
@@ -87,6 +91,11 @@ export function buildExportScene(width: number, height: number, transparent: boo
 }
 
 function buildFigureScene(figId: string, width: number, height: number, transparent: boolean, includeCursors: boolean): Scene {
+  return buildFigure(figureInputFor(figId, width, height, transparent, includeCursors)).scene;
+}
+
+/** Figure description at the export size (shared by the image exports and TikZ). */
+function figureInputFor(figId: string, width: number, height: number, transparent: boolean, includeCursors: boolean): FigureInput {
   const st = editor.getState();
   const fig = activeFigure(st.project, figId);
   const view = viewOf(st, figId);
@@ -111,7 +120,7 @@ function buildFigureScene(figId: string, width: number, height: number, transpar
         }),
       ),
   }));
-  return buildFigure({
+  return {
     width,
     height,
     panels: panelsForGroups(fig.mode, groups, view.yRanges),
@@ -121,7 +130,27 @@ function buildFigureScene(figId: string, width: number, height: number, transpar
     theme,
     cursors: includeCursors ? cursorSpecFor(figId) : undefined,
     axes: fig.axes,
-  }).scene;
+    annotations: fig.annotations,
+  };
+}
+
+/** TikZ / pgfplots source of the current figure. */
+export function tikzString(o: ExportOptions): string {
+  const st = editor.getState();
+  return figureToTikz(figureInputFor(st.activeFigureId, o.width, o.height, false, false), { standalone: o.tikzStandalone, samples: 600 });
+}
+
+/** Copy the export to the clipboard: PNG as an image, the text formats as text. */
+export async function copyExport(o: ExportOptions): Promise<string> {
+  if (!navigator.clipboard) throw new Error('the clipboard is not available in this browser');
+  if (o.format === 'png' || o.format === 'pdf') {
+    if (typeof ClipboardItem === 'undefined' || !navigator.clipboard.write) throw new Error('this browser cannot copy images');
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': renderPng({ ...o, format: 'png' }) })]);
+    return 'PNG image copied to the clipboard.';
+  }
+  const text = o.format === 'svg' ? svgString(o) : o.format === 'csv' ? csvString(o) : tikzString(o);
+  await navigator.clipboard.writeText(text);
+  return `${o.format === 'tex' ? 'TikZ' : o.format.toUpperCase()} copied to the clipboard.`;
 }
 
 function cursorSpecFor(figId: string) {
@@ -296,6 +325,10 @@ export function csvString(o: ExportOptions): string {
 }
 
 export async function runExport(o: ExportOptions): Promise<void> {
+  if (o.format === 'tex') {
+    downloadBlob(new Blob([tikzString(o)], { type: 'application/x-tex' }), `${o.fileName}.tex`);
+    return;
+  }
   if (o.format === 'csv') {
     downloadBlob(new Blob([csvString(o)], { type: 'text/csv' }), `${o.fileName}.csv`);
     return;

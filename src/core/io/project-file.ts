@@ -13,6 +13,7 @@
 import {
   autoAxis,
   SCHEMA_VERSION,
+  type Annotation,
   type Figure,
   type LineDash,
   type Project,
@@ -372,6 +373,7 @@ function readFigure(v: unknown, path: string, ids: Set<string>): Figure {
     showLegend: f.showLegend === undefined ? true : bool(f.showLegend, `${path}.showLegend`),
     ...(f.style !== undefined ? { style: readStyleOverrides(f.style, `${path}.style`) } : {}),
     ...(f.axes !== undefined ? { axes: readAxes(f.axes, `${path}.axes`) } : {}),
+    ...(f.annotations !== undefined ? { annotations: readAnnotations(f.annotations, `${path}.annotations`, ids) } : {}),
   };
 }
 
@@ -426,6 +428,35 @@ function readView(v: unknown, path: string): SavedView {
 function obj(v: unknown, path: string): Record<string, unknown> {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new ProjectFileError(`${path} must be an object.`);
   return v as Record<string, unknown>;
+}
+
+const ANNOTATION_KINDS = ['text', 'arrow', 'dim-t', 'dim-y'];
+
+function readAnnotations(v: unknown, path: string, ids: Set<string>): Annotation[] {
+  const seen = new Set<string>();
+  return arr(v, path).map((a, i) => {
+    const p = `${path}[${i}]`;
+    const o = obj(a, p);
+    const id = str(o.id, `${p}.id`);
+    if (seen.has(id)) throw new ProjectFileError(`${p}: duplicate annotation id "${id}".`);
+    seen.add(id);
+    if (!ANNOTATION_KINDS.includes(o.kind as string)) throw new ProjectFileError(`${p}.kind must be one of ${ANNOTATION_KINDS.join(', ')}.`);
+    const on = o.on === null || o.on === undefined ? null : str(o.on, `${p}.on`);
+    const color = str(o.color, `${p}.color`);
+    if (!/^#[0-9a-f]{6}$/i.test(color)) throw new ProjectFileError(`${p}.color must be a #rrggbb colour.`);
+    return {
+      id,
+      kind: o.kind as Annotation['kind'],
+      // A signal that is no longer in the file: fall back to the first panel.
+      on: on !== null && ids.has(on) ? on : null,
+      t0: time(o.t0, `${p}.t0`),
+      y0: num(o.y0, `${p}.y0`),
+      t1: time(o.t1, `${p}.t1`),
+      y1: num(o.y1, `${p}.y1`),
+      text: str(o.text, `${p}.text`),
+      color,
+    };
+  });
 }
 
 function arr(v: unknown, path: string): unknown[] {

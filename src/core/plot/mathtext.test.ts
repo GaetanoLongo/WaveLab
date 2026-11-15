@@ -52,3 +52,23 @@ describe('math markup', () => {
     ]);
   });
 });
+
+describe('math markup: LaTeX compatibility (F3)', () => {
+  it('ignores $ delimiters and shows font-command arguments', () => {
+    expect(parseMath('$v_{\\mathrm{out}}$')).toEqual([
+      { text: 'v', shift: 'none' },
+      { text: 'out', shift: 'sub' },
+    ]);
+    expect(plainText('V_{\\text{rms}}')).toBe('Vrms');
+    expect(plainText('\\mathbf{B} field')).toBe('B field');
+  });
+  it('renders accents with combining characters', () => {
+    expect(plainText('\\hat{v}')).toBe('v\u0302');
+    expect(plainText('\\bar{x}_1')).toBe('x\u03041');
+    expect(plainText('\\vec E')).toBe('E\u20d7');
+    expect(plainText('\\overline{AB}')).toBe('A\u0305B\u0305');
+  });
+  it('keeps an escaped dollar sign', () => {
+    expect(plainText('price \\$5')).toBe('price $5');
+  });
+});

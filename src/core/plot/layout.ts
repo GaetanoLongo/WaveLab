@@ -11,6 +11,8 @@ import { formatSI } from '../units/si';
 import { estimateWidth, plainText } from './mathtext';
 import { logTicks, niceTicks } from './ticks';
 import { autoYRange } from './viewport';
+import type { Annotation } from '../model/project';
+import { drawAnnotations, resolveAnnotations } from './annotations';
 
 export interface PlotTheme {
   id: string;
@@ -218,6 +220,10 @@ export interface FigureInput {
   cursors?: CursorSpec;
   /** Axis presentation: time axis and vertical axes by panel id. */
   axes?: { x?: AxisStyle; y?: Record<string, AxisStyle> };
+  /** Labels, arrows and dimension markers. */
+  annotations?: Annotation[];
+  /** Annotation drawn highlighted (screen only). */
+  selectedAnnotation?: string | null;
 }
 
 export interface PanelLayout {
@@ -611,6 +617,10 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
     }
   });
 
+  if (input.annotations?.length) {
+    const unitOf = (id: string) => input.panels.flatMap((p) => p.traces).find((t) => t.id === id)?.unit;
+    drawAnnotations(items, resolveAnnotations(input.annotations, layout, unitOf), layout, fs, th.lineScale, input.selectedAnnotation);
+  }
   if (input.cursors) drawCursors(items, input.cursors, layout, fs);
 
   const scene: Scene = {
