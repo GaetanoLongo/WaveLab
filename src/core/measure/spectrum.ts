@@ -117,7 +117,8 @@ export function harmonicSpectrum(s: SignalEval, o: SpectrumOptions): Spectrum {
   const dc = amp[0]!;
   const fundamental = amp[N] ?? 0;
   const rms = measureInterval(s, a, b).rms;
-  const hasFund = fundamental > 1e-9 * scale;
+  // A fundamental below 0.1 % of the RMS (e.g. the message line of an FM signal) makes THD meaningless.
+  const hasFund = fundamental > 1e-9 * scale && fundamental > 1e-3 * rms;
   const dist2 = Math.max(0, rms * rms - dc * dc - (fundamental * fundamental) / 2);
   const thd = hasFund ? Math.sqrt(dist2) / (fundamental / Math.SQRT2) : NaN;
   const P = s.period;

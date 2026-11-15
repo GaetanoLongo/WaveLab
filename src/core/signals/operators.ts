@@ -344,6 +344,54 @@ export function numericDerivativeOf(x: SignalEval, h: number): SignalEval {
   };
 }
 
+/**
+ * Sample-and-hold (zero-order hold): y(t) = x(k·Ts) for k·Ts ≤ t < (k + 1)·Ts.
+ * Piecewise constant with a jump at every sampling instant.
+ */
+export function sampleHoldOf(x: SignalEval, Ts: number): SignalEval {
+  if (!(Ts > 0) || !Number.isFinite(Ts)) return { value: () => NaN, features: () => ({ features: [], truncated: false }) };
+  const idx = (t: number) => {
+    let k = Math.floor(t / Ts);
+    if ((k + 1) * Ts <= t) k++;
+    else if (k * Ts > t) k--;
+    return k;
+  };
+  const value = (t: number) => x.value(idx(t) * Ts);
+  const left = (t: number) => {
+    const k = idx(t);
+    return k * Ts === t ? x.value((k - 1) * Ts) : x.value(k * Ts);
+  };
+  const P = x.period;
+  let period: number | undefined;
+  if (P !== undefined) {
+    // Common period of the input and the sampling clock (if they are commensurate).
+    for (let q = 1; q <= 1000 && period === undefined; q++) {
+      const n = (q * P) / Ts;
+      if (Math.abs(n - Math.round(n)) < 1e-9 * Math.max(1, n)) period = q * P;
+    }
+  }
+  return {
+    value,
+    left,
+    features: (a, b, maxCount = DEFAULT_MAX_FEATURES) => {
+      const k0 = Math.ceil(a / Ts - 1e-12);
+      const k1 = Math.floor(b / Ts + 1e-12);
+      if (k1 - k0 + 1 > maxCount) return { features: [], truncated: true };
+      const out: Feature[] = [];
+      for (let k = k0; k <= k1; k++) {
+        const t = k * Ts;
+        const L = x.value((k - 1) * Ts);
+        const R = x.value(t);
+        if (!same(L, R)) out.push({ t, kind: 'jump', left: L, right: R });
+      }
+      return { features: out, truncated: false };
+    },
+    period,
+    scale: Ts,
+    piecewiseConstant: true,
+  };
+}
+
 /** |x| as a signal (monotonic between x's features and zero crossings). */
 export function absOf(x: SignalEval): SignalEval {
   return {

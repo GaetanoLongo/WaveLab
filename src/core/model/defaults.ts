@@ -58,5 +58,26 @@ export function defaultGenerator(kind: GeneratorKind): GeneratorDef {
         window,
         params: { bits: '10110010', bitTime: 0.001, high: 5, low: 0, encoding: 'nrz', repeat: false },
       };
+    case 'chirp':
+      return {
+        generator: 'chirp',
+        timing,
+        window,
+        params: { amplitude: 1, offset: 0, f0: 50, f1: 500, duration: 0.04, sweep: 'linear', phaseDeg: 0, repeat: false },
+      };
+    case 'noise':
+      return {
+        generator: 'noise',
+        timing,
+        window,
+        params: { mean: 0, rms: 0.1, distribution: 'gaussian', sampleTime: 1e-4, length: 4096, interp: 'linear', seed: 1 },
+      };
+    case 'prbs':
+      return {
+        generator: 'prbs',
+        timing,
+        window,
+        params: { order: 7, bitTime: 1e-4, high: 1, low: 0, seed: 127 },
+      };
   }
 }

@@ -24,7 +24,10 @@ export type GeneratorKind =
   | 'exponential'
   | 'damped'
   | 'piecewise'
-  | 'bits';
+  | 'bits'
+  | 'chirp'
+  | 'noise'
+  | 'prbs';
 
 /** Generators that repeat with timing.frequency (the others are one-shot or define their own repetition). */
 export const PERIODIC_KINDS: GeneratorKind[] = ['sine', 'cosine', 'square', 'pulse', 'triangle', 'sawtooth'];
@@ -136,6 +139,50 @@ export interface BitsParams {
   repeat: boolean;
 }
 
+/**
+ * Frequency sweep from the start time over `duration`: offset + A·sin(φ(u)), u = t − start,
+ *   linear:      f(u) = f₀ + (f₁ − f₀)·u/T,  φ = φ₀ + 2π(f₀u + (f₁ − f₀)u²/2T)
+ *   logarithmic: f(u) = f₀·(f₁/f₀)^(u/T),   φ = φ₀ + 2πf₀T((f₁/f₀)^(u/T) − 1)/ln(f₁/f₀)
+ * Outside the sweep: `offset` (or the sweep repeats with period T).
+ */
+export interface ChirpParams {
+  amplitude: number;
+  offset: number;
+  f0: number;
+  f1: number;
+  duration: number;
+  sweep: 'linear' | 'log';
+  /** Initial phase φ₀ (degrees). */
+  phaseDeg: number;
+  repeat: boolean;
+}
+
+/**
+ * Seeded pseudo-random noise: `length` samples spaced `sampleTime` apart (then the sequence
+ * repeats), normalised to exactly `mean` and standard deviation `rms`, joined by straight
+ * lines or held. Deterministic: the same seed gives the same signal.
+ */
+export interface NoiseParams {
+  mean: number;
+  /** Standard deviation of the samples (= RMS of the AC part in "hold" mode); negative = inverted. */
+  rms: number;
+  distribution: 'gaussian' | 'uniform';
+  sampleTime: number;
+  length: number;
+  interp: 'linear' | 'hold';
+  seed: number;
+}
+
+/** Pseudo-random binary sequence PRBS-n (maximal-length LFSR, period 2ⁿ − 1 bits), NRZ. */
+export interface PrbsParams {
+  order: number;
+  bitTime: number;
+  high: number;
+  low: number;
+  /** Initial register state (1 … 2ⁿ − 1). */
+  seed: number;
+}
+
 interface GeneratorBase {
   timing: Timing;
   window: SignalWindow;
@@ -154,6 +201,9 @@ export type GeneratorDef = GeneratorBase &
     | { generator: 'damped'; params: DampedParams }
     | { generator: 'piecewise'; params: PiecewiseParams }
     | { generator: 'bits'; params: BitsParams }
+    | { generator: 'chirp'; params: ChirpParams }
+    | { generator: 'noise'; params: NoiseParams }
+    | { generator: 'prbs'; params: PrbsParams }
   );
 
 export const INFINITE: SignalWindow = { mode: 'infinite' };

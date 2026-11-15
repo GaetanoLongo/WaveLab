@@ -70,7 +70,7 @@ function migrate(file: Record<string, unknown>, _from: number): Record<string, u
 
 // ---------------------------------------------------------------------------
 
-const GENERATORS: GeneratorKind[] = ['sine', 'cosine', 'square', 'pulse', 'triangle', 'sawtooth', 'dc', 'exponential', 'damped', 'piecewise', 'bits'];
+const GENERATORS: GeneratorKind[] = ['sine', 'cosine', 'square', 'pulse', 'triangle', 'sawtooth', 'dc', 'exponential', 'damped', 'piecewise', 'bits', 'chirp', 'noise', 'prbs'];
 const DASHES: LineDash[] = ['solid', 'dashed', 'dotted', 'dashdot'];
 
 function readProject(v: unknown): Project {
@@ -218,6 +218,42 @@ function readSignal(v: unknown, path: string): SignalDef {
         generator,
         params: { bits: bitsStr, bitTime, high: n('high'), low: n('low'), encoding, repeat: bool(pp.repeat, `${path}.params.repeat`) },
       };
+    }
+    case 'chirp': {
+      const f = (k: string) => {
+        const v = n(k);
+        if (!(v >= 1e-6 && v <= 1e12)) throw new ProjectFileError(`${path}.params.${k} must be between 1 µHz and 1 THz.`);
+        return v;
+      };
+      const duration = time(pp.duration, `${path}.params.duration`);
+      if (!(duration > 0)) throw new ProjectFileError(`${path}.params.duration must be positive.`);
+      const sweep = pp.sweep;
+      if (sweep !== 'linear' && sweep !== 'log') throw new ProjectFileError(`${path}.params.sweep must be "linear" or "log".`);
+      return {
+        ...base,
+        generator,
+        params: { amplitude: n('amplitude'), offset: n('offset'), f0: f('f0'), f1: f('f1'), duration, sweep, phaseDeg: n('phaseDeg'), repeat: bool(pp.repeat, `${path}.params.repeat`) },
+      };
+    }
+    case 'noise': {
+      const sampleTime = time(pp.sampleTime, `${path}.params.sampleTime`);
+      if (!(sampleTime > 0)) throw new ProjectFileError(`${path}.params.sampleTime must be positive.`);
+      const length = Math.round(n('length'));
+      if (!(length >= 2 && length <= 1_000_000)) throw new ProjectFileError(`${path}.params.length must be between 2 and 1 000 000.`);
+      const distribution = pp.distribution;
+      if (distribution !== 'gaussian' && distribution !== 'uniform') throw new ProjectFileError(`${path}.params.distribution must be "gaussian" or "uniform".`);
+      const interp = pp.interp;
+      if (interp !== 'linear' && interp !== 'hold') throw new ProjectFileError(`${path}.params.interp must be "linear" or "hold".`);
+      return { ...base, generator, params: { mean: n('mean'), rms: n('rms'), distribution, sampleTime, length, interp, seed: Math.round(n('seed')) } };
+    }
+    case 'prbs': {
+      const order = Math.round(n('order'));
+      if (!(order >= 3 && order <= 15)) throw new ProjectFileError(`${path}.params.order must be between 3 and 15.`);
+      const bitTime = time(pp.bitTime, `${path}.params.bitTime`);
+      if (!(bitTime > 0)) throw new ProjectFileError(`${path}.params.bitTime must be positive.`);
+      const seed = Math.round(n('seed'));
+      if (!(seed >= 1 && seed < 2 ** order)) throw new ProjectFileError(`${path}.params.seed must be between 1 and 2^order − 1.`);
+      return { ...base, generator, params: { order, bitTime, high: n('high'), low: n('low'), seed } };
     }
   }
 }

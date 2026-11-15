@@ -159,6 +159,15 @@ function glyphDef(kind: GeneratorKind, variant: string) {
     case 'piecewise':
       def.params.points = [[0, 0], [0.15, 1], [0.45, 1], [0.6, 0], [0.75, 0]];
       break;
+    case 'chirp':
+      def.params = { ...def.params, f0: 1, f1: 7, duration: 1.5, sweep: variant === 'Chirp (log)' ? 'log' : 'linear' };
+      break;
+    case 'noise':
+      def.params = { ...def.params, sampleTime: 0.04, length: 64, rms: 1 };
+      break;
+    case 'prbs':
+      def.params = { ...def.params, order: 4, bitTime: 0.1, seed: 9 };
+      break;
     case 'bits':
       def.params = {
         ...def.params,

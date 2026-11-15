@@ -182,3 +182,17 @@ P = mean(v·i), S = V_rms·I_rms, PF = P/S, N = √(S² − P²). Fundamentals f
 whole periods of the automatic fundamental starting at the interval start: Q₁ = V₁I₁ sin φ₁ (RMS values,
 φ₁ = angle of v₁ − angle of i₁, positive = inductive), DPF = cos φ₁.
 Crest factor = max |x| / RMS; form factor = RMS / mean |x|.
+
+## Signal generation
+
+- Chirp: u = t − start, linear φ = φ₀ + 2π(f₀u + (f₁ − f₀)u²/2T), logarithmic
+  φ = φ₀ + 2πf₀T((f₁/f₀)^(u/T) − 1)/ln(f₁/f₀); outside [0, T) the value is the offset (or the sweep
+  repeats with period T). Extrema where φ = π/2 + nπ, solved exactly.
+- Noise: sample k (time start + k·Δt) from a 32-bit integer hash of (seed, k); Gaussian by Box–Muller.
+  The `length` samples are normalised to exactly the mean and σ (σ < 0 inverts) and repeat. Linear
+  interpolation lowers the RMS of the AC part below σ; "hold" keeps it exact.
+- PRBS-n: Fibonacci LFSR with the standard maximal-length taps (e.g. PRBS-7 x⁷ + x⁶ + 1,
+  PRBS-15 x¹⁵ + x¹⁴ + 1), output = register LSB, NRZ, period 2ⁿ − 1 bits.
+- quantize(x, q) = q·round(x/q) (ties away from −∞, as Math.round); zoh(x, Ts) = x(k·Ts) on [k·Ts, (k+1)·Ts).
+- Modulation: m(t) normalised to ±1; FM phase 2π·Δf·∫m dt (from t = 0); θ_c is a 0…2π ramp so the result is
+  periodic. Spectrum THD is shown only when the fundamental exceeds 0.1 % of the RMS.

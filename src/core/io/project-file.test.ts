@@ -194,3 +194,16 @@ describe('new generators in project files (M10)', () => {
     expect(() => parseProjectFile(JSON.stringify(g))).toThrow(/sorted by time/);
   });
 });
+
+describe('new generator kinds round-trip (F2)', () => {
+  it('chirp, noise and PRBS survive save/open unchanged', () => {
+    const p = emptyProject();
+    for (const kind of ['chirp', 'noise', 'prbs'] as const) {
+      const id = `s-${kind}`;
+      p.signals.push({ id, name: kind, unit: 'V', locked: false, style: { color: '#000000', lineWidth: 1.6, dash: 'solid', visible: true, showInLegend: true }, kind: 'generator', ...defaultGenerator(kind) });
+      p.figures[0]!.panels[0]!.traces.push({ signalId: id });
+    }
+    const back = parseProjectFile(serializeProject(p)).project;
+    expect(back.signals).toEqual(p.signals);
+  });
+});

@@ -34,6 +34,7 @@ import { rangeOf } from '../core/plot/range';
 import { formatSI, siLiteral } from '../core/units/si';
 import { buildRectifier, type RectifierConfig } from './rectifier';
 import type { SignalSet } from './builder';
+import { buildModulation, type ModulationConfig } from './modulation';
 import { buildPwm, type PwmConfig } from './pwm';
 import type { AxisStyle, StyleOverrides } from '../core/plot/layout';
 import { phaseForDifference } from '../core/signals/phase';
@@ -83,6 +84,9 @@ export const GENERATOR_LABELS: Record<GeneratorKind, string> = {
   damped: 'Damped sine',
   piecewise: 'Piecewise',
   bits: 'Bits',
+  chirp: 'Chirp',
+  noise: 'Noise',
+  prbs: 'PRBS',
 };
 
 function initialState(project = emptyProject()): EditorState {
@@ -540,8 +544,17 @@ export const actions = {
           s.params.points = s.params.points.map(([t, y]) => [t, neg(y)]);
           break;
         case 'bits':
+        case 'prbs':
           s.params.high = neg(s.params.high);
           s.params.low = neg(s.params.low);
+          break;
+        case 'chirp':
+          s.params.amplitude = neg(s.params.amplitude);
+          s.params.offset = neg(s.params.offset);
+          break;
+        case 'noise':
+          s.params.mean = neg(s.params.mean);
+          s.params.rms = neg(s.params.rms); // negative σ = every sample inverted
           break;
       }
     });
@@ -723,6 +736,11 @@ export const actions = {
   /** Create a rectifier / phase-control signal set as new groups, in one undo step. */
   createRectifier(config: RectifierConfig): void {
     actions.addSignalSet(buildRectifier(config, newId, get().project.signals.length), Math.min(2 / config.f, 1));
+  },
+
+  /** Create an AM / DSB-SC / FM / PM signal set as new groups, in one undo step. */
+  createModulation(config: ModulationConfig): void {
+    actions.addSignalSet(buildModulation(config, newId, get().project.signals.length), Math.min(2 / config.fm, 1));
   },
 
   /** Add a built set of signals and groups to the active figure (stacked), in one undo step. */

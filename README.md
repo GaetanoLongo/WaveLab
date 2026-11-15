@@ -34,6 +34,7 @@ npm run e2e        # browser end-to-end checks: editor, snapping, files & export
 | — | PWM module: generator, three-phase set, complementary pairs with dead time | ✅ |
 | S1 | Stabilisation (stress tests: freezes, limits, recovery copy, layout fixes) | ✅ |
 | F1 | Power electronics II: rectifiers / phase control, SVPWM / DPWM / third harmonic, R-L-E load current, power metrics | ✅ |
+| F2 | Signal generation: chirp (linear/log), seeded noise, PRBS, quantize, sample & hold, AM / DSB-SC / FM / PM | ✅ |
 
 See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the mathematical conventions.
 
@@ -81,6 +82,18 @@ voltage: P, S, PF, non-active power N = √(S² − P²), and from the fundament
   state for periodic inputs, or a start-up transient with `lowpass(x, τ, t0, y0)`.
 - **Three-phase set**: three sines at 0°, −120°, +120° in a shared panel.
 - **Complementary + dead time**: upper/lower pair from the selected logic signal.
+
+## Signal generation
+- **Chirp (linear / log)**: frequency sweep f₀ → f₁ over a duration, initial phase, optional repeat; extrema
+  solved in closed form.
+- **Noise**: seeded pseudo-random (Gaussian or uniform), normalised to the exact mean and σ, straight lines or
+  held between samples; repeats after `length` samples, so it is periodic and the same seed always gives the
+  same signal.
+- **PRBS**: PRBS-3 … PRBS-15 (maximal-length LFSR, 2ⁿ − 1 bits), NRZ.
+- **Quantize** `quantize(x, q)` (ideal mid-tread ADC levels, steps located exactly) and **Sample & hold**
+  `zoh(x, Ts)`.
+- **AM / FM / PM…**: AM (with envelope), DSB-SC, FM and PM of a sine, square or triangle message; the exact
+  spectrum shows the Bessel lines J_n(β) of FM/PM.
 
 ## Spectrum and CSV
 - **Spectrum** (toolbar, "⋯" menu on phones, or the measurement panel): exact Fourier series of any signal

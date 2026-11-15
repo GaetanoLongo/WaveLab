@@ -9,6 +9,7 @@ import { siLiteral } from '../../core/units/si';
 import { actions } from '../../state/store';
 import { openPwm } from './PwmDialog';
 import { openRectifier } from './RectifierDialog';
+import { openModulation } from './ModulationDialog';
 import { WaveGlyph } from '../icons';
 
 interface Entry {
@@ -48,6 +49,15 @@ const BASIC: Entry[] = [
   },
   { label: 'Damped sinusoid', kind: 'damped', title: 'A·e^(−t/τ)·sin(ωt + φ)' },
   { label: 'Custom piecewise', kind: 'piecewise', title: 'Waveform through a table of points (linear or step), optionally repeating' },
+  { label: 'Chirp (linear)', kind: 'chirp', name: 'Chirp', title: 'Frequency sweep f₀ → f₁ over a duration, linear in frequency' },
+  {
+    label: 'Chirp (log)',
+    kind: 'chirp',
+    name: 'Log sweep',
+    customize: (d) => d.generator === 'chirp' && void Object.assign(d.params, { sweep: 'log', f0: 20, f1: 2000, duration: 0.1 }),
+    title: 'Logarithmic (exponential) frequency sweep, constant time per octave',
+  },
+  { label: 'Noise', kind: 'noise', title: 'Seeded pseudo-random noise (Gaussian or uniform), exact mean and RMS, repeatable' },
 ];
 
 const DIGITAL: Entry[] = [
@@ -87,6 +97,7 @@ const DIGITAL: Entry[] = [
     title: 'Manchester code (IEEE 802.3: 0 = high→low, 1 = low→high)',
   },
   { label: 'Bit sequence', kind: 'bits', name: 'Bits', title: 'Arbitrary bit sequence: edit bits, bit time, levels and encoding' },
+  { label: 'PRBS', kind: 'prbs', name: 'PRBS7', title: 'Pseudo-random binary sequence (maximal-length LFSR, PRBS-3 … PRBS-15)' },
 ];
 
 const PLANNED_BASIC: string[] = [];
@@ -120,6 +131,22 @@ const OPS: Array<[label: string, glyph: string, name: string, arity: 1 | 2, tpl:
     1,
     (a, _b, c) => `lowpass(${a}, ${siLiteral((c.periodA ?? 1e-2) / 4)})`,
     'First-order lag τ·y′ + y = A (RC filter, R-L load current); periodic steady state. τ defaults to a quarter period of A',
+  ],
+  [
+    'Quantize',
+    'q',
+    'Quantized',
+    1,
+    (a) => `quantize(${a}, 0.1)`,
+    'Rounds A to multiples of a step (ideal ADC levels); edit the step in the expression',
+  ],
+  [
+    'Sample & hold',
+    'ZOH',
+    'Sampled',
+    1,
+    (a, _b, c) => `zoh(${a}, ${siLiteral((c.periodA ?? 1e-2) / 20)})`,
+    'Samples A at multiples of Ts and holds the value (zero-order hold); Ts defaults to 1/20 of A’s period',
   ],
   ['RMS (moving)', 'rms', 'RMS', 1, (a, _b, c) => `rms(${a}, ${siLiteral(c.periodA ?? 1e-3)})`, 'RMS over a trailing window (default: one period of A)'],
   ['Expression…', 'ƒ', 'Expression', 1, (a) => a, 'Free expression, starting from A'],
@@ -164,6 +191,10 @@ export function Toolbox() {
           {DIGITAL.map((e) => (
             <EntryButton key={e.label} e={e} />
           ))}
+          <button className="tool" title="AM, DSB-SC, FM or PM of a sine, square or triangle message (editable signals)" onClick={openModulation}>
+            <WaveGlyph kind="chirp" variant="Chirp (linear)" />
+            <span>AM / FM / PM…</span>
+          </button>
           {PLANNED_DIGITAL.map(([l, w]) => (
             <Planned key={l} label={l} when={w} />
           ))}

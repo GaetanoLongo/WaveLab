@@ -259,6 +259,10 @@ function WaveformParams({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: 
       return <PiecewiseParams sig={sig} upd={upd} disabled={disabled} />;
     case 'bits':
       return <BitsParamsView sig={sig} upd={upd} disabled={disabled} />;
+    case 'chirp':
+    case 'noise':
+    case 'prbs':
+      return <SourceParamsView sig={sig} upd={upd} disabled={disabled} />;
     case 'dc':
       return (
         <Group title="Waveform">
@@ -389,6 +393,113 @@ function BitsParamsView({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: 
       </p>
     </Group>
   );
+}
+
+/** Chirp, noise and PRBS parameters. */
+function SourceParamsView({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: Upd; disabled: boolean }) {
+  const u = sig.unit;
+  if (sig.generator === 'chirp') {
+    const p = sig.params;
+    const set = <K extends keyof typeof p>(k: K) => (v: (typeof p)[K]) => upd((s) => void (s.generator === 'chirp' && (s.params[k] = v)));
+    const cycles = p.sweep === 'log' && p.f1 !== p.f0 ? (p.f0 * p.duration * (p.f1 / p.f0 - 1)) / Math.log(p.f1 / p.f0) : ((p.f0 + p.f1) / 2) * p.duration;
+    return (
+      <Group title="Frequency sweep">
+        <NumberField label="Amplitude" unit={u} value={p.amplitude} disabled={disabled} onCommit={set('amplitude')} />
+        <NumberField label="Offset" unit={u} value={p.offset} disabled={disabled} onCommit={set('offset')} />
+        <NumberField label="Start frequency f₀" unit="Hz" positive value={p.f0} disabled={disabled} onCommit={set('f0')} />
+        <NumberField label="End frequency f₁" unit="Hz" positive value={p.f1} disabled={disabled} onCommit={set('f1')} />
+        <NumberField label="Duration" unit="s" positive value={p.duration} disabled={disabled} onCommit={set('duration')} />
+        <div className="field">
+          <label>Sweep</label>
+          <select value={p.sweep} disabled={disabled} onChange={(e) => set('sweep')(e.target.value as typeof p.sweep)}>
+            <option value="linear">Linear (constant Hz/s)</option>
+            <option value="log">Logarithmic (constant time per octave)</option>
+          </select>
+        </div>
+        <NumberField label="Initial phase" unit="°" plain value={p.phaseDeg} disabled={disabled} onCommit={set('phaseDeg')} />
+        <label className="check">
+          <input type="checkbox" checked={p.repeat} disabled={disabled} onChange={(e) => set('repeat')(e.target.checked)} />
+          Repeat the sweep
+        </label>
+        <Readout
+          items={[
+            ['Sweep rate', p.sweep === 'log' ? `${(Math.log2(p.f1 / p.f0) / p.duration).toPrecision(4)} oct/s` : formatSI((p.f1 - p.f0) / p.duration, 'Hz/s')],
+            ['Cycles in the sweep', cycles.toPrecision(5)],
+          ]}
+        />
+      </Group>
+    );
+  }
+  if (sig.generator === 'noise') {
+    const p = sig.params;
+    const set = <K extends keyof typeof p>(k: K) => (v: (typeof p)[K]) => upd((s) => void (s.generator === 'noise' && (s.params[k] = v)));
+    return (
+      <Group title="Noise">
+        <NumberField label="Mean" unit={u} value={p.mean} disabled={disabled} onCommit={set('mean')} />
+        <NumberField label="Std deviation σ" title="Of the samples (= AC RMS in hold mode); negative = inverted" unit={u} value={p.rms} disabled={disabled} onCommit={set('rms')} />
+        <div className="field">
+          <label>Distribution</label>
+          <select value={p.distribution} disabled={disabled} onChange={(e) => set('distribution')(e.target.value as typeof p.distribution)}>
+            <option value="gaussian">Gaussian</option>
+            <option value="uniform">Uniform</option>
+          </select>
+        </div>
+        <NumberField label="Sample time" unit="s" positive value={p.sampleTime} disabled={disabled} onCommit={set('sampleTime')} />
+        <div className="field">
+          <label>Between samples</label>
+          <select value={p.interp} disabled={disabled} onChange={(e) => set('interp')(e.target.value as typeof p.interp)}>
+            <option value="linear">Straight lines</option>
+            <option value="hold">Held (steps)</option>
+          </select>
+        </div>
+        <NumberField label="Length" plain min={2} max={1_000_000} value={p.length} disabled={disabled} onCommit={(v) => set('length')(Math.round(v))} title="Samples before the sequence repeats" />
+        <NumberField label="Seed" plain value={p.seed} disabled={disabled} onCommit={(v) => set('seed')(Math.round(v))} title="Same seed = same signal" />
+        <Readout
+          items={[
+            ['Bandwidth ≈', formatSI(1 / (2 * p.sampleTime), 'Hz')],
+            ['Repeats every', formatSI(p.length * p.sampleTime, 's')],
+          ]}
+        />
+      </Group>
+    );
+  }
+  if (sig.generator === 'prbs') {
+    const p = sig.params;
+    const set = <K extends keyof typeof p>(k: K) => (v: (typeof p)[K]) => upd((s) => void (s.generator === 'prbs' && (s.params[k] = v)));
+    const n = 2 ** p.order - 1;
+    return (
+      <Group title="PRBS">
+        <div className="field">
+          <label>Sequence</label>
+          <select
+            value={p.order}
+            disabled={disabled}
+            onChange={(e) => {
+              const order = Number(e.target.value);
+              upd((s) => void (s.generator === 'prbs' && Object.assign(s.params, { order, seed: 2 ** order - 1 })));
+            }}
+          >
+            {Array.from({ length: 13 }, (_, i) => i + 3).map((o) => (
+              <option key={o} value={o}>
+                PRBS-{o} ({2 ** o - 1} bits)
+              </option>
+            ))}
+          </select>
+        </div>
+        <NumberField label="Bit time" unit="s" positive value={p.bitTime} disabled={disabled} onCommit={set('bitTime')} />
+        <NumberField label="High level" unit={u} value={p.high} disabled={disabled} onCommit={set('high')} />
+        <NumberField label="Low level" unit={u} value={p.low} disabled={disabled} onCommit={set('low')} />
+        <NumberField label="Initial state" plain min={1} max={n} value={p.seed} disabled={disabled} onCommit={(v) => set('seed')(Math.round(v))} title={`LFSR register, 1 … ${n}`} />
+        <Readout
+          items={[
+            ['Bit rate', formatSI(1 / p.bitTime, 'bit/s')],
+            ['Period', `${n} bits · ${formatSI(n * p.bitTime, 's')}`],
+          ]}
+        />
+      </Group>
+    );
+  }
+  return null;
 }
 
 /** RMS of the AC component (offset excluded) for the shapes with a closed form. */

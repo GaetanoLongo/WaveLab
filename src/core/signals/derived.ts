@@ -29,6 +29,7 @@ import {
   derivativeOf,
   finiteRiseDerivativeOf,
   integralOf,
+  sampleHoldOf,
   movingAverageOf,
   movingRmsOf,
   numericDerivativeOf,
@@ -90,6 +91,9 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
         break;
       case 'rms':
         sig = movingRmsOf(x, c(1, NaN));
+        break;
+      case 'zoh':
+        sig = sampleHoldOf(x, c(1, NaN));
         break;
       case 'lowpass':
         sig = lowpassOf(x, c(1, NaN), n.args.length >= 4 ? { t0: c(2, 0), y0: c(3, 0) } : undefined);
@@ -251,6 +255,14 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
           }
           if (s) s.push(best);
           return bv;
+        };
+      }
+      case 'quantize': {
+        const q = build(args[1]!)(0, false, null);
+        return (t, l, s) => {
+          const k = Math.round(a(t, l, s) / q);
+          if (s) s.push(k); // the level index is the state: steps are located by bisection
+          return k * q;
         };
       }
       case 'clip':
@@ -416,7 +428,7 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
       case 'call':
         if (FUNCTIONS[n.fn]?.operator) return !!operatorSignal(n).piecewiseConstant;
         if (n.fn === 'delay') return pcExpr(n.args[0]!);
-        if (n.fn === 'sign') return true;
+        if (n.fn === 'sign' || n.fn === 'quantize') return true;
         return n.args.every(pcExpr);
     }
   };

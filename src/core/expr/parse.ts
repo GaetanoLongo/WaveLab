@@ -61,6 +61,7 @@ export const FUNCTIONS: Record<string, FnSpec> = {
   cos: { min: 1, max: 1, doc: 'cos(x) — x in radians' },
   tan: { min: 1, max: 1, doc: 'tan(x) — x in radians' },
   sign: { min: 1, max: 1, doc: 'sign(x) — −1, 0 or 1' },
+  quantize: { min: 2, max: 2, constFrom: 1, doc: 'quantize(x, q) — rounds to the nearest multiple of the step q (ideal mid-tread ADC)' },
   step: { min: 1, max: 1, logic: true, doc: 'step(x) — 1 if x ≥ 0, else 0' },
   and: { min: 2, max: 16, logic: true, doc: 'and(a, b, …) — logic AND' },
   or: { min: 2, max: 16, logic: true, doc: 'or(a, b, …) — logic OR' },
@@ -73,6 +74,7 @@ export const FUNCTIONS: Record<string, FnSpec> = {
   dnum: { min: 2, max: 2, constFrom: 1, operator: true, doc: 'dnum(x, h) — numerical derivative (x(t+h/2) − x(t−h/2)) / h' },
   movavg: { min: 2, max: 2, constFrom: 1, operator: true, doc: 'movavg(x, W) — moving average over the last W seconds' },
   rms: { min: 2, max: 2, constFrom: 1, operator: true, doc: 'rms(x, W) — moving RMS over the last W seconds' },
+  zoh: { min: 2, max: 2, constFrom: 1, operator: true, doc: 'zoh(x, Ts) — sample-and-hold: x sampled at multiples of Ts and held' },
   lowpass: {
     min: 2,
     max: 4,
@@ -219,12 +221,12 @@ export function parseExpr(src: string, resolve: NameResolver): Node {
               if (usesSignalOrTime(args[i]!)) throw new ExprError(`${t.v}() needs a constant as argument ${i + 1}`, t.pos);
             }
           }
-          const positive: Record<string, number> = { dfinite: 1, dnum: 1, movavg: 1, rms: 1, lowpass: 1 };
+          const positive: Record<string, number> = { dfinite: 1, dnum: 1, movavg: 1, rms: 1, lowpass: 1, quantize: 1, zoh: 1 };
           const pi = positive[t.v];
           if (pi !== undefined && !(constValue(args[pi]!) > 0)) throw new ExprError(`${t.v}() needs a positive time as argument ${pi + 1}`, t.pos);
           // Time arguments: finite and within ±MAX_TIME_ARG (larger values only exhaust
           // floating-point precision and computation time).
-          const timeArgs: Record<string, number[]> = { delay: [1], integral: [1], dfinite: [1], dnum: [1], movavg: [1], rms: [1], lowpass: [1, 2] };
+          const timeArgs: Record<string, number[]> = { delay: [1], integral: [1], dfinite: [1], dnum: [1], movavg: [1], rms: [1], lowpass: [1, 2], zoh: [1] };
           for (const i of timeArgs[t.v] ?? []) {
             if (!args[i]) continue;
             const v = constValue(args[i]!);
