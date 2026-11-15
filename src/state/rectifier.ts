@@ -145,21 +145,34 @@ export function buildRectifier(c: RectifierConfig, newId: (prefix: string) => st
   } else {
     const ph = [sine('v_a', 0), sine('v_b', -120), sine('v_c', 120)];
     const [va, vb, vc] = ph.map(ref) as [string, string, string];
-    const td = siLiteral(c.alphaDeg / 360 / c.f, 15); // full precision: the delay sets the firing instant
-    // Top (bottom) group: the most positive (negative) phase; thyristors keep conducting
-    // for α after the natural commutation (continuous current), i.e. the selection is delayed.
-    const sel = (cmp: '>' | '<', x: string, y: string, z: string, k: string) => {
-      const logic = `and(${x} ${cmp} ${y}, ${x} ${cmp} ${z})`;
-      return der(`${cmp === '>' ? 'P' : 'N'}_{${k}}`, '', c.topology === 'three-scr' && c.alphaDeg > 0 ? `delay(${logic}, ${td})` : logic);
-    };
     let vp: DerivedSignalDef;
     let vn: DerivedSignalDef;
     if (c.topology === 'three-diode') {
       vp = der('v_{P}', 'V', `max(${va}, ${vb}, ${vc})`);
       vn = der('v_{N}', 'V', `min(${va}, ${vb}, ${vc})`);
     } else {
-      const p = [sel('>', va, vb, vc, 'a'), sel('>', vb, vc, va, 'b'), sel('>', vc, va, vb, 'c')];
-      const n = [sel('<', va, vb, vc, 'a'), sel('<', vb, vc, va, 'b'), sel('<', vc, va, vb, 'c')];
+      // Continuous conduction: each thyristor conducts for 120° starting α after its natural
+      // commutation point (30° for T1 = phase a, top group; 210° for T4 = phase a, bottom group;
+      // +120° for b, +240° for c). The conduction windows depend only on the angle θ, so they
+      // are built from θ (exact instants; comparing phase voltages would leave instants where
+      // no phase is selected).
+      const theta = gen('\\theta', '°', 'sawtooth', (d) => {
+        d.timing.frequency = c.f;
+        d.params.amplitude = 180;
+        d.params.offset = 180;
+        d.params.slope = 'rising';
+      });
+      firing.push(theta);
+      const th = ref(theta);
+      const win = (startDeg: number) => {
+        const lo = (((startDeg % 360) + 360) % 360);
+        const hi = lo + 120;
+        const L = siLiteral(lo, 15);
+        return hi <= 360 ? `and(${th} >= ${L}, ${th} < ${siLiteral(hi, 15)})` : `or(${th} >= ${L}, ${th} < ${siLiteral(hi - 360, 15)})`;
+      };
+      const k = ['a', 'b', 'c'];
+      const p = k.map((x, i) => der(`T_{${x}+}`, '', win(30 + c.alphaDeg + 120 * i)));
+      const n = k.map((x, i) => der(`T_{${x}-}`, '', win(210 + c.alphaDeg + 120 * i)));
       firing.push(...p, ...n);
       for (const g of firing) g.style.visible = false;
       vp = der('v_{P}', 'V', `${va} * ${ref(p[0]!)} + ${vb} * ${ref(p[1]!)} + ${vc} * ${ref(p[2]!)}`);
