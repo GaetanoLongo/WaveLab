@@ -475,3 +475,10 @@ table.harmonics td { padding: 2px 6px; border-bottom: 1px solid var(--panel-2); 
 .link-btn.danger { color: var(--danger); }
 .ann-item header .link-btn { padding: 0; }
 .export-dialog footer .copied { margin-right: auto; color: var(--accent); }
+
+/* ---------- F4: XY / eye views ---------- */
+.views-dialog { width: min(1000px, 100%); }
+.views-body { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start; }
+.views-options { display: flex; flex-direction: column; gap: 6px; }
+.views-plot svg { width: 100%; height: auto; display: block; border: 1px solid var(--border); border-radius: 6px; }
+@media (max-width: 760px) { .views-body { grid-template-columns: 1fr; } }

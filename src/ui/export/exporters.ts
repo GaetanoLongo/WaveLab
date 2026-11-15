@@ -205,7 +205,12 @@ export async function exportSvg(o: ExportOptions): Promise<void> {
 }
 
 export async function renderPng(o: ExportOptions): Promise<Blob> {
-  const scene = buildExportScene(o.width, o.height, o.transparent, o.includeCursors, o.content);
+  return scenePng(buildExportScene(o.width, o.height, o.transparent, o.includeCursors, o.content), o.scale);
+}
+
+/** Rasterize a scene (fonts embedded) at `scale` × its pixel size. */
+export async function scenePng(scene: Scene, scale: number): Promise<Blob> {
+  const o = { width: scene.width, height: scene.height, scale };
   const svg = sceneToSvg(scene, { css: await fontFaceCss(), pixelScale: o.scale, idPrefix: 'wl-' });
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
   try {

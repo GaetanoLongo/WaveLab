@@ -137,6 +137,8 @@ export interface BitsParams {
   low: number;
   encoding: BitEncoding;
   repeat: boolean;
+  /** Line level outside the frame (UART and I²C idle high). Default: low. */
+  idle?: 'low' | 'high';
 }
 
 /**

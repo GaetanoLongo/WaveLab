@@ -196,3 +196,29 @@ Crest factor = max |x| / RMS; form factor = RMS / mean |x|.
 - quantize(x, q) = q·round(x/q) (ties away from −∞, as Math.round); zoh(x, Ts) = x(k·Ts) on [k·Ts, (k+1)·Ts).
 - Modulation: m(t) normalised to ±1; FM phase 2π·Δf·∫m dt (from t = 0); θ_c is a 0…2π ramp so the result is
   periodic. Spectrum THD is shown only when the fundamental exceeds 0.1 % of the RMS.
+
+## Second-order filters: lowpass2 / bandpass2 / highpass2 (x, f0, Q)
+
+H_LP = ω₀²/(s² + (ω₀/Q)s + ω₀²), H_BP = (ω₀/Q)s/(…) (unity gain at f₀), H_HP = s²/(…), ω₀ = 2πf₀.
+Series RLC driven by v: capacitor voltage = LP with f₀ = 1/(2π√(LC)), Q = √(L/C)/R; resistor voltage = BP;
+inductor voltage = HP. Stepping uses the closed-form state transition e^{Ah} (cos/sin, cosh/sinh or critical
+case) and, for constant and linear input pieces, the exact forced response via A⁻¹; smooth pieces use
+Gauss–Legendre sub-steps. Periodic input: periodic steady state x(0) = (I − e^{AT})⁻¹F; aperiodic: at rest
+before t = 0. First-order high-pass: `x − lowpass(x, τ)`.
+
+## Serial protocols
+
+- Bit sequences may idle low or high outside the frame (UART and I²C idle high).
+- UART: start bit 0, data LSB first, parity (even/odd) over the data bits, 1–2 stop bits, optional idle bits.
+- SPI: mode = 2·CPOL + CPHA; CPHA 0 samples on the leading clock edge (data changes on the trailing edge),
+  CPHA 1 samples on the trailing edge; CS active low, MSB first unless chosen otherwise; one idle half-period
+  of clock before the first and after the last bit.
+- I²C: START = SDA falling while SCL high; data changes in the middle of SCL low; 7-bit address + R/W
+  (1 = read); ACK = 0, NACK (1) after the last byte of a read; STOP = SDA rising while SCL high.
+
+## XY and eye views
+
+XY: the curve (x(t), y(t)) over the visible window with both signals' feature times included (exact corners,
+jumps as two points); "equal scales" gives both axes the same data span. Eye: windows of 2 UI starting at
+t0 + k·UI, k = 0…N − 1; the eye height is (lowest value above the threshold) − (highest value below it) at the
+centre (1 UI), the threshold being the middle of the signal's range.

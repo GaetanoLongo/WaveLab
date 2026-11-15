@@ -14,6 +14,7 @@ import { actions, findSignal, orderedSignals, useEditor } from '../../state/stor
 import { NumberField } from '../fields/NumberField';
 import { MathLabel } from '../MathLabel';
 import { openSpectrum } from './SpectrumDialog';
+import { openViews } from './ViewsDialog';
 
 const fmt = (v: number, unit: string, digits = 5, scale = 0) =>
   Number.isFinite(v) ? formatSI(Math.abs(v) <= 1e-9 * scale ? 0 : v, unit, digits) : '—';
@@ -78,6 +79,12 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
       </button>
       <button onClick={openSpectrum} title="Harmonic spectrum and THD of the measured signal">
         Spectrum…
+      </button>
+      <button onClick={() => openViews('xy')} title="XY (Lissajous) plot of two signals over the visible window">
+        XY…
+      </button>
+      <button onClick={() => openViews('eye')} title="Eye diagram: the signal folded over its bit time">
+        Eye…
       </button>
     </div>
   );

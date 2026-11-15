@@ -25,6 +25,7 @@
 
 import { constValue, FUNCTIONS, isLogic, type Node } from '../expr/parse';
 import { lowpassOf } from './lowpass';
+import { filter2Of } from './filter2';
 import {
   derivativeOf,
   finiteRiseDerivativeOf,
@@ -91,6 +92,11 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
         break;
       case 'rms':
         sig = movingRmsOf(x, c(1, NaN));
+        break;
+      case 'lowpass2':
+      case 'bandpass2':
+      case 'highpass2':
+        sig = filter2Of(x, n.fn === 'lowpass2' ? 'low' : n.fn === 'bandpass2' ? 'band' : 'high', c(1, NaN), c(2, NaN));
         break;
       case 'zoh':
         sig = sampleHoldOf(x, c(1, NaN));

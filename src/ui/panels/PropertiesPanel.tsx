@@ -380,6 +380,13 @@ function BitsParamsView({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: 
         <input type="checkbox" checked={p.repeat} disabled={disabled} onChange={(e) => set('repeat', e.target.checked)} />
         Repeat the frame
       </label>
+      <div className="field">
+        <label>Idle level</label>
+        <select value={p.idle ?? 'low'} disabled={disabled || p.repeat} onChange={(e) => set('idle', e.target.value as 'low' | 'high')} title="Line level before and after the frame">
+          <option value="low">Low</option>
+          <option value="high">High (UART, I²C)</option>
+        </select>
+      </div>
       <Readout
         items={[
           ['Bit rate', formatSI(1 / p.bitTime, 'bit/s')],
@@ -389,7 +396,7 @@ function BitsParamsView({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: 
       <p className="hint-text">
         {p.encoding === 'manchester' && 'IEEE 802.3: 0 = high→low and 1 = low→high at mid-bit (G. E. Thomas uses the opposite).'}
         {p.encoding === 'rz' && 'A 1 is high for the first half of its bit; a 0 stays low.'}
-        {p.encoding === 'nrz' && 'Each bit holds its level for the whole bit time. Idle level outside the frame: low.'}
+        {p.encoding === 'nrz' && 'Each bit holds its level for the whole bit time.'}
       </p>
     </Group>
   );

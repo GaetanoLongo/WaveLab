@@ -74,6 +74,9 @@ export const FUNCTIONS: Record<string, FnSpec> = {
   dnum: { min: 2, max: 2, constFrom: 1, operator: true, doc: 'dnum(x, h) — numerical derivative (x(t+h/2) − x(t−h/2)) / h' },
   movavg: { min: 2, max: 2, constFrom: 1, operator: true, doc: 'movavg(x, W) — moving average over the last W seconds' },
   rms: { min: 2, max: 2, constFrom: 1, operator: true, doc: 'rms(x, W) — moving RMS over the last W seconds' },
+  lowpass2: { min: 3, max: 3, constFrom: 1, operator: true, doc: 'lowpass2(x, f0, Q) — 2nd-order low-pass (series RLC: capacitor voltage), f0 in Hz' },
+  bandpass2: { min: 3, max: 3, constFrom: 1, operator: true, doc: 'bandpass2(x, f0, Q) — 2nd-order band-pass (series RLC: resistor voltage), unity gain at f0' },
+  highpass2: { min: 3, max: 3, constFrom: 1, operator: true, doc: 'highpass2(x, f0, Q) — 2nd-order high-pass (series RLC: inductor voltage)' },
   zoh: { min: 2, max: 2, constFrom: 1, operator: true, doc: 'zoh(x, Ts) — sample-and-hold: x sampled at multiples of Ts and held' },
   lowpass: {
     min: 2,
@@ -234,6 +237,12 @@ export function parseExpr(src: string, resolve: NameResolver): Node {
             if (Math.abs(v) > MAX_TIME_ARG) throw new ExprError(`${t.v}(): argument ${i + 1} must be within ±1 Ms (1e6 s)`, t.pos);
           }
           if (t.v === 'integral' && args[2] && !Number.isFinite(constValue(args[2]))) throw new ExprError('integral(): the initial value must be a finite number', t.pos);
+          if (['lowpass2', 'bandpass2', 'highpass2'].includes(t.v)) {
+            const f0 = constValue(args[1]!);
+            const q = constValue(args[2]!);
+            if (!(f0 > 0 && f0 <= 1e12)) throw new ExprError(`${t.v}(): f0 must be a frequency between 0 and 1 THz`, t.pos);
+            if (!(q > 0 && q <= 1e6)) throw new ExprError(`${t.v}(): Q must be positive`, t.pos);
+          }
           if (t.v === 'lowpass' && args.length === 3) throw new ExprError('lowpass() takes x, τ, or x, τ, t0, y0', t.pos);
           if (t.v === 'lowpass' && args[3] && !Number.isFinite(constValue(args[3]))) throw new ExprError('lowpass(): the initial value must be a finite number', t.pos);
           return { k: 'call', fn: t.v, args };

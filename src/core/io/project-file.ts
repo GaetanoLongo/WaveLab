@@ -217,7 +217,15 @@ function readSignal(v: unknown, path: string): SignalDef {
       return {
         ...base,
         generator,
-        params: { bits: bitsStr, bitTime, high: n('high'), low: n('low'), encoding, repeat: bool(pp.repeat, `${path}.params.repeat`) },
+        params: {
+          bits: bitsStr,
+          bitTime,
+          high: n('high'),
+          low: n('low'),
+          encoding,
+          repeat: bool(pp.repeat, `${path}.params.repeat`),
+          ...(pp.idle === 'high' ? { idle: 'high' as const } : {}),
+        },
       };
     }
     case 'chirp': {

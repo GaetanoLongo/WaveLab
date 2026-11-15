@@ -10,6 +10,7 @@ import { actions } from '../../state/store';
 import { openPwm } from './PwmDialog';
 import { openRectifier } from './RectifierDialog';
 import { openModulation } from './ModulationDialog';
+import { openProtocol } from './ProtocolDialog';
 import { WaveGlyph } from '../icons';
 
 interface Entry {
@@ -101,7 +102,7 @@ const DIGITAL: Entry[] = [
 ];
 
 const PLANNED_BASIC: string[] = [];
-const PLANNED_DIGITAL: Array<[string, string]> = [['PPM', 'later']];
+const PLANNED_DIGITAL: Array<[string, string]> = [];
 type Template = (a: string, b: string, ctx: { periodA?: number }) => string;
 const OPS: Array<[label: string, glyph: string, name: string, arity: 1 | 2, tpl: Template, title: string, unit?: (u: string) => string]> = [
   ['Add', '+', 'Sum', 2, (a, b) => `${a} + ${b}`, 'A + B'],
@@ -131,6 +132,30 @@ const OPS: Array<[label: string, glyph: string, name: string, arity: 1 | 2, tpl:
     1,
     (a, _b, c) => `lowpass(${a}, ${siLiteral((c.periodA ?? 1e-2) / 4)})`,
     'First-order lag τ·y′ + y = A (RC filter, R-L load current); periodic steady state. τ defaults to a quarter period of A',
+  ],
+  [
+    'High-pass (RC)',
+    'τ̄',
+    'Highpass',
+    1,
+    (a, _b, c) => `${a} - lowpass(${a}, ${siLiteral((c.periodA ?? 1e-2) / 4)})`,
+    'First-order high-pass A − lowpass(A, τ) (RC differentiator, AC coupling)',
+  ],
+  [
+    'RLC low-pass',
+    'LP₂',
+    'Lowpass2',
+    1,
+    (a, _b, c) => `lowpass2(${a}, ${siLiteral(2 / (c.periodA ?? 1e-2))}, 0.707)`,
+    'Second-order low-pass (series RLC, capacitor voltage): f₀ and Q editable; periodic steady state',
+  ],
+  [
+    'RLC band-pass',
+    'BP₂',
+    'Bandpass',
+    1,
+    (a, _b, c) => `bandpass2(${a}, ${siLiteral(1 / (c.periodA ?? 1e-2))}, 5)`,
+    'Second-order band-pass (series RLC, resistor voltage), unity gain at f₀',
   ],
   [
     'Quantize',
@@ -191,6 +216,10 @@ export function Toolbox() {
           {DIGITAL.map((e) => (
             <EntryButton key={e.label} e={e} />
           ))}
+          <button className="tool" title="UART, SPI or I²C frames from text or hex bytes, with the decoded fields labelled" onClick={openProtocol}>
+            <WaveGlyph kind="bits" variant="NRZ" />
+            <span>UART / SPI / I²C…</span>
+          </button>
           <button className="tool" title="AM, DSB-SC, FM or PM of a sine, square or triangle message (editable signals)" onClick={openModulation}>
             <WaveGlyph kind="chirp" variant="Chirp (linear)" />
             <span>AM / FM / PM…</span>

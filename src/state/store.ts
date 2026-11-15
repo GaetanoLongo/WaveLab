@@ -11,7 +11,7 @@ import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { defaultGenerator } from '../core/model/defaults';
 import { paletteColor } from '../core/model/palette';
-import { createsCycle, dependents, storedAst } from '../core/model/deps';
+import { createsCycle, dependents, directDeps, storedAst } from '../core/model/deps';
 import {
   NO_CURSORS,
   type Annotation,
@@ -36,6 +36,7 @@ import { formatSI, siLiteral } from '../core/units/si';
 import { buildRectifier, type RectifierConfig } from './rectifier';
 import type { SignalSet } from './builder';
 import { buildModulation, type ModulationConfig } from './modulation';
+import { buildProtocol, type ProtocolConfig } from './protocols';
 import { buildPwm, type PwmConfig } from './pwm';
 import type { AxisStyle, StyleOverrides } from '../core/plot/layout';
 import { phaseForDifference } from '../core/signals/phase';
@@ -188,6 +189,19 @@ export function signalNameError(p: Project, id: string, name: string): string | 
   if (n.includes(']')) return 'Signal names cannot contain “]”.';
   if (p.signals.some((s) => s.id !== id && s.name === n)) return `Another signal is already called “${n}”.`;
   return null;
+}
+
+/** Bit time of a bit-sequence or PRBS signal, or of the first such input behind an expression. */
+export function bitTimeOf(p: Project, s: SignalDef, seen = new Set<string>()): number | undefined {
+  if (seen.has(s.id)) return undefined;
+  seen.add(s.id);
+  if (s.kind === 'generator') return s.generator === 'bits' || s.generator === 'prbs' ? s.params.bitTime : undefined;
+  for (const id of directDeps(s)) {
+    const d = p.signals.find((x) => x.id === id);
+    const bt = d && bitTimeOf(p, d, seen);
+    if (bt !== undefined) return bt;
+  }
+  return undefined;
 }
 
 function uniqueName(p: Project, base: string): string {
@@ -788,8 +802,17 @@ export const actions = {
     actions.addSignalSet(buildModulation(config, newId, get().project.signals.length), Math.min(2 / config.fm, 1));
   },
 
+  /** Create UART / SPI / I²C frames with decoded-field annotations; returns an error message or null. */
+  createProtocol(config: ProtocolConfig): string | null {
+    const built = buildProtocol(config, newId, get().project.signals.length);
+    if (typeof built === 'string') return built;
+    actions.addSignalSet(built, built.duration * 1.02, built.annotations);
+    for (const [sid, r] of Object.entries(built.yRanges)) actions.setYRange(`stack-${sid}`, r);
+    return null;
+  },
+
   /** Add a built set of signals and groups to the active figure (stacked), in one undo step. */
-  addSignalSet(built: SignalSet, span: number): void {
+  addSignalSet(built: SignalSet, span: number, annotations: Array<Omit<Annotation, 'id'>> = []): void {
     const p = get().project;
     // Unique names: a set may be created several times.
     const names = new Set(p.signals.map((s) => s.name));
@@ -806,6 +829,7 @@ export const actions = {
       if (fig.panels.length === 1 && fig.panels[0]!.traces.length === 0) fig.panels = built.groups;
       else fig.panels.push(...built.groups);
       fig.mode = 'stacked';
+      if (annotations.length) (fig.annotations ??= []).push(...annotations.map((a) => ({ ...a, id: newId('a') })));
     });
     set({ selectedId: built.signals[built.signals.length - 1]!.id });
     actions.setXRange([0, span]);
@@ -941,7 +965,8 @@ export const actions = {
         return null;
       }
     }
-    const expr = template(`#{${a.id}}`, b ? `#{${b.id}}` : '', { periodA: compiled(a, p).period });
+    // Characteristic time of A: the bit time of a bit stream (also behind expressions), else its period.
+    const expr = template(`#{${a.id}}`, b ? `#{${b.id}}` : '', { periodA: bitTimeOf(p, a) ?? compiled(a, p).period });
     const ast = storedAst(expr);
     const def: DerivedSignalDef = {
       id: newId('d'),

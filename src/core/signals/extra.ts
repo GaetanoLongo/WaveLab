@@ -209,13 +209,14 @@ export function bitKnots(p: BitsParams): Knot[] | null {
       segs.push([t + T / 2, one ? p.high : p.low]);
     }
   });
+  const idle = p.idle === 'high' ? p.high : p.low;
   const knots: Knot[] = [];
-  let prev = p.low;
+  let prev = idle;
   for (const [t, lvl] of segs) {
     if (knots.length === 0 || lvl !== prev) knots.push({ u: t, L: prev, R: lvl });
     prev = lvl;
   }
-  knots.push({ u: bitsStr.length * T, L: prev, R: p.low });
+  knots.push({ u: bitsStr.length * T, L: prev, R: idle });
   return knots;
 }
 
@@ -227,7 +228,8 @@ function bits(p: BitsParams, start: number): SignalEval {
     knots[knots.length - 1]!.R = knots[0]!.R;
     knots[0]!.L = knots[knots.length - 1]!.L;
   }
-  return knotSignal(knots, 'step', p.repeat, start, p.low, p.low);
+  const idle = p.idle === 'high' ? p.high : p.low;
+  return knotSignal(knots, 'step', p.repeat, start, idle, idle);
 }
 
 function invalid(): SignalEval {

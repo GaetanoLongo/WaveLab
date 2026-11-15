@@ -9,6 +9,8 @@ import { SpectrumDialog } from './panels/SpectrumDialog';
 import { PwmDialog } from './panels/PwmDialog';
 import { RectifierDialog } from './panels/RectifierDialog';
 import { ModulationDialog } from './panels/ModulationDialog';
+import { ProtocolDialog } from './panels/ProtocolDialog';
+import { ViewsDialog } from './panels/ViewsDialog';
 import { openAxes } from './Modal';
 import { loadFile } from './fileio';
 import { formatSI } from '../core/units/si';
@@ -70,6 +72,8 @@ export function App() {
       <PwmDialog />
       <RectifierDialog />
       <ModulationDialog />
+      <ProtocolDialog />
+      <ViewsDialog />
       <AnnotationsDialog />
       <AxesDialog />
       <RecoveryBanner />
