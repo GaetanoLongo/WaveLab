@@ -44,12 +44,14 @@ function gl5(f: (t: number) => number, a: number, b: number): number {
 function integrateSmooth(f: (t: number) => number, a: number, b: number, depth = 0, whole?: number, tol?: number): number {
   if (b === a) return 0;
   const w = whole ?? gl5(f, a, b);
-  const eps = tol ?? 1e-13 * Math.max(Math.abs(gl5((t) => Math.abs(f(t)), a, b)), 1e-300);
+  const eps = tol ?? 1e-12 * Math.max(Math.abs(gl5((t) => Math.abs(f(t)), a, b)), 1e-300);
   const m = (a + b) / 2;
   const l = gl5(f, a, m);
   const r = gl5(f, m, b);
   const sum = l + r;
-  if (depth >= 18 || Math.abs(sum - w) <= eps) return sum;
+  // Depth cap: 2^10 panels of 5-point GL are far beyond what smooth segments need; it also
+  // bounds the cost when rounding noise (e.g. sin at a large phase) exceeds the tolerance.
+  if (depth >= 10 || Math.abs(sum - w) <= eps) return sum;
   return integrateSmooth(f, a, m, depth + 1, l, eps / 2) + integrateSmooth(f, m, b, depth + 1, r, eps / 2);
 }
 
