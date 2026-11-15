@@ -1,6 +1,7 @@
 {
   "name": "wavelab",
   "private": true,
+  "license": "MIT",
   "version": "0.1.0",
   "type": "module",
   "description": "WaveLab \u2014 browser-based mathematical waveform editor",

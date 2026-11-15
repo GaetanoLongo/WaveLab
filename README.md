@@ -23,7 +23,7 @@ server: everything runs locally in your browser.
 - [Files, privacy and recovery](#files-privacy-and-recovery)
 - [Development](#development)
 - [Roadmap and history](#roadmap-and-history)
-- [Credits](#credits)
+- [Credits and licence](#credits-and-licence)
 
 ## Why WaveLab
 - **Exact, not sampled.** Edges are true vertical jumps, extrema are solved analytically, integrals use
@@ -263,7 +263,9 @@ then a release pass (**S2**) with a broad stress test and performance profiling.
 | F4 | UART/SPI/I²C frames, XY and eye views, RC/RLC filters |
 </details>
 
-## Credits
+## Credits and licence
+WaveLab is released under the [MIT licence](LICENSE).
+
 - Spectrum method and PWM conventions adapted from
   [ModulationToy](https://github.com/GaetanoLongo/ModulationToy) (same author, MIT).
 - Inter font (subset), © The Inter Project Authors, SIL Open Font License 1.1 — `public/fonts/Inter-LICENSE.txt`.
