@@ -6,6 +6,8 @@ import { plainText } from '../../core/plot/mathtext';
 
 import { useMemo, useState } from 'react';
 import { measureInterval } from '../../core/measure/measure';
+import { powerMetrics } from '../../core/measure/power';
+import { autoFundamental } from '../../state/fundamental';
 import { formatSI } from '../../core/units/si';
 import { compiled } from '../../state/compiled';
 import { actions, findSignal, orderedSignals, useEditor } from '../../state/store';
@@ -34,6 +36,16 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
   const m = useMemo(() => (sig ? measureInterval(sig, a, b) : null), [sig, a, b]);
   const v1 = sig && t1 != null ? sig.value(t1) : NaN;
   const v2 = sig && t2 != null ? sig.value(t2) : NaN;
+  // Power: the measured signal is the voltage, the chosen signal the current.
+  const [currentId, setCurrentId] = useState<string | null>(null);
+  const others = visible.filter((s) => s.id !== target?.id);
+  const cur = others.find((s) => s.id === currentId) ?? others.find((s) => s.unit === 'A') ?? null;
+  const pw = useMemo(() => {
+    if (!sig || !target || !cur) return null;
+    const ie = compiled(cur, project);
+    const fund = autoFundamental(project, target, sig, b - a);
+    return { m: powerMetrics(sig, ie, a, b, fund.source === 'span' ? undefined : { f1: fund.f1, periods: fund.periods, t0: a }), f1: fund.f1 };
+  }, [sig, target, cur, project, a, b]);
   const timeOn = t1 != null || t2 != null;
   const levelOn = y1 != null || y2 != null;
 
@@ -141,7 +153,42 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
                 <dd>{Number.isFinite(m.duty) ? `${(m.duty * 100).toPrecision(4)} %` : '—'}</dd>
                 <dt title="From same-direction crossings of the mid level">Freq</dt>
                 <dd>{fmt(m.frequency, 'Hz')}</dd>
+                <dt title="Peak (largest |value|) / RMS">Crest</dt>
+                <dd>{Number.isFinite(m.crest) ? m.crest.toPrecision(4) : '—'}</dd>
+                <dt title="RMS / rectified mean (mean of |value|)">Form</dt>
+                <dd>{Number.isFinite(m.form) ? m.form.toPrecision(4) : '—'}</dd>
               </dl>
+            </div>
+          )}
+          {m && others.length > 0 && (
+            <div className="m-group wide power">
+              <h4>
+                Power · <MathLabel text={target.name} /> ×{' '}
+                <select aria-label="Current signal" value={cur?.id ?? ''} onChange={(e) => setCurrentId(e.target.value || null)} title="Current signal (the measured signal is the voltage)">
+                  <option value="">(choose the current)</option>
+                  {others.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {plainText(s.name)}
+                    </option>
+                  ))}
+                </select>
+              </h4>
+              {pw && (
+                <dl className="m-grid">
+                  <dt title="Active power: mean of v·i">P</dt>
+                  <dd>{fmt(pw.m.p, 'W')}</dd>
+                  <dt title="Apparent power: V_rms · I_rms">S</dt>
+                  <dd>{fmt(pw.m.s, 'VA')}</dd>
+                  <dt title="Power factor P / S">PF</dt>
+                  <dd>{Number.isFinite(pw.m.pf) ? pw.m.pf.toFixed(4) : '—'}</dd>
+                  <dt title="Non-active power √(S² − P²) (reactive and distortion)">N</dt>
+                  <dd>{fmt(pw.m.n, 'var')}</dd>
+                  <dt title={`Fundamental reactive power V₁·I₁·sin φ₁ at ${formatSI(pw.f1, 'Hz')} (whole periods from the interval start); > 0 = inductive`}>Q₁</dt>
+                  <dd>{fmt(pw.m.q1, 'var')}</dd>
+                  <dt title="Displacement power factor cos φ₁ (fundamentals)">DPF</dt>
+                  <dd>{Number.isFinite(pw.m.dpf) ? pw.m.dpf.toFixed(4) : '—'}</dd>
+                </dl>
+              )}
             </div>
           )}
         </div>

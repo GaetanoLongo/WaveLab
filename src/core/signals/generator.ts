@@ -123,6 +123,8 @@ export function compileGenerator(def: GeneratorDef): SignalEval {
     features,
     scale: isDc ? undefined : 1 / f,
     period: infinite && !isDc ? 1 / f : undefined,
+    piecewiseConstant:
+      def.generator === 'square' || isDc || (def.generator === 'pulse' && def.params.rise === 0 && def.params.fall === 0),
     extent: infinite ? undefined : [delay + range.a, delay + range.b],
   };
 }

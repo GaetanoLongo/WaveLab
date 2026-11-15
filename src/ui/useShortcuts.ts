@@ -7,6 +7,7 @@ import { openProject, saveProject } from './fileio';
 import { anyDialogOpen } from './Modal';
 import { useSpectrum } from './panels/SpectrumDialog';
 import { usePwmDialog } from './panels/PwmDialog';
+import { useRectifierDialog } from './panels/RectifierDialog';
 
 function isTyping(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
@@ -33,7 +34,7 @@ export function useShortcuts() {
         void openProject();
         return;
       }
-      if (useExportDialog.getState().open || anyDialogOpen() || useSpectrum.getState().open || usePwmDialog.getState().open) return; // modals handle their own keys
+      if (useExportDialog.getState().open || anyDialogOpen() || useSpectrum.getState().open || usePwmDialog.getState().open || useRectifierDialog.getState().open) return; // modals handle their own keys
       if (isTyping(e.target)) return;
 
       if (mod && k === 'z' && !e.shiftKey) {

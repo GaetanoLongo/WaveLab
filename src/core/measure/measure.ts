@@ -6,7 +6,7 @@
  */
 
 import { rangeOf } from '../plot/range';
-import { integrateRange, squareOf } from '../signals/operators';
+import { absOf, integrateRange, squareOf } from '../signals/operators';
 import type { SignalEval } from '../signals/types';
 import { leftValue } from '../signals/scan';
 
@@ -16,6 +16,12 @@ export interface IntervalMeasurements {
   max: number;
   min: number;
   peakToPeak: number;
+  /** Mean of |x| (rectified mean). */
+  meanAbs: number;
+  /** Peak / RMS (peak = largest |x|). */
+  crest: number;
+  /** RMS / rectified mean. */
+  form: number;
   mean: number;
   rms: number;
   /** Mid-level threshold (max + min) / 2 used for duty cycle and frequency. */
@@ -82,7 +88,7 @@ export function measureInterval(s: SignalEval, a0: number, b0: number): Interval
   const a = Math.min(a0, b0);
   const b = Math.max(a0, b0);
   const nan: IntervalMeasurements = {
-    a, b, max: NaN, min: NaN, peakToPeak: NaN, mean: NaN, rms: NaN, threshold: NaN, duty: NaN, frequency: NaN, risingCrossings: 0,
+    a, b, max: NaN, min: NaN, peakToPeak: NaN, meanAbs: NaN, crest: NaN, form: NaN, mean: NaN, rms: NaN, threshold: NaN, duty: NaN, frequency: NaN, risingCrossings: 0,
   };
   if (!(b > a)) return nan;
   const r = rangeOf(s, a, b);
@@ -96,6 +102,9 @@ export function measureInterval(s: SignalEval, a0: number, b0: number): Interval
   const span = b - a;
   const mean = clean(integrateRange(s, a, b) / span);
   const rms = clean(Math.sqrt(Math.max(0, integrateRange(squareOf(s), a, b) / span)));
+  const meanAbs = clean(integrateRange(absOf(s), a, b) / span);
+  const crest = rms > 0 ? Math.max(Math.abs(min), Math.abs(max)) / rms : NaN;
+  const form = meanAbs > 0 ? rms / meanAbs : NaN;
   const threshold = (max + min) / 2;
   const flat = max - min <= 1e-9 * mag;
 
@@ -110,5 +119,5 @@ export function measureInterval(s: SignalEval, a0: number, b0: number): Interval
     const use = r.ups.length >= r.downs.length ? r.ups : r.downs;
     if (use.length >= 2) frequency = (use.length - 1) / (use[use.length - 1]! - use[0]!);
   }
-  return { a, b, max, min, peakToPeak: flat ? 0 : max - min, mean, rms, threshold, duty, frequency, risingCrossings: rising };
+  return { a, b, max, min, meanAbs, crest, form, peakToPeak: flat ? 0 : max - min, mean, rms, threshold, duty, frequency, risingCrossings: rising };
 }

@@ -73,6 +73,13 @@ export const FUNCTIONS: Record<string, FnSpec> = {
   dnum: { min: 2, max: 2, constFrom: 1, operator: true, doc: 'dnum(x, h) — numerical derivative (x(t+h/2) − x(t−h/2)) / h' },
   movavg: { min: 2, max: 2, constFrom: 1, operator: true, doc: 'movavg(x, W) — moving average over the last W seconds' },
   rms: { min: 2, max: 2, constFrom: 1, operator: true, doc: 'rms(x, W) — moving RMS over the last W seconds' },
+  lowpass: {
+    min: 2,
+    max: 4,
+    constFrom: 1,
+    operator: true,
+    doc: 'lowpass(x, τ, t0, y0) — first-order lag τ·y′ + y = x (RC filter; R-L load current = lowpass(v/R, L/R)); periodic steady state unless t0, y0 are given',
+  },
 };
 
 const RESERVED = new Set(['t', 'pi', 'e', ...Object.keys(FUNCTIONS)]);
@@ -212,12 +219,12 @@ export function parseExpr(src: string, resolve: NameResolver): Node {
               if (usesSignalOrTime(args[i]!)) throw new ExprError(`${t.v}() needs a constant as argument ${i + 1}`, t.pos);
             }
           }
-          const positive: Record<string, number> = { dfinite: 1, dnum: 1, movavg: 1, rms: 1 };
+          const positive: Record<string, number> = { dfinite: 1, dnum: 1, movavg: 1, rms: 1, lowpass: 1 };
           const pi = positive[t.v];
           if (pi !== undefined && !(constValue(args[pi]!) > 0)) throw new ExprError(`${t.v}() needs a positive time as argument ${pi + 1}`, t.pos);
           // Time arguments: finite and within ±MAX_TIME_ARG (larger values only exhaust
           // floating-point precision and computation time).
-          const timeArgs: Record<string, number[]> = { delay: [1], integral: [1], dfinite: [1], dnum: [1], movavg: [1], rms: [1] };
+          const timeArgs: Record<string, number[]> = { delay: [1], integral: [1], dfinite: [1], dnum: [1], movavg: [1], rms: [1], lowpass: [1, 2] };
           for (const i of timeArgs[t.v] ?? []) {
             if (!args[i]) continue;
             const v = constValue(args[i]!);
@@ -225,6 +232,8 @@ export function parseExpr(src: string, resolve: NameResolver): Node {
             if (Math.abs(v) > MAX_TIME_ARG) throw new ExprError(`${t.v}(): argument ${i + 1} must be within ±1 Ms (1e6 s)`, t.pos);
           }
           if (t.v === 'integral' && args[2] && !Number.isFinite(constValue(args[2]))) throw new ExprError('integral(): the initial value must be a finite number', t.pos);
+          if (t.v === 'lowpass' && args.length === 3) throw new ExprError('lowpass() takes x, τ, or x, τ, t0, y0', t.pos);
+          if (t.v === 'lowpass' && args[3] && !Number.isFinite(constValue(args[3]))) throw new ExprError('lowpass(): the initial value must be a finite number', t.pos);
           return { k: 'call', fn: t.v, args };
         }
         if (t.v === 't') return { k: 'time' };

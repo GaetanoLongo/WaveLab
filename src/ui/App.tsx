@@ -7,6 +7,7 @@ import { AxesDialog } from './panels/AxesDialog';
 import { FigureSettingsDialog } from './panels/FigureSettings';
 import { SpectrumDialog } from './panels/SpectrumDialog';
 import { PwmDialog } from './panels/PwmDialog';
+import { RectifierDialog } from './panels/RectifierDialog';
 import { openAxes } from './Modal';
 import { loadFile } from './fileio';
 import { formatSI } from '../core/units/si';
@@ -64,6 +65,7 @@ export function App() {
       <FigureSettingsDialog />
       <SpectrumDialog />
       <PwmDialog />
+      <RectifierDialog />
       <AxesDialog />
       <RecoveryBanner />
       <Toolbar compact={phone} />

@@ -148,3 +148,37 @@ must be unique and may not contain `]`.
 While a project has unsaved changes, a copy is kept in this browser's local storage
 and offered for restore at the next start. It is removed once the project is saved
 or the changes are discarded.
+
+## First-order lag: lowpass(x, τ[, t0, y0])
+
+τ·y′ + y = x. Periodic x: the exact periodic steady state y(t0) = F / (1 − e^(−T/τ)) (F = response
+over one period from 0). With t0, y0: y = y0 before t0, then the steady state plus
+(y0 − y_ss(t0))·e^(−(t−t0)/τ) (aperiodic x: integrated forward from t0). Constant and linear pieces use
+closed forms; smooth pieces adaptive Gauss–Legendre. Impulses of x are ignored (warning).
+
+## Rectifiers and phase control
+
+- v_s = √2·V_s·sin ωt; three-phase v_a, v_b, v_c at 0°, −120°, +120° (V_s = RMS phase voltage).
+- θ = ωt in degrees (0…360, rising sawtooth). α is measured from the natural commutation point.
+- Ideal devices, no source inductance. "R load" circuits are exact; "continuous current" circuits
+  assume the load current never reaches zero (check it on the computed current).
+- Three-phase thyristor bridge: the most positive (negative) phase is selected with a delay of
+  α/(360 f), i.e. each thyristor keeps conducting for α past the natural commutation.
+
+## PWM: zero-sequence references and loads
+
+- Three-phase modulating signal v_ref,k = v_k + v₀ with v₀ = (m/6) sin 3θ (third harmonic),
+  −(max + min)/2 (space vector), or 1 − max / −1 − min by the sign of max + min (DPWM1; rails at
+  ±(1 + 10⁻⁶) so a clamped reference never touches the carrier peak). Linear up to m = 2/√3.
+- Load currents: single-phase lowpass((v − E)/R, L/R); three-phase balanced star with isolated neutral:
+  v_aN = (2v_A0 − v_B0 − v_C0)/3, i_a = lowpass(v_aN/R, L/R).
+- With dead time and a load: v_X0,dt = V_dc·(S_X+ + (1 − S_X+ − S_X−)·[i_X < 0]); the leg current
+  direction comes from the current computed with the ideal voltages (first-order model, accurate
+  except where the current ripple crosses zero).
+
+## Power
+
+P = mean(v·i), S = V_rms·I_rms, PF = P/S, N = √(S² − P²). Fundamentals from the exact Fourier series over
+whole periods of the automatic fundamental starting at the interval start: Q₁ = V₁I₁ sin φ₁ (RMS values,
+φ₁ = angle of v₁ − angle of i₁, positive = inductive), DPF = cos φ₁.
+Crest factor = max |x| / RMS; form factor = RMS / mean |x|.

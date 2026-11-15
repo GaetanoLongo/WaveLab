@@ -61,6 +61,8 @@ export interface SignalEval {
   impulses?(t0: number, t1: number): Impulse[];
   /** Notes about approximations (e.g. impulses dropped by a non-linear operation). */
   readonly warnings?: string[];
+  /** Constant between its features (only jumps): logic signals, square waves, step tables. */
+  readonly piecewiseConstant?: boolean;
 }
 
 export const DEFAULT_MAX_FEATURES = 100_000;

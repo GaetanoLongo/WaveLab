@@ -24,6 +24,7 @@
  */
 
 import { constValue, FUNCTIONS, isLogic, type Node } from '../expr/parse';
+import { lowpassOf } from './lowpass';
 import {
   derivativeOf,
   finiteRiseDerivativeOf,
@@ -89,6 +90,9 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
         break;
       case 'rms':
         sig = movingRmsOf(x, c(1, NaN));
+        break;
+      case 'lowpass':
+        sig = lowpassOf(x, c(1, NaN), n.args.length >= 4 ? { t0: c(2, 0), y0: c(3, 0) } : undefined);
         break;
       default:
         sig = NAN_SIGNAL;
@@ -231,20 +235,24 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
           return Math.abs(x);
         };
       case 'min':
-      case 'max':
+      case 'max': {
+        const isMin = fn === 'min';
+        const n = ev.length;
         return (t, l, s) => {
           let best = 0;
-          let bv = ev[0]!(t, l, s);
-          for (let i = 1; i < ev.length; i++) {
-            const v = ev[i]!(t, l, s);
-            if (fn === 'min' ? v < bv : v > bv) {
+          let bv = a(t, l, s);
+          for (let i = 1; i < n; i++) {
+            const f = ev[i]!;
+            const v = f(t, l, s);
+            if (isMin ? v < bv : v > bv) {
               bv = v;
               best = i;
             }
           }
-          s?.push(best);
+          if (s) s.push(best);
           return bv;
         };
+      }
       case 'clip':
         return (t, l, s) => {
           const x = a(t, l, s);
@@ -387,7 +395,50 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
         ? operatorSignal(spec.root)
         : undefined;
 
+  // Piecewise-constant output: logic results, or arithmetic on piecewise-constant inputs
+  // (e.g. gate signals, pole and phase voltages of a converter).
+  const pcExpr = (n: Node): boolean => {
+    if (isLogic(n)) return true;
+    switch (n.k) {
+      case 'num':
+      case 'const':
+        return true;
+      case 'time':
+        return false;
+      case 'ref':
+        return !!inputs.get(n.id)?.piecewiseConstant;
+      case 'neg':
+        return pcExpr(n.a);
+      case 'not':
+        return true;
+      case 'bin':
+        return pcExpr(n.a) && pcExpr(n.b);
+      case 'call':
+        if (FUNCTIONS[n.fn]?.operator) return !!operatorSignal(n).piecewiseConstant;
+        if (n.fn === 'delay') return pcExpr(n.args[0]!);
+        if (n.fn === 'sign') return true;
+        return n.args.every(pcExpr);
+    }
+  };
+  const piecewiseConstant = logicRoot || pcExpr(spec.root);
+  // All inputs piecewise constant (and no t): the value can only change at input
+  // breakpoints, so no sampling is needed between them.
+  const onlyBreakpoints = !usesT && shifted.length > 0 && shifted.every((x) => !!x.s.piecewiseConstant);
+
+  // Small cache of recent queries: a signal used by several others (a gate feeding three
+  // voltages…) is asked for the same interval many times while drawing.
+  const memo = new Map<string, FeatureQuery>();
   const features = (t0: number, t1: number, maxCount = DEFAULT_MAX_FEATURES): FeatureQuery => {
+    const key = `${t0}|${t1}|${maxCount}`;
+    const hit = memo.get(key);
+    if (hit) return hit;
+    const r = computeFeatures(t0, t1, maxCount);
+    if (memo.size >= 24) memo.delete(memo.keys().next().value!);
+    memo.set(key, r);
+    return r;
+  };
+
+  const computeFeatures = (t0: number, t1: number, maxCount: number): FeatureQuery => {
     if (direct) return direct.features(t0, t1, maxCount);
     const result: Feature[] = [];
     if (!(t1 > t0)) return { features: result, truncated: false };
@@ -424,6 +475,7 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
         result.push({ t, kind: 'jump', left: L, right: R });
         continue;
       }
+      if (onlyBreakpoints) continue; // constant on both sides: not a feature
       // Continuous breakpoint: an extremum if the value falls (or rises) on both sides.
       const d = Math.min(step / 8, (t - points[i - 1]!) / 4, (points[i + 1]! - t) / 4);
       const a = ev(t - d, false, null);
@@ -432,7 +484,7 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
       result.push({ t, kind, left: L, right: R });
     }
 
-    for (let i = 0; i + 1 < points.length; i++) {
+    for (let i = 0; !onlyBreakpoints && i + 1 < points.length; i++) {
       scanSegment(points[i]!, points[i + 1]!, step, ev, !logicRoot, result);
       if (result.length > maxCount * 2) break;
     }
@@ -452,6 +504,7 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
     left: (t) => ev(t - Math.max(1e-13, Math.abs(t) * 1e-13), true, null),
     features,
     period,
+    piecewiseConstant,
     scale: spec.resolution !== null ? Math.min(scale ?? Infinity, spec.resolution * SAMPLES_PER_SCALE) : scale,
   };
 }
