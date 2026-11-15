@@ -41,7 +41,7 @@ function gl5(f: (t: number) => number, a: number, b: number): number {
  * absolute, relative to ∫|f| over the whole interval: a purely relative test never
  * converges on pieces whose integral is (close to) zero and would recurse to full depth.
  */
-function integrateSmooth(f: (t: number) => number, a: number, b: number, depth = 0, whole?: number, tol?: number, prevErr = Infinity): number {
+export function integrateSmooth(f: (t: number) => number, a: number, b: number, depth = 0, whole?: number, tol?: number, prevErr = Infinity): number {
   if (b === a) return 0;
   const w = whole ?? gl5(f, a, b);
   const eps = tol ?? 1e-12 * Math.max(Math.abs(gl5((t) => Math.abs(f(t)), a, b)), 1e-300);
@@ -240,7 +240,7 @@ function jumpsOf(x: SignalEval, a: number, b: number): Impulse[] {
 }
 
 /** Build features from known breakpoints plus numerically refined extrema. */
-function scannedFeatures(
+export function scannedFeatures(
   bps: number[],
   a: number,
   b: number,
@@ -341,6 +341,44 @@ export function numericDerivativeOf(x: SignalEval, h: number): SignalEval {
     },
     period: x.period,
     scale: x.scale,
+  };
+}
+
+/** |x| as a signal (monotonic between x's features and zero crossings). */
+export function absOf(x: SignalEval): SignalEval {
+  return {
+    value: (t) => Math.abs(x.value(t)),
+    left: (t) => Math.abs(leftValue(x, t)),
+    features: (a, b, maxCount) => {
+      const q = x.features(a, b, maxCount);
+      if (q.truncated) return { features: [], truncated: true };
+      const out: Feature[] = q.features.map((f) => ({ ...f, left: Math.abs(f.left), right: Math.abs(f.right), kind: f.kind === 'jump' ? 'jump' : 'kink' }));
+      for (const z of zeroCrossings(x, a, b, maxCount)) if (!out.some((f) => f.t === z.t)) out.push({ t: z.t, kind: 'min', left: 0, right: 0 });
+      out.sort((p, r) => p.t - r.t);
+      return { features: out, truncated: false };
+    },
+    period: x.period,
+    scale: x.scale,
+  };
+}
+
+/** x·y as a signal for integration (breakpoints = union of both inputs' features). */
+export function productOf(x: SignalEval, y: SignalEval): SignalEval {
+  return {
+    value: (t) => x.value(t) * y.value(t),
+    left: (t) => leftValue(x, t) * leftValue(y, t),
+    features: (a, b, maxCount = DEFAULT_MAX_FEATURES) => {
+      const qx = x.features(a, b, maxCount);
+      const qy = y.features(a, b, maxCount);
+      if (qx.truncated || qy.truncated) return { features: [], truncated: true };
+      const out: Feature[] = [...qx.features, ...qy.features].map((f) => {
+        const L = leftValue(x, f.t) * leftValue(y, f.t);
+        const R = x.value(f.t) * y.value(f.t);
+        return { t: f.t, kind: same(L, R) ? 'kink' : 'jump', left: L, right: R };
+      });
+      out.sort((p, r) => p.t - r.t);
+      return { features: out.length > maxCount ? out.slice(0, maxCount) : out, truncated: out.length > maxCount };
+    },
   };
 }
 

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { create } from 'zustand';
 import { formatSI } from '../../core/units/si';
-import { DEFAULT_PWM, expectedFundamental, type PwmConfig, type PwmTopology } from '../../state/pwm';
+import { DEFAULT_PWM, expectedFundamental, linearLimit, PWM_REFERENCE_LABELS, type PwmConfig, type PwmReference, type PwmTopology } from '../../state/pwm';
 import { actions } from '../../state/store';
 import { NumberField } from '../fields/NumberField';
 import { Modal } from '../Modal';
@@ -71,6 +71,18 @@ function Dialog() {
           </div>
           <NumberField label="DC bus V_dc" unit="V" positive value={c.vdc} onCommit={(v) => set({ vdc: v })} />
           <h3>Modulation</h3>
+          {c.topology === 'three-phase' && (
+            <div className="field">
+              <label>Reference</label>
+              <select value={c.reference} onChange={(e) => set({ reference: e.target.value as PwmReference })}>
+                {(Object.keys(PWM_REFERENCE_LABELS) as PwmReference[]).map((r) => (
+                  <option key={r} value={r}>
+                    {PWM_REFERENCE_LABELS[r]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <NumberField label="Modulation index m" plain min={0} max={2} value={c.m} onCommit={(v) => set({ m: v })} title="Reference peak / carrier peak" />
           <NumberField label="Reference f₁" unit="Hz" positive value={c.f1} onCommit={(v) => set({ f1: v })} />
           <NumberField label="Reference phase" unit="°" plain value={c.phaseDeg} onCommit={(v) => set({ phaseDeg: v })} />
@@ -98,6 +110,24 @@ function Dialog() {
             onCommit={(v) => set({ deadTime: v })}
             title="Both turn-on edges of each pair delayed by t_d; turn-off edges unchanged (0 = none)"
           />
+          <h3>Load</h3>
+          <label className="check">
+            <input type="checkbox" checked={c.load} onChange={(e) => set({ load: e.target.checked })} />
+            {c.topology === 'three-phase' ? 'Load currents (balanced star R-L load)' : 'Load current (R-L-E load)'}
+          </label>
+          {c.load && (
+            <>
+              <NumberField label="R" unit="Ω" positive value={c.r} onCommit={(v) => set({ r: v })} />
+              <NumberField label="L" unit="H" min={0} value={c.l} onCommit={(v) => set({ l: v })} title="0 = resistive load" />
+              {c.topology !== 'three-phase' && <NumberField label="Back-EMF E" unit="V" value={c.e} onCommit={(v) => set({ e: v })} />}
+              {c.deadTime > 0 && c.complementary && (
+                <p className="hint-text">
+                  With dead time, realistic pole voltages are also created: during dead time the output follows the load current direction
+                  (taken from the ideal-voltage current).
+                </p>
+              )}
+            </>
+          )}
           <h3>Check</h3>
           <dl className="readout">
             <div>
@@ -106,7 +136,7 @@ function Dialog() {
             </div>
             <div>
               <dt>{exp.label}</dt>
-              <dd>{c.m <= 1 ? formatSI(exp.value, 'V') : 'nonlinear (m > 1)'}</dd>
+              <dd>{c.m <= linearLimit(c) + 1e-12 ? formatSI(exp.value, 'V') : `nonlinear (m > ${Number(linearLimit(c).toFixed(3))})`}</dd>
             </div>
             {c.topology === 'full-unipolar' && (
               <div>
@@ -115,13 +145,17 @@ function Dialog() {
               </div>
             )}
           </dl>
-          {c.m > 1 && <p className="warn">Overmodulation (m &gt; 1): pulses are dropped and low-order harmonics appear.</p>}
+          {c.m > linearLimit(c) + 1e-12 && (
+            <p className="warn">
+              Overmodulation (m &gt; {Number(linearLimit(c).toFixed(3))}): pulses are dropped and low-order harmonics appear.
+            </p>
+          )}
           {Math.abs(mf - Math.round(mf)) > 1e-9 && (
             <p className="hint-text">Non-integer m_f: the pattern repeats only after several reference periods (the spectrum dialog handles this with more periods).</p>
           )}
           <p className="hint-text">
             Creates ordinary editable signals in new groups: carrier and references (shared panel), leg commands, gate signals and ideal
-            pole/output voltages. Output voltages ignore dead time: during dead time the real output depends on the load current direction.
+            pole/output voltages (which ignore dead time), and optionally the load currents.
           </p>
         </section>
       </div>

@@ -166,6 +166,7 @@ function knotSignal(knots: Knot[], mode: 'linear' | 'step', repeat: boolean, sta
     left,
     features,
     period: periodic ? P : undefined,
+    piecewiseConstant: mode === 'step',
     scale: P > 0 ? P / Math.max(1, n - 1) : undefined,
     extent: periodic ? undefined : [start + u0, start + uN],
   };

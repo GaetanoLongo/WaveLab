@@ -8,6 +8,7 @@ import type { GeneratorKind } from '../../core/model/signal-defs';
 import { siLiteral } from '../../core/units/si';
 import { actions } from '../../state/store';
 import { openPwm } from './PwmDialog';
+import { openRectifier } from './RectifierDialog';
 import { WaveGlyph } from '../icons';
 
 interface Entry {
@@ -112,6 +113,14 @@ const OPS: Array<[label: string, glyph: string, name: string, arity: 1 | 2, tpl:
   ['Integration', '∫', 'Integral', 1, (a) => `integral(${a}, 0, 0)`, '∫ A dt from t0 = 0 with initial value 0 (editable)', (u) => (u ? `${u}·s` : 's')],
   ['Differentiation', 'd/dt', 'Derivative', 1, (a) => `deriv(${a})`, 'dA/dt — ideal edges are shown as impulse markers', (u) => (u ? `${u}/s` : '1/s')],
   ['Moving average', 'x̄', 'Average', 1, (a, _b, c) => `movavg(${a}, ${siLiteral(c.periodA ?? 1e-3)})`, 'Average over a trailing window (default: one period of A)'],
+  [
+    'Low-pass (RC)',
+    'τ',
+    'Lowpass',
+    1,
+    (a, _b, c) => `lowpass(${a}, ${siLiteral((c.periodA ?? 1e-2) / 4)})`,
+    'First-order lag τ·y′ + y = A (RC filter, R-L load current); periodic steady state. τ defaults to a quarter period of A',
+  ],
   ['RMS (moving)', 'rms', 'RMS', 1, (a, _b, c) => `rms(${a}, ${siLiteral(c.periodA ?? 1e-3)})`, 'RMS over a trailing window (default: one period of A)'],
   ['Expression…', 'ƒ', 'Expression', 1, (a) => a, 'Free expression, starting from A'],
 ];
@@ -166,6 +175,10 @@ export function Toolbox() {
           <button className="tool" title="Carrier-based PWM: half/full bridge (bipolar, unipolar) or three-phase, with optional dead time" onClick={openPwm}>
             <WaveGlyph kind="bits" variant="PWM" />
             <span>PWM generator…</span>
+          </button>
+          <button className="tool" title="Diode and thyristor rectifiers, AC voltage controller, three-phase bridges; firing angle α and optional R-L-E load" onClick={openRectifier}>
+            <span className="op-glyph">α</span>
+            <span>Rectifier / phase control…</span>
           </button>
           <button className="tool" title="Three sines 120° apart in a shared panel (uses the selected sine's frequency and amplitude)" onClick={() => actions.addThreePhaseSet()}>
             <span className="op-glyph">3~</span>

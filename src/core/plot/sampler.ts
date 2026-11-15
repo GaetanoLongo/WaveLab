@@ -92,12 +92,42 @@ export function sampleSignal(s: SignalEval, t0: number, t1: number, columns: num
   return { mode: 'exact', lines: out.finish() };
 }
 
+/** Features of the whole window in one query (null if there are too many). */
+const ENVELOPE_MAX_FEATURES = 200_000;
+
 function sampleEnvelope(s: SignalEval, t0: number, t1: number, cols: number): SampledTrace {
   const dt = (t1 - t0) / cols;
   const out = new LineBuilder();
+  // One query for the whole window, then per-column min/max from the feature limits and
+  // the column edges (monotonic between features). Much cheaper than one query per column
+  // for expression signals, whose queries recurse through all their inputs.
+  const all = s.features(t0, t1, ENVELOPE_MAX_FEATURES);
+  const feats = all.truncated ? null : all.features;
+  let fi = 0;
   for (let i = 0; i < cols; i++) {
     const c0 = t0 + i * dt;
-    const r = rangeOf(s, c0, c0 + dt);
+    let r: readonly [number, number] | null;
+    if (feats) {
+      let mn = Infinity;
+      let mx = -Infinity;
+      const add = (v: number) => {
+        if (v < mn) mn = v;
+        if (v > mx) mx = v;
+      };
+      const c1 = c0 + dt;
+      add(s.value(c0));
+      while (fi < feats.length && feats[fi]!.t < c0) fi++;
+      let last: number | null = null;
+      for (let k = fi; k < feats.length && feats[k]!.t <= c1; k++) {
+        add(feats[k]!.left);
+        add(feats[k]!.right);
+        last = feats[k]!.t;
+      }
+      add(last === c1 ? feats.find((f) => f.t === c1)!.left : s.left ? s.left(c1) : s.value(c1));
+      r = mn <= mx ? [mn, mx] : null;
+    } else {
+      r = rangeOf(s, c0, c0 + dt);
+    }
     if (!r) {
       out.break();
       continue;

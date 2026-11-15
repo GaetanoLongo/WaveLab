@@ -32,6 +32,8 @@ import type { Range } from '../core/plot/range';
 import { fitTimeRange } from '../core/plot/viewport';
 import { rangeOf } from '../core/plot/range';
 import { formatSI, siLiteral } from '../core/units/si';
+import { buildRectifier, type RectifierConfig } from './rectifier';
+import type { SignalSet } from './builder';
 import { buildPwm, type PwmConfig } from './pwm';
 import type { AxisStyle, StyleOverrides } from '../core/plot/layout';
 import { phaseForDifference } from '../core/signals/phase';
@@ -715,9 +717,18 @@ export const actions = {
 
   /** Create a PWM signal set (carrier, references, gates, voltages) as new groups, in one undo step. */
   createPwm(config: PwmConfig): void {
+    actions.addSignalSet(buildPwm(config, newId, get().project.signals.length), Math.min(2 / config.f1, 1));
+  },
+
+  /** Create a rectifier / phase-control signal set as new groups, in one undo step. */
+  createRectifier(config: RectifierConfig): void {
+    actions.addSignalSet(buildRectifier(config, newId, get().project.signals.length), Math.min(2 / config.f, 1));
+  },
+
+  /** Add a built set of signals and groups to the active figure (stacked), in one undo step. */
+  addSignalSet(built: SignalSet, span: number): void {
     const p = get().project;
-    const built = buildPwm(config, newId, p.signals.length);
-    // Unique names: the PWM set may be created several times.
+    // Unique names: a set may be created several times.
     const names = new Set(p.signals.map((s) => s.name));
     for (const sig of built.signals) {
       let n = sig.name;
@@ -734,7 +745,6 @@ export const actions = {
       fig.mode = 'stacked';
     });
     set({ selectedId: built.signals[built.signals.length - 1]!.id });
-    const span = Math.min(2 / config.f1, 1);
     actions.setXRange([0, span]);
   },
 

@@ -32,6 +32,8 @@ npm run e2e        # browser end-to-end checks: editor, snapping, files & export
 | — | Grid of figures (matrix view, linked time axes, grid export) | ✅ |
 | M12 | Exact harmonic spectrum, THD, CSV export (harmonics and samples) | ✅ |
 | — | PWM module: generator, three-phase set, complementary pairs with dead time | ✅ |
+| S1 | Stabilisation (stress tests: freezes, limits, recovery copy, layout fixes) | ✅ |
+| F1 | Power electronics II: rectifiers / phase control, SVPWM / DPWM / third harmonic, R-L-E load current, power metrics | ✅ |
 
 See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the mathematical conventions.
 
@@ -39,8 +41,9 @@ See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the mathematical conventions.
 "Time cursors" adds cursors 1 and 2 (all panels); "Level cursors" adds A and B in the measured signal's panel.
 Drag them in the plot (they snap to edges, peaks and zero crossings; Alt = free) or type exact positions.
 The panel shows values at the cursors, Δt, 1/Δt, ΔY, ΔAB, and for the interval between cursors 1–2 (or the
-visible window): max, min, peak-to-peak, mean, RMS, duty cycle and frequency — all computed exactly, not
-from samples. Cursors are saved in the project file and are left out of exports unless requested.
+visible window): max, min, peak-to-peak, mean, RMS, duty cycle, frequency, crest factor and form factor — all
+computed exactly, not from samples. **Power**: choose a current signal and the measured signal is taken as the
+voltage: P, S, PF, non-active power N = √(S² − P²), and from the fundamentals Q₁ and the displacement power factor. Cursors are saved in the project file and are left out of exports unless requested.
 
 ## Groups and figures
 - **Groups** ("+ Group" in the signal list): named blocks such as "Phase A/B/C" or "Gate signals". Collapse,
@@ -67,8 +70,15 @@ from samples. Cursors are saved in the project file and are left out of exports 
   or sawtooth carrier; m, f₁, f_c, phase, V_dc; optional complementary gates with dead time. Creates ordinary
   editable signals in groups (modulation, leg commands, gates, voltages). Conventions as in
   [ModulationToy](https://github.com/GaetanoLongo/ModulationToy): m = reference peak / carrier peak, dead time =
-  delayed turn-on (`and(G, delay(G, td))`). Output voltages are ideal (they ignore dead time, whose effect
-  depends on the load current).
+  delayed turn-on (`and(G, delay(G, td))`). Three-phase references: sinusoidal, third-harmonic injection,
+  space vector (min-max injection) or DPWM1 (linear up to m = 2/√3). Optional R-L(-E) load: load currents, and
+  with dead time realistic pole voltages (during dead time the output follows the current direction, taken from
+  the ideal-voltage current — a first-order model).
+- **Rectifier / phase control…**: half-wave and bridge rectifiers (diodes or thyristors with firing angle α),
+  bridge with continuous current, AC voltage controller (TRIAC), three-phase diode and thyristor bridges, with
+  the textbook mean/RMS shown as a check and an optional R-L-E load current.
+- **lowpass(x, τ)**: first-order lag (RC filter; R-L load current `lowpass(v/R, L/R)`), exact periodic steady
+  state for periodic inputs, or a start-up transient with `lowpass(x, τ, t0, y0)`.
 - **Three-phase set**: three sines at 0°, −120°, +120° in a shared panel.
 - **Complementary + dead time**: upper/lower pair from the selected logic signal.
 
