@@ -6,3 +6,11 @@
 - [ ] **Editing plot annotations**: can an existing text annotation be modified? Can arrow thickness be changed?
 - [ ] **Right-click**: custom context menu instead of the browser default?
 - [ ] **UART clock**: when TX-ing a string over UART, no clock waveform is shown. Generate an associated clock waveform and show it only if the user requests it.
+
+## Batch 2
+
+- [ ] **PWM generator**: reference f1 must be > 0, so a DC signal can't be used as the modulating input. Decide whether to allow f = 0 (DC) / a DC reference.
+- [ ] **Sidebars and measurement panel** can't be hidden or resized. Add collapse/hide and resize.
+- [ ] **"Not in this figure" waveforms**: no way to get rid of them. Add a way to remove or hide them.
+- [ ] **Legend**: unclear how it is shown/hidden. Make the toggle discoverable.
+- [ ] **Lowpass filter**: suspected not to work properly. Lowpass on a PWM-modulated Vout recovers the original waveform, but it stays non-smooth however large the time parameter is made. Needs investigation (filter implementation, time-parameter meaning, sampling/resolution) before concluding it is a bug.
