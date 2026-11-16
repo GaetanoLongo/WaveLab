@@ -14,3 +14,7 @@
 - [ ] **"Not in this figure" waveforms**: no way to get rid of them. Add a way to remove or hide them.
 - [ ] **Legend**: unclear how it is shown/hidden. Make the toggle discoverable.
 - [ ] **Lowpass filter**: suspected not to work properly. Lowpass on a PWM-modulated Vout recovers the original waveform, but it stays non-smooth however large the time parameter is made. Needs investigation (filter implementation, time-parameter meaning, sampling/resolution) before concluding it is a bug.
+
+## Batch 3
+
+- [ ] **Page freezes**: occasionally and seemingly at random, the page gets stuck and must be reloaded. No repro steps yet. When it happens, note the last action taken, which waveforms/parameters were active, and any console errors, to narrow it down (possibly an infinite loop or heavy computation on certain parameter values).
