@@ -2,7 +2,7 @@
 // option combination, view manipulation, layout and a random-action ("monkey") run, and collects
 // FINDINGS instead of stopping at the first failure. Run `npm run build && npx vite preview` first.
 //
-//   node e2e/stress.e2e.cjs [outDir] [area,area,…]     areas: tools waveforms dialogs views export layouts monkey
+//   node e2e/stress.e2e.cjs [outDir] [area,area,…]     areas: tools waveforms dialogs views export layouts monkey keyboard touch big
 //
 // Each step is followed by a scan: page errors, console errors, a responsiveness probe (freeze
 // detection), overlapping text in the plot, "NaN"/"undefined"/"Infinity" in the interface, and
@@ -450,9 +450,225 @@ async function areaMonkey() {
 }
 
 // ---------------------------------------------------------------------------------------------
+async function areaKeyboard() {
+  await openPage();
+  await step('Tab through the whole page (focus must stay in the app and be visible)', async () => {
+    await p.click('.tool:has-text("Sine")');
+    await p.locator('body').press('Escape');
+    await p.evaluate(() => document.activeElement && document.activeElement.blur());
+    const lost = [];
+    const noRing = new Set();
+    for (let i = 0; i < 140; i++) {
+      await p.keyboard.press('Tab');
+      const info = await p.evaluate(() => {
+        const a = document.activeElement;
+        if (!a || a === document.body) return { body: true };
+        const cs = getComputedStyle(a);
+        const ring = (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0) || (cs.boxShadow && cs.boxShadow !== 'none');
+        const r = a.getBoundingClientRect();
+        return { tag: a.tagName.toLowerCase(), cls: String(a.className).split(' ')[0], label: (a.getAttribute('aria-label') || a.title || a.textContent || '').trim().slice(0, 24), ring, visible: r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight };
+      });
+      if (info.body) lost.push(i);
+      else {
+        if (!info.visible) noRing.add(`${info.tag}.${info.cls} "${info.label}" focused but off-screen`);
+        else if (!info.ring && info.tag !== 'input' && info.tag !== 'select') noRing.add(`${info.tag}.${info.cls} "${info.label}" has no visible focus indicator`);
+      }
+    }
+    if (lost.length > 3) note('FOCUS-LOST', `focus fell back to the page body at Tab presses ${lost.slice(0, 8).join(', ')}`);
+    if (noRing.size) note('NO-FOCUS-RING', [...noRing].slice(0, 6).join('; '));
+  });
+
+  for (const [tool, dlg] of [['PWM generator', '.pwm-dialog'], ['Rectifier', '.rectifier-dialog'], ['UART / SPI', '.protocol-dialog'], ['AM / FM / PM', '.modal']]) {
+    await step(`dialog ${tool}: keyboard open, focus trap, Escape, focus return`, async () => {
+      await newProject();
+      await p.click('.tool:has-text("Sine")');
+      const before = await p.locator('.signal-list .row').count();
+      await p.locator(`.tool:has-text("${tool}")`).focus();
+      await p.keyboard.press('Enter');
+      await p.waitForSelector(dlg);
+      let escaped = 0;
+      for (let i = 0; i < 60; i++) {
+        await p.keyboard.press('Tab');
+        const inside = await p.evaluate((sel) => !!document.activeElement && !!document.activeElement.closest(sel), '.modal');
+        if (!inside) escaped++;
+      }
+      if (escaped) note('FOCUS-TRAP', `${tool}: focus left the dialog ${escaped}× while pressing Tab`);
+      // Shortcuts must not act on the project behind the dialog.
+      await p.locator('.modal h2').click().catch(() => {});
+      await p.keyboard.press('Delete');
+      await p.keyboard.press('Control+d');
+      await p.keyboard.press('Control+z');
+      const during = await p.locator('.signal-list .row').count();
+      if (during !== before) note('SHORTCUT-BEHIND-DIALOG', `${tool}: signals went from ${before} to ${during} while the dialog was open`);
+      await p.keyboard.press('Escape');
+      await p.waitForTimeout(150);
+      if (await p.locator('.modal-backdrop').count()) note('ESCAPE', `${tool}: Escape did not close the dialog`);
+      const active = await p.evaluate(() => (document.activeElement === document.body ? 'body' : document.activeElement.tagName.toLowerCase()));
+      if (active === 'body') note('FOCUS-RETURN', `${tool}: after closing, the focus is on the page body (keyboard users lose their place)`);
+    });
+  }
+
+  await step('warning popup: keyboard works, shortcuts do not act behind it', async () => {
+    await newProject();
+    await p.click('.tool:has-text("Sine")');
+    await p.click('.tool:has-text("Abs")'); // a derived signal that uses the sine
+    await p.locator('.signal-list .row').first().click();
+    await p.keyboard.press('Delete');
+    if (!(await p.locator('.alert-dialog').count())) { note('ALERT', 'deleting a used signal did not open the warning'); return; }
+    const n = await p.locator('.signal-list .row').count();
+    await p.keyboard.press('Control+z'); await p.keyboard.press('Delete'); await p.keyboard.press('Control+d');
+    if ((await p.locator('.signal-list .row').count()) !== n) note('SHORTCUT-BEHIND-DIALOG', 'shortcuts changed the project while the warning was open');
+    await p.keyboard.press('Escape');
+    if (await p.locator('.alert-dialog').count()) note('ESCAPE', 'Escape does not close the warning popup');
+  });
+
+  await step('context menu by keyboard (Shift+F10 / ContextMenu key) on the plot and a signal row', async () => {
+    await newProject();
+    await p.click('.tool:has-text("Sine")');
+    await p.locator('.signal-list .row').first().focus();
+    await p.keyboard.press('Shift+F10');
+    await p.waitForTimeout(150);
+    if (!(await p.locator('.context-menu').count())) note('KEYBOARD-CONTEXT-MENU', 'Shift+F10 on a signal row opens no menu (right-click works, keyboard users have no way to reach it)');
+    await p.keyboard.press('Escape');
+  });
+
+  await step('Enter / Space activate toolbar buttons; arrow keys do not break the page', async () => {
+    await newProject();
+    await p.locator('button[title^="Zoom in"], button[aria-label^="Zoom in"]').first().focus();
+    const before = await p.locator('.range-btn').innerText();
+    await p.keyboard.press('Enter');
+    await p.waitForTimeout(150);
+    if ((await p.locator('.range-btn').innerText()) === before) note('KEYBOARD', 'Enter on the Zoom in button did not zoom');
+    for (const k of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End']) await p.keyboard.press(k);
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+async function areaTouch() {
+  if (ctx) await ctx.close().catch(() => {});
+  ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2, acceptDownloads: true });
+  await ctx.addInitScript(() => { delete window.showSaveFilePicker; delete window.showOpenFilePicker; });
+  p = await ctx.newPage();
+  p.setDefaultTimeout(6000);
+  p.on('pageerror', (e) => pageErrors.push('pageerror: ' + e.message));
+  p.on('console', (m) => { if (m.type() === 'error') pageErrors.push('console.error: ' + m.text()); });
+  p.on('dialog', (d) => d.accept().catch(() => {}));
+  await p.goto(URL); await p.waitForSelector('.toolbar');
+  const cdp = await ctx.newCDPSession(p);
+  const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
+  const plot = async () => p.locator('.plot-host').first().boundingBox();
+  const range = async () => (await p.locator('.range-btn').innerText()).replace(/\s+/g, ' ');
+
+  await step('tap tools to add signals', async () => {
+    await addTab();
+    for (const t of ['Sine', 'Square', 'Triangle']) { await p.locator(`.tool:has-text("${t}")`).tap(); await addTab(); }
+    if ((await p.locator('.phone-tabs').count()) === 0) note('LAYOUT', 'no phone tabs at 390 px');
+  });
+  await step('one-finger drag pans the time axis', async () => {
+    const b = await plot(); const r0 = await range();
+    await touch('touchStart', [[b.x + b.width * 0.7, b.y + b.height * 0.4]]);
+    for (let i = 1; i <= 8; i++) await touch('touchMove', [[b.x + b.width * (0.7 - i * 0.05), b.y + b.height * 0.4]]);
+    await touch('touchEnd', []);
+    await p.waitForTimeout(300);
+    if ((await range()) === r0) note('TOUCH', 'dragging with one finger did not pan');
+  });
+  await step('two-finger pinch zooms', async () => {
+    const b = await plot(); const r0 = await range(); const cx = b.x + b.width / 2; const cy = b.y + b.height / 2;
+    await touch('touchStart', [[cx - 20, cy], [cx + 20, cy]]);
+    for (let i = 1; i <= 8; i++) await touch('touchMove', [[cx - 20 - i * 12, cy], [cx + 20 + i * 12, cy]]);
+    await touch('touchEnd', []);
+    await p.waitForTimeout(300);
+    if ((await range()) === r0) note('TOUCH', 'pinching did not zoom');
+  });
+  await step('double-tap fits', async () => {
+    const b = await plot(); await p.touchscreen.tap(b.x + 100, b.y + 100); await p.touchscreen.tap(b.x + 100, b.y + 100); await p.waitForTimeout(300);
+  });
+  await step('tap a trace selects it, tap empty deselects', async () => {
+    const b = await plot();
+    for (let i = 0; i < 6; i++) await p.touchscreen.tap(b.x + b.width * (0.2 + 0.1 * i), b.y + b.height * 0.5);
+  });
+  await step('touch targets are at least 32 px (toolbar, tabs, tools, row buttons)', async () => {
+    await addTab();
+    const small = await p.evaluate(() => [...document.querySelectorAll('button, .tool, [role=tab], select, input:not([type=hidden])')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && (r.width < 32 || r.height < 32) && getComputedStyle(e).visibility !== 'hidden'; }).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).split(' ')[0]} "${(e.getAttribute('aria-label') || e.title || e.textContent || '').trim().slice(0, 18)}" ${Math.round(e.getBoundingClientRect().width)}x${Math.round(e.getBoundingClientRect().height)}`));
+    if (small.length) note('SMALL-TOUCH-TARGETS', `${small.length} controls smaller than 32 px: ${small.slice(0, 6).join('; ')}`);
+  });
+  await step('rotate to landscape and back', async () => {
+    await p.setViewportSize({ width: 844, height: 390 }); await p.waitForTimeout(400); await scan(' landscape');
+    await p.screenshot({ path: path.join(out, 'touch-landscape.png') });
+    await p.setViewportSize({ width: 390, height: 844 }); await p.waitForTimeout(300);
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+async function areaBig() {
+  await openPage();
+  const t = () => Date.now();
+  await step('add 120 signals (time per add must stay flat)', async () => {
+    const times = [];
+    for (let i = 0; i < 120; i++) { const t0 = t(); await p.click(`.tool:has-text("${['Sine', 'Square', 'Triangle', 'Sawtooth'][i % 4]}")`); times.push(t() - t0); }
+    const first = times.slice(0, 20).reduce((a, b) => a + b, 0) / 20; const last = times.slice(-20).reduce((a, b) => a + b, 0) / 20;
+    console.log(`  add: first 20 avg ${first.toFixed(0)} ms, last 20 avg ${last.toFixed(0)} ms`);
+    if (last > Math.max(1500, first * 6)) note('SCALING', `adding a signal slows from ${first.toFixed(0)} ms to ${last.toFixed(0)} ms with 120 signals`);
+  });
+  await step('stacked mode with 120 panels', async () => { await p.click('.seg button:has-text("Stacked")'); await p.waitForTimeout(800); });
+  await step('zoom, pan and fit with 120 panels', async () => {
+    const b = await p.locator('.plot-host').first().boundingBox(); await p.mouse.move(b.x + b.width / 2, b.y + 200);
+    const t0 = t(); for (let i = 0; i < 10; i++) { await p.mouse.wheel(0, -300); await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))); }
+    const per = (t() - t0) / 10; console.log(`  wheel step with 120 panels: ${per.toFixed(0)} ms`);
+    if (per > 1500) note('SCALING', `each wheel step takes ${per.toFixed(0)} ms with 120 stacked panels`);
+    await p.mouse.dblclick(b.x + 300, b.y + 100);
+  });
+  await step('select every row with the keyboard-free mouse (120 clicks)', async () => {
+    const n = await p.locator('.signal-list .row').count(); const t0 = t();
+    for (let i = 0; i < n; i += 4) await p.locator('.signal-list .row').nth(i).click();
+    const per = (t() - t0) / (n / 4); console.log(`  select: ${per.toFixed(0)} ms per click`);
+    if (per > 1200) note('SCALING', `selecting a signal takes ${per.toFixed(0)} ms with ${n} signals`);
+  });
+  await step('operations chain 30 deep', async () => {
+    await p.click('.seg button:has-text("Overlay")');
+    await p.locator('.signal-list .row').first().click();
+    for (let i = 0; i < 30; i++) { await p.click(`.tool:has-text("${['Absolute value', 'Low-pass (RC)', 'Negate', 'Moving average'][i % 4]}")`); }
+    await p.waitForTimeout(500);
+  });
+  await step('undo 150 times, redo 150 times', async () => {
+    await p.locator('.plot-host').first().click({ position: { x: 5, y: 5 } }).catch(() => {});
+    const t0 = t(); for (let i = 0; i < 150; i++) await p.keyboard.press('Control+z'); const u = t() - t0;
+    const t1 = t(); for (let i = 0; i < 150; i++) await p.keyboard.press('Control+y'); const r = t() - t1;
+    console.log(`  undo×150 ${u} ms, redo×150 ${r} ms`);
+    if (u > 40000 || r > 40000) note('SCALING', `undo ${u} ms / redo ${r} ms for 150 steps`);
+  });
+  await step('save and reopen the big project', async () => {
+    const dl = p.waitForEvent('download', { timeout: 20000 });
+    await p.click('button[aria-label="Save as…"]');
+    const d = await dl; const f = path.join(out, 'big.wlab'); await d.saveAs(f);
+    const kb = fs.statSync(f).size / 1024; console.log(`  file size ${kb.toFixed(0)} kB`);
+    const before = await p.locator('.signal-list .row').count();
+    await newProject();
+    const t0 = t();
+    const [chooser] = await Promise.all([p.waitForEvent('filechooser'), p.click('button[aria-label^="Open project"]')]);
+    await chooser.setFiles(f); await p.waitForSelector('.signal-list .row');
+    const ms = t() - t0; console.log(`  reopen ${ms} ms`);
+    const after = await p.locator('.signal-list .row').count();
+    if (after !== before) note('FILE', `reopened big project shows ${after} rows, saved ${before}`);
+    if (ms > 15000) note('SCALING', `reopening takes ${ms} ms`);
+  });
+  await step('export PNG/SVG of the big project', async () => {
+    await p.click('button[aria-label^="Export PNG"]'); await p.waitForSelector('.modal');
+    for (const fmt of ['png', 'svg']) {
+      const opt = await p.locator('.modal select').first().evaluate((s, f) => [...s.options].find((o) => o.value.toLowerCase().includes(f))?.value, fmt);
+      if (!opt) continue;
+      await p.locator('.modal select').first().selectOption(opt);
+      const t0 = t(); const dl = p.waitForEvent('download', { timeout: 30000 }); await p.locator('.modal footer button.primary').click(); await dl;
+      console.log(`  export ${fmt}: ${t() - t0} ms`);
+    }
+    await closeModals();
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
 (async () => {
   browser = await chromium.launch();
-  const runs = { tools: areaTools, waveforms: areaWaveforms, dialogs: areaDialogs, views: areaViews, export: areaExport, layouts: areaLayouts, monkey: areaMonkey };
+  const runs = { tools: areaTools, waveforms: areaWaveforms, dialogs: areaDialogs, views: areaViews, export: areaExport, layouts: areaLayouts, monkey: areaMonkey, keyboard: areaKeyboard, touch: areaTouch, big: areaBig };
   for (const [name, fn] of Object.entries(runs)) {
     if (!want(name)) continue;
     area = name;
