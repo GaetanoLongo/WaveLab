@@ -561,7 +561,7 @@ async function areaTouch() {
 
   await step('tap tools to add signals', async () => {
     await addTab();
-    for (const t of ['Sine', 'Square', 'Triangle']) { await p.locator(`.tool:has-text("${t}")`).tap(); await addTab(); }
+    for (const t of ['Sine', 'Square', 'Triangle']) { await p.locator('.tool', { hasText: new RegExp(`^${t}$`) }).first().tap(); await addTab(); }
     if ((await p.locator('.phone-tabs').count()) === 0) note('LAYOUT', 'no phone tabs at 390 px');
   });
   await step('one-finger drag pans the time axis', async () => {

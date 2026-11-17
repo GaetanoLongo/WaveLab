@@ -231,6 +231,20 @@ function Row({ s, selected, dropBefore, dropAfter, onDragStart, onDragOverRow, o
         onDragOverRow(e.clientY > r.top + r.height / 2);
       }}
       onDragEnd={onDragEnd}
+      tabIndex={0}
+      aria-selected={selected}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return; // keys typed in the rename box or on the row buttons
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          actions.select(s.id);
+        } else if ((e.shiftKey && e.key === 'F10') || e.key === 'ContextMenu') {
+          e.preventDefault();
+          actions.select(s.id);
+          const r = e.currentTarget.getBoundingClientRect();
+          showContextMenu(r.left + 24, r.bottom - 4, signalMenuItems(s, !!onRemoveFromFigure, undefined, () => setRenaming(true)));
+        }
+      }}
       onClick={() => actions.select(s.id)}
       onContextMenu={(e) => {
         e.preventDefault();

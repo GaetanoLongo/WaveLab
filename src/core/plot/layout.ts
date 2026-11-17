@@ -551,7 +551,8 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
       if (every > 1 && Math.round(v / yt.step) % every !== 0) return;
       const ly = yToPx(pl, v);
       const rect = textRect(pl.x - 6, ly, yt.labels[i]!, pfs * 0.92, 'end', 'middle');
-      if (touches(rect)) return;
+      // Decade labels of a log axis are what makes it readable: they are never dropped.
+      if (!pl.log && touches(rect)) return;
       placedTicks.push(rect);
       items.push({
         type: 'text',
