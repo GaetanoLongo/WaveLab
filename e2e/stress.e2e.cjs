@@ -381,7 +381,7 @@ async function areaLayouts() {
     await openPage({ width: w, height: h });
     await step(`layout ${w}x${h}: build`, buildComplexProject);
     await step(`layout ${w}x${h}: protocol + modulation`, async () => {
-      if (w < 600) await p.click('.phone-tabs button:has-text("Add")').catch(() => {});
+      await addTab();
       await p.click('.tool:has-text("UART / SPI")'); await p.locator('.protocol-dialog .field:has(label:text-is("Data")) input').fill('Hello World');
       await p.locator('.protocol-dialog footer button.primary').click(); await p.waitForTimeout(500);
     });
@@ -400,7 +400,7 @@ async function areaLayouts() {
     });
     for (const dlg of ['PWM generator', 'Rectifier', 'AM / FM / PM']) {
       await step(`layout ${w}x${h}: dialog ${dlg} fits`, async () => {
-        if (w < 600) await p.click('.phone-tabs button:has-text("Add")').catch(() => {});
+        await addTab();
         await p.click(`.tool:has-text("${dlg}")`); await p.waitForSelector('.modal');
         const r = await p.evaluate(() => { const m = document.querySelector('.modal').getBoundingClientRect(); return { r: m.right, b: m.bottom, l: m.left, t: m.top, w: innerWidth, h: innerHeight }; });
         if (r.r > r.w + 1 || r.l < -1) note('DIALOG-CLIPPED', `${dlg} at ${w}x${h}: x ${Math.round(r.l)}..${Math.round(r.r)} of ${r.w}`);
