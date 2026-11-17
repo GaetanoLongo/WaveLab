@@ -42,7 +42,7 @@ Fixed because of it:
 - A number field could take the focus back after Enter (made one e2e test fail about half the time).
 
 Still open:
-- **Creating a three-phase DPWM with dead time and load blocks the page for ≈ 6 s** (was 13+ s). Most of it is the measurement panel computing the power metrics of the new signals (nested derived signals are re-evaluated without caching). Candidates: cache derived values per time point, or compute measurements off the main thread.
+- ~~Creating a three-phase DPWM with dead time and load blocked the page for ≈ 6 s.~~ Fixed: the filters started each piece from `value(t)` at a feature time, which can be a hair before a merged jump, so pieces were wrongly judged non-linear and integrated numerically. They now start from the feature's right limit. Creation now takes ≈ 1.4 s, which is the drawing of the 38 signals; a load current's measurements dropped from ≈ 1 s to ≈ 0.1 s.
 - **Cosmetic text crowding** with 15+ stacked panels: y tick labels (1 / 0 / −1) and truncated axis titles touch in very small panels; the corner labels of a constant signal (0.90 / 0.0) touch.
 - Long I²C messages (11+ bytes) at the default zoom: the A and P markers sit close together (they separate when zooming in).
 - Non-integer carrier ratio with a load (e.g. fc = 14 Hz, f₁ = 170.37 Hz) was flagged once as a freeze in the harness; run alone it is fast (0.1 s), so the flag was probably carry-over from the previous slow step, but it was not proven.

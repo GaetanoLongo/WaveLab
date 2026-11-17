@@ -76,9 +76,10 @@ export function filter2Of(u: SignalEval, kind: Filter2Kind, f0: number, Q: numbe
   };
 
   /** Classify [a, b]: linear input piece? */
-  const classify = (a: number, b: number) => {
+  const classify = (a: number, b: number, rightAtA?: number) => {
     const h = b - a;
-    const ua = u.value(a);
+    // At a feature time use its right limit (the reported time can precede a merged jump by ~1e-15 s).
+    const ua = rightAtA !== undefined && Number.isFinite(rightAtA) ? rightAtA : u.value(a);
     const ub = u.value(b - h * 1e-9);
     const k = (ub - ua) / (h * (1 - 1e-9));
     const tol = 1e-12 * Math.max(Math.abs(ua), Math.abs(ub), 1e-300);
@@ -123,13 +124,15 @@ export function filter2Of(u: SignalEval, kind: Filter2Kind, f0: number, Q: numbe
     const q = u.features(a, b, MAX_SAMPLES);
     if (q.truncated) return null;
     const cuts = [a, ...q.features.map((f) => f.t).filter((t) => t > a && t < b), b];
+    const rightAt = new Map<number, number>();
+    for (const f of q.features) rightAt.set(f.t, f.right);
     const segs: Seg[] = [];
     let x = x0;
     for (let i = 0; i + 1 < cuts.length; i++) {
       const s0 = cuts[i]!;
       const s1 = cuts[i + 1]!;
       if (!(s1 > s0)) continue;
-      const c = classify(s0, s1);
+      const c = classify(s0, s1, rightAt.get(s0));
       segs.push({ a: s0, x, c });
       x = step(x, s0, s1 - s0, c);
     }

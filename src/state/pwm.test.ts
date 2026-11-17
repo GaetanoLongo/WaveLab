@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { measureInterval } from '../core/measure/measure';
 import { harmonicSpectrum } from '../core/measure/spectrum';
 import { compiled } from './compiled';
 import { DEFAULT_PWM, expectedFundamental, type PwmConfig } from './pwm';
@@ -162,5 +163,10 @@ describe('regression: delayed gate edges are not lost to rounding', () => {
     const t0 = performance.now();
     get('i_{c}').features(0, 0.04);
     expect(performance.now() - t0).toBeLessThan(4000);
+    // Measuring a load current (RMS, mean, …) used to need ~1 s each: a hidden step in its input
+    // forced numerical integration over every segment.
+    const t1 = performance.now();
+    for (const n of ['i_{a}', 'i_{b}']) measureInterval(get(n), -0.0004, 0.04);
+    expect(performance.now() - t1).toBeLessThan(1500);
   }, 30000);
 });

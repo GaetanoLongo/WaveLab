@@ -35,9 +35,11 @@ export function lowpassOf(x: SignalEval, tau: number, start?: { t0: number; y0: 
   const T = x.period;
 
   /** Classify [a, b] once: linear pieces get the closed form. */
-  const classify = (a: number, b: number): { lin: boolean; xa: number; k: number } => {
+  const classify = (a: number, b: number, rightAtA?: number): { lin: boolean; xa: number; k: number } => {
     const h = b - a;
-    const xa = x.value(a);
+    // At a feature time the piece starts from the feature's right limit: the reported time can be
+    // a hair before the real jump (events merged within 1e-14 s), where value(a) is still the old level.
+    const xa = rightAtA !== undefined && Number.isFinite(rightAtA) ? rightAtA : x.value(a);
     const xb = x.value(b - h * 1e-9);
     const k = (xb - xa) / (h * (1 - 1e-9));
     const tol = 1e-12 * Math.max(Math.abs(xa), Math.abs(xb), 1e-300);
@@ -59,13 +61,15 @@ export function lowpassOf(x: SignalEval, tau: number, start?: { t0: number; y0: 
     const q = x.features(a, b, MAX_SAMPLES);
     if (q.truncated) return null;
     const cuts = [a, ...q.features.map((f) => f.t).filter((t) => t > a && t < b), b];
+    const rightAt = new Map<number, number>();
+    for (const f of q.features) rightAt.set(f.t, f.right);
     const segs: Seg[] = [];
     let y = ya;
     for (let i = 0; i + 1 < cuts.length; i++) {
       const s0 = cuts[i]!;
       const s1 = cuts[i + 1]!;
       if (!(s1 > s0)) continue;
-      const c = classify(s0, s1);
+      const c = classify(s0, s1, rightAt.get(s0));
       segs.push({ a: s0, ya: y, ...c });
       y = step(y, s0, s1, c);
     }
