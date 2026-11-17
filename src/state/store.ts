@@ -803,8 +803,14 @@ export const actions = {
     if (!(config.f1 >= 0)) return 'The reference frequency must not be negative.';
     if (config.f1 === 0 && config.topology === 'three-phase') return 'A DC reference (f₁ = 0) is only available for single-phase topologies.';
     // A DC reference has no period of its own: show a few carrier periods.
-    const span = config.f1 > 0 ? Math.min(2 / config.f1, 1) : Math.min(10 / config.fc, 1);
+    let span = config.f1 > 0 ? Math.min(2 / config.f1, 1) : Math.min(10 / config.fc, 1);
+    // Dead time and load currents make every switching edge expensive. With a very high carrier the
+    // usual two-period window holds thousands of cycles (100 kHz / 170 Hz: tens of seconds of
+    // computation): start with the first 100 carrier cycles, the rest is a zoom-out away.
+    const dense = (config.load || config.deadTime > 0) && span * config.fc > 100;
+    if (dense) span = 100 / config.fc;
     actions.addSignalSet(buildPwm(config, newId, get().project.signals.length), span);
+    if (dense) notify('Dense PWM with dead time or load: showing the first 100 carrier cycles. Zoom out to see more (it takes longer to draw).');
     return null;
   },
 

@@ -182,4 +182,16 @@ describe('regression: delayed gate edges are not lost to rounding', () => {
     expect(performance.now() - t0).toBeLessThan(3000);
     expect(r[1]).toBeGreaterThan(r[0]);
   }, 30000);
+
+  it('a very dense PWM with dead time or load starts with the first 100 carrier cycles', () => {
+    actions.newProject();
+    actions.createPwm({ ...DEFAULT_PWM, topology: 'full-unipolar', fc: 100e3, f1: 170, load: true, deadTime: 2e-6 });
+    const [lo, hi] = st().view.xRange;
+    expect(hi - lo).toBeLessThanOrEqual(100 / 100e3 * 1.05);
+    expect(st().notice).toMatch(/first 100 carrier cycles/);
+    actions.newProject();
+    actions.createPwm({ ...DEFAULT_PWM, fc: 1050, f1: 50, load: true }); // ordinary: two reference periods
+    const [a, b] = st().view.xRange;
+    expect(b - a).toBeGreaterThan(0.03);
+  });
 });

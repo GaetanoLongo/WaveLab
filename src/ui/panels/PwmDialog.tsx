@@ -169,6 +169,13 @@ function Dialog() {
             </p>
           )}
           {dc && <p className="hint-text">DC reference: the output is a pulse train of constant duty (1 + m)/2 and the check shows its mean value.</p>}
+          {(c.load || c.deadTime > 0) && c.f1 > 0 && c.fc / c.f1 > 200 && (
+            <p className="warn">
+              Heavy case: with m<sub>f</sub> = {Number((c.fc / c.f1).toPrecision(3))}, dead time and a load current need exact integration of thousands of switching
+              cycles. Creating it can take several seconds ({c.topology === 'three-phase' ? 'a minute or more for three phases' : 'about 5–10 s'}); the view starts with the first 100 carrier
+              cycles. A lower carrier frequency, or no dead time / load, is much faster.
+            </p>
+          )}
           {error && <p className="warn">{error}</p>}
           {!dc && Math.abs(mf - Math.round(mf)) > 1e-9 && (
             <p className="hint-text">Non-integer m<sub>f</sub>: the pattern repeats only after several reference periods (the spectrum dialog handles this with more periods).</p>
