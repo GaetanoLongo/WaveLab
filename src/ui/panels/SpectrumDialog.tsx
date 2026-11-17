@@ -139,6 +139,11 @@ function Dialog() {
               }}
               title="Window = periods / fundamental"
             />
+            {f1 === null && auto.fullPeriods && (
+              <p className="hint-text">
+                The pattern repeats only after {auto.fullPeriods} periods; {auto.periods} are used, so the spectrum is approximate (a little leakage between harmonics). Set “Periods” higher for an exact (slower) result.
+              </p>
+            )}
             <NumberField label="Start t₀" unit="s" value={t0} onCommit={setT0} />
             <NumberField label="Max order" plain min={1} max={2000} value={maxOrder} onCommit={(v) => setMaxOrder(Math.max(1, Math.round(v)))} />
             <div className="field">

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { measureInterval } from '../core/measure/measure';
+import { autoYRange } from '../core/plot/viewport';
 import { harmonicSpectrum } from '../core/measure/spectrum';
 import { compiled } from './compiled';
 import { DEFAULT_PWM, expectedFundamental, type PwmConfig } from './pwm';
@@ -168,5 +169,17 @@ describe('regression: delayed gate edges are not lost to rounding', () => {
     const t1 = performance.now();
     for (const n of ['i_{a}', 'i_{b}']) measureInterval(get(n), -0.0004, 0.04);
     expect(performance.now() - t1).toBeLessThan(1500);
+  }, 30000);
+
+  it('non-commensurate carrier and reference: the automatic vertical range stays cheap', () => {
+    actions.newProject();
+    actions.createPwm({ ...DEFAULT_PWM, topology: 'three-phase', reference: 'dpwm', carrier: 'triangle', fc: 14, f1: 170.37, load: true, deadTime: 2e-6 });
+    const p = st().project;
+    const sigs = p.signals.filter((x) => /^i_\{[abc]\}$/.test(x.name)).map((x) => compiled(x, p));
+    expect(sigs.length).toBe(3);
+    const t0 = performance.now();
+    const r = autoYRange(sigs); // used to need ~20 s: the load currents over their natural 1 s window
+    expect(performance.now() - t0).toBeLessThan(3000);
+    expect(r[1]).toBeGreaterThan(r[0]);
   }, 30000);
 });

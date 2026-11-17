@@ -438,13 +438,26 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
   const placedTicks: Array<{ x0: number; x1: number; y0: number; y1: number }> = [];
   const textRect = (x: number, y: number, text: string, size: number, anchor: 'start' | 'middle' | 'end', baseline: 'top' | 'middle' | 'bottom') => {
     const w = estimateWidth(text, size);
-    const h = size * 1.05;
+    const h = size * 1.25;
     const x0 = anchor === 'start' ? x : anchor === 'end' ? x - w : x - w / 2;
     const y0 = baseline === 'top' ? y : baseline === 'bottom' ? y - h : y - h / 2;
     return { x0, x1: x0 + w, y0, y1: y0 + h };
   };
   const touches = (r: { x0: number; x1: number; y0: number; y1: number }) =>
     placedTicks.some((p) => r.x0 < p.x1 - 0.5 && p.x0 < r.x1 - 0.5 && r.y0 < p.y1 - 0.5 && p.y0 < r.y1 - 0.5);
+
+  // The time labels under the last panel are reserved first: where the lowest value label of the
+  // last panel would touch the first time label (corner), the value label yields.
+  const lastPanel = layout.panels[layout.panels.length - 1];
+  const xLabelOk = new Set<number>();
+  if (lastPanel) {
+    xt.major.forEach((t, i) => {
+      const rect = textRect(tToPx(layout, t), lastPanel.y + lastPanel.h + 6, xt.labels[i]!, fs * 0.92, 'middle', 'top');
+      if (touches(rect)) return;
+      placedTicks.push(rect);
+      xLabelOk.add(i);
+    });
+  }
 
   layout.panels.forEach((pl, idx) => {
     const pin = input.panels[idx];
@@ -610,9 +623,7 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
     // X tick labels and title under the last panel only (shared axis).
     if (isLast) {
       xt.major.forEach((t, i) => {
-        const rect = textRect(tToPx(layout, t), pl.y + pl.h + 6, xt.labels[i]!, fs * 0.92, 'middle', 'top');
-        if (touches(rect)) return;
-        placedTicks.push(rect);
+        if (!xLabelOk.has(i)) return;
         items.push({
           type: 'text',
           x: tToPx(layout, t),
@@ -667,8 +678,8 @@ function fitTitle(full: string, base: string, h: number, fs: number): { text: st
   }
   const size = fs * 0.75;
   const plain = plainText(base || full);
-  const chars = Math.floor(room / (size * 0.66)) - 1;
-  return chars >= 2 ? { text: `${plain.slice(0, chars)}…`, size } : null;
+  const chars = Math.floor(room / (size * 0.75)) - 1;
+  return chars >= 3 ? { text: `${plain.slice(0, chars)}…`, size } : null;
 }
 
 /** Time-axis ticks exactly as drawn (shared with snapping so the grid matches). */
