@@ -19,6 +19,7 @@ import { setLayout, useLayout, DEFAULT_LAYOUT } from '../state/layout';
 import { ContextMenu, showContextMenu, type MenuItem } from './ContextMenu';
 import { signalMenuItems } from './signalMenu';
 import { openSharedFromAddress } from './share';
+import { installPopoverClamp } from './popoverClamp';
 import { formatSI } from '../core/units/si';
 import { compiled } from '../state/compiled';
 import { useSettings } from '../state/settings';
@@ -45,6 +46,7 @@ export const usePhoneTab = create<{ tab: PhoneTab }>(() => ({ tab: 'add' }));
 export function App() {
   useShortcuts();
   useEffect(startRecovery, []);
+  useEffect(installPopoverClamp, []);
   useEffect(() => {
     void openSharedFromAddress();
     const onHash = () => void openSharedFromAddress();

@@ -203,6 +203,22 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   await p.click('.tool:has-text("Absolute value")');
   assert((await p.locator('.signal-list .row').count()) === 3, 'imported data works with the operations');
 
+  // --- Popovers stay inside the window at common laptop widths (the toolbar wraps there) ---
+  for (const w of [1280, 1100, 900]) {
+    await p.setViewportSize({ width: w, height: 800 });
+    await p.waitForTimeout(300);
+    const triggers = await p.locator('.toolbar .popover-anchor > button').count();
+    for (let i = 0; i < triggers; i++) {
+      await p.locator('.toolbar .popover-anchor > button').nth(i).click();
+      await p.waitForTimeout(150);
+      const r = await p.evaluate(() => { const e = document.querySelector('.popover'); if (!e) return null; const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; });
+      assert(r && r.l >= 0 && r.r <= w + 0.5 && r.b <= 800 + 0.5, `popover ${i} fits in the ${w}px window` + (r ? ` (x ${Math.round(r.l)}…${Math.round(r.r)}, bottom ${Math.round(r.b)})` : ' (not found)'));
+      await p.keyboard.press('Escape');
+      await p.mouse.click(w / 2, 400).catch(() => {});
+    }
+  }
+  await p.setViewportSize({ width: 1400, height: 900 });
+
   assert(errs.length === 0, 'no page errors: ' + errs.join('; '));
   await b.close();
 })().catch((e) => { console.log('FAIL: exception', e.message); process.exit(1); });
