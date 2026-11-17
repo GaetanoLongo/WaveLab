@@ -9,6 +9,8 @@ import type { SignalDef } from '../../core/model/project';
 import { actions, figureGroups, useActiveFigure, useEditor } from '../../state/store';
 import { Icon } from '../icons';
 import { MathLabel } from '../MathLabel';
+import { showContextMenu } from '../ContextMenu';
+import { signalMenuItems } from '../signalMenu';
 
 export function SignalList() {
   const project = useEditor((s) => s.project);
@@ -99,6 +101,9 @@ export function SignalList() {
                 </span>
                 <button className="icon" title="Show in this figure" aria-label={`Add ${s.name} to this figure`} onClick={() => actions.addToFigure(s.id)}>
                   +
+                </button>
+                <button className="icon" title="Delete from the project" aria-label={`Delete ${s.name} from the project`} disabled={s.locked} onClick={() => actions.deleteSignal(s.id)}>
+                  <Icon name="trash" size={14} />
                 </button>
               </li>
             ))}
@@ -227,6 +232,11 @@ function Row({ s, selected, dropBefore, dropAfter, onDragStart, onDragOverRow, o
       }}
       onDragEnd={onDragEnd}
       onClick={() => actions.select(s.id)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        actions.select(s.id);
+        showContextMenu(e.clientX, e.clientY, signalMenuItems(s, !!onRemoveFromFigure, undefined, () => setRenaming(true)));
+      }}
     >
       <span className="grip" title="Drag to reorder">
         <Icon name="grip" size={14} />

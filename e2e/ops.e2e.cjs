@@ -60,7 +60,8 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   // Delete protection
   await select(0);
   await p.keyboard.press('Delete');
-  assert((await p.locator('.notice').innerText()).includes('used by “Vsum”'), 'input used by an expression cannot be deleted');
+  assert((await p.locator('.alert-dialog').innerText()).includes('Vsum'), 'input used by an expression cannot be deleted (popup names the dependent)');
+  await p.click('.alert-dialog button.primary');
 
   // PWM: triangle carrier 1 kHz, reference = Sine (10 V) → make reference 0.8 amplitude
   await p.click('.tool:has-text("Triangle")');

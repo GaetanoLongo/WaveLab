@@ -58,7 +58,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   const D = '.modulation-dialog';
   const df = (l) => p.locator(`${D} .field`, { has: p.locator(`label:text-is("${l}")`) }).locator('input, select').first();
   await df('Type').selectOption('fm');
-  for (const [l, v] of [['Frequency deviation Δf', '100'], ['Message f_m', '100']]) { const f = df(l); await f.click(); await f.fill(v); await f.press('Enter'); }
+  for (const [l, v] of [['Frequency deviation Δf', '100'], ['Message fm', '100']]) { const f = df(l); await f.click(); await f.fill(v); await f.press('Enter'); }
   assert((await p.locator(`${D} .readout dd`).first().innerText()) === '1.000', 'β = Δf/f_m = 1');
   await p.click(`${D} button.primary`);
   await p.locator('.signal-list .row', { hasText: 'vFM' }).first().click();

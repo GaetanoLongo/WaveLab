@@ -53,10 +53,11 @@ function head(items: SceneItem[], x: number, y: number, dx: number, dy: number, 
 }
 
 export function drawAnnotations(items: SceneItem[], list: ResolvedAnnotation[], l: FigureLayout, fs: number, lineScale = 1, selectedId?: string | null) {
-  const w = 1.3 * lineScale;
+  const baseW = 1.3 * lineScale;
   const hs = Math.max(6, fs * 0.6);
   for (const r of list) {
     const { a } = r;
+    const w = baseW * (a.width ?? 1);
     const g = annotationPx(r, l);
     if (a.id === selectedId) {
       // Selection halo.

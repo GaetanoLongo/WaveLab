@@ -11,8 +11,11 @@ import { RectifierDialog } from './panels/RectifierDialog';
 import { ModulationDialog } from './panels/ModulationDialog';
 import { ProtocolDialog } from './panels/ProtocolDialog';
 import { ViewsDialog } from './panels/ViewsDialog';
-import { openAxes } from './Modal';
+import { Modal, openAxes } from './Modal';
 import { loadFile } from './fileio';
+import { MathLabel } from './MathLabel';
+import { ContextMenu, showContextMenu, type MenuItem } from './ContextMenu';
+import { signalMenuItems } from './signalMenu';
 import { formatSI } from '../core/units/si';
 import { compiled } from '../state/compiled';
 import { useSettings } from '../state/settings';
@@ -76,6 +79,8 @@ export function App() {
       <ViewsDialog />
       <AnnotationsDialog />
       <AxesDialog />
+      <AlertDialog />
+      <ContextMenu />
       <RecoveryBanner />
       <Toolbar compact={phone} />
       {phone ? (
@@ -93,6 +98,36 @@ export function App() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Warning popup raised by the store (e.g. deleting a waveform other waveforms depend on). */
+function AlertDialog() {
+  const alert = useEditor((s) => s.alert);
+  if (!alert) return null;
+  const close = () => editor.setState({ alert: null });
+  return (
+    <Modal
+      title={alert.title}
+      onClose={close}
+      className="alert-dialog"
+      footer={
+        <button className="primary" autoFocus onClick={close}>
+          OK
+        </button>
+      }
+    >
+      <p>{alert.message}</p>
+      {alert.items && (
+        <ul>
+          {alert.items.map((n, i) => (
+            <li key={i}>
+              <MathLabel text={n} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
   );
 }
 
@@ -215,6 +250,7 @@ function PlotArea() {
 
 const noop = () => {};
 
+
 /**
  * One figure's plot. The active figure is interactive; in grid view the others are drawn
  * read-only and become active on the first pointer press.
@@ -309,6 +345,42 @@ function FigurePlot({ figId, active, onCursor, phoneLayout }: { figId: string; a
         onAnnotationChange={active ? (id, patch, key) => actions.updateAnnotation(id, patch, key) : undefined}
         onAnnotationSelect={active ? selectAnnotation : undefined}
         onAnnotationEdit={active ? editAnnotation : undefined}
+        onContextMenu={
+          active
+            ? (info) => {
+                const items: MenuItem[] = [];
+                if (info.annotationId) {
+                  const id = info.annotationId;
+                  selectAnnotation(id);
+                  items.push({ label: 'Edit annotation…', onClick: () => editAnnotation(id) }, { label: 'Delete annotation', danger: true, onClick: () => actions.deleteAnnotation(id) });
+                } else if (info.signalId) {
+                  const s = findSignal(editor.getState().project, info.signalId);
+                  actions.select(info.signalId);
+                  if (s) items.push(...signalMenuItems(s, project.figures.length > 1, () => actions.fitSelected()));
+                } else {
+                  const { t, y, panelSignalId } = info;
+                  if (t !== null && y !== null) {
+                    items.push({
+                      label: 'Add text here…',
+                      onClick: () => {
+                        const id = actions.addAnnotation({ kind: 'text', on: panelSignalId, t0: t, t1: t, y0: y, y1: y, text: 'Text', color: '#1c2330' });
+                        editAnnotation(id);
+                      },
+                    });
+                    items.push('separator');
+                  }
+                  items.push(
+                    { label: 'Fit all (double-click)', onClick: () => actions.fitAll() },
+                    { label: fig.showLegend ? 'Hide legend' : 'Show legend', onClick: () => actions.setShowLegend(!fig.showLegend) },
+                    { label: 'Axes…', onClick: () => openAxes('all') },
+                    'separator',
+                    { label: 'Paste signal', disabled: !editor.getState().clipboard, onClick: () => actions.paste() },
+                  );
+                }
+                showContextMenu(info.clientX, info.clientY, items);
+              }
+            : undefined
+        }
         emptyMessage={
           project.signals.length > 0 && visibleIds.length === 0 && orderedSignals(project, fig.id).length === 0
             ? 'This figure is empty: add a waveform, or add existing signals from the signal list.'

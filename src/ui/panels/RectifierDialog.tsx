@@ -120,7 +120,9 @@ function Dialog() {
             </div>
             {c.load && c.r > 0 && c.topology !== 'ac-controller' && (
               <div>
-                <dt>Mean load current (V_o − E)/R</dt>
+                <dt>
+                  Mean load current (V<sub>o</sub> − E)/R
+                </dt>
                 <dd>{formatSI((exp.value - c.e) / c.r, 'A')}</dd>
               </div>
             )}
@@ -139,7 +141,7 @@ function Dialog() {
           )}
           <p className="hint-text">
             Creates ordinary editable signals: source, the firing reference θ and gate signals (collapsed group), the output voltage and
-            optionally the load current lowpass((v_o − E)/R, L/R). Ideal devices, no source inductance.
+            optionally the load current lowpass((v<sub>o</sub> − E)/R, L/R). Ideal devices, no source inductance.
           </p>
         </section>
       </div>

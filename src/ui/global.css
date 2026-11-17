@@ -309,6 +309,7 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 .popover.menu { width: 220px; padding: 6px; display: flex; flex-direction: column; }
 .popover.menu button { justify-content: flex-start; border: 0; background: transparent; padding: 8px 10px; width: 100%; }
 .popover.menu button:hover:not(:disabled) { background: var(--accent-soft); }
+.popover.menu button.danger { color: var(--danger); }
 .popover.menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; width: 100%; }
 
 @media (max-width: 760px) {
@@ -482,3 +483,6 @@ table.harmonics td { padding: 2px 6px; border-bottom: 1px solid var(--panel-2); 
 .views-options { display: flex; flex-direction: column; gap: 6px; }
 .views-plot svg { width: 100%; height: auto; display: block; border: 1px solid var(--border); border-radius: 6px; }
 @media (max-width: 760px) { .views-body { grid-template-columns: 1fr; } }
+
+.alert-dialog .modal-body ul { margin: 6px 0 0; padding-left: 20px; }
+.alert-dialog { max-width: 420px; }

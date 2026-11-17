@@ -6,6 +6,7 @@
 
 import { useId, useRef, useState } from 'react';
 import { formatSI, parseSI } from '../../core/units/si';
+import { MathLabel } from '../MathLabel';
 
 export interface NumberFieldProps {
   label: string;
@@ -84,7 +85,7 @@ export function NumberField(p: NumberFieldProps) {
   return (
     <div className="field">
       <label htmlFor={id} title={p.title}>
-        {p.label}
+        <MathLabel text={p.label} />
       </label>
       <input
         id={id}

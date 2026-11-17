@@ -72,6 +72,8 @@ export interface EditorState {
   gridView: boolean;
   /** Short message shown in the status bar (e.g. "Signal is locked"). */
   notice: string | null;
+  /** A warning popup the user must dismiss (e.g. a delete that is refused). */
+  alert: { title: string; message: string; items?: string[] } | null;
 }
 
 export const GENERATOR_LABELS: Record<GeneratorKind, string> = {
@@ -105,6 +107,7 @@ function initialState(project = emptyProject()): EditorState {
     views: {},
     gridView: false,
     notice: null,
+    alert: null,
   };
 }
 
@@ -517,12 +520,18 @@ export const actions = {
     const sig = findSignal(p, id);
     if (!sig) return;
     if (sig.locked) {
-      notify(`“${sig.name}” is locked — unlock it to delete.`);
+      set({ alert: { title: 'Cannot delete this waveform', message: `“${sig.name}” is locked. Unlock it first, then try again.` } });
       return;
     }
     const users = dependents(p, sig.id);
     if (users.length > 0) {
-      notify(`“${sig.name}” is used by ${users.map((u) => `“${u.name}”`).join(', ')} — delete or edit those first.`);
+      set({
+        alert: {
+          title: 'Cannot delete this waveform',
+          message: `“${sig.name}” is used by ${users.length === 1 ? 'another waveform' : `${users.length} other waveforms`}. Delete them, or edit them so they no longer use it, then try again:`,
+          items: users.map((u) => u.name),
+        },
+      });
       return;
     }
     const ord = orderedSignals(p);
@@ -532,7 +541,9 @@ export const actions = {
       for (const fig of d.figures) for (const panel of fig.panels) panel.traces = panel.traces.filter((t) => t.signalId !== sig.id);
     });
     const remaining = ord.filter((s) => s.id !== sig.id);
-    set({ selectedId: remaining[Math.min(idx, remaining.length - 1)]?.id ?? null });
+    if (get().selectedId === sig.id || findSignal(get().project, get().selectedId) === undefined) {
+      set({ selectedId: remaining[Math.min(idx, remaining.length - 1)]?.id ?? null });
+    }
   },
 
   /**

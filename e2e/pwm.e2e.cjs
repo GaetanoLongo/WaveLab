@@ -19,7 +19,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   await p.click('.tool:has-text("PWM generator")');
   assert(await p.locator('.pwm-dialog').count() === 1, 'PWM dialog opens');
   await dfield('Topology').selectOption('three-phase');
-  await setD('Dead time t_d', '2u');
+  await setD('Dead time td', '2u');
   assert((await p.locator('.pwm-dialog .readout').innerText()).includes('277.1 V'), 'expected v_AB fundamental √3/2·0.8·400 = 277.1 V shown');
   await setD('Modulation index m', '1.2');
   assert(await p.locator('.pwm-dialog .warn').count() === 1, 'overmodulation warning for m > 1');

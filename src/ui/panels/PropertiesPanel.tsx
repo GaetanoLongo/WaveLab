@@ -496,7 +496,8 @@ function SourceParamsView({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd
         <NumberField label="Bit time" unit="s" positive value={p.bitTime} disabled={disabled} onCommit={set('bitTime')} />
         <NumberField label="High level" unit={u} value={p.high} disabled={disabled} onCommit={set('high')} />
         <NumberField label="Low level" unit={u} value={p.low} disabled={disabled} onCommit={set('low')} />
-        <NumberField label="Initial state" plain min={1} max={n} value={p.seed} disabled={disabled} onCommit={(v) => set('seed')(Math.round(v))} title={`LFSR register, 1 … ${n}`} />
+        <NumberField label="Initial state" plain min={1} max={n} value={p.seed} disabled={disabled} onCommit={(v) => set('seed')(Math.round(v))} title={`LFSR starting register, 1 … ${n}. The sequence is deterministic: the same sequence length and initial state always give the same bits (not random on each run). Change the initial state to start at a different point of the cycle.`} />
+        <p className="hint-text">Deterministic: the same length and initial state always give the same bits.</p>
         <Readout
           items={[
             ['Bit rate', formatSI(1 / p.bitTime, 'bit/s')],

@@ -184,7 +184,7 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
                 <dl className="m-grid">
                   <dt title="Active power: mean of v·i">P</dt>
                   <dd>{fmt(pw.m.p, 'W')}</dd>
-                  <dt title="Apparent power: V_rms · I_rms">S</dt>
+                  <dt title="Apparent power: Vrms · Irms (rms voltage × rms current)">S</dt>
                   <dd>{fmt(pw.m.s, 'VA')}</dd>
                   <dt title="Power factor P / S">PF</dt>
                   <dd>{Number.isFinite(pw.m.pf) ? pw.m.pf.toFixed(4) : '—'}</dd>

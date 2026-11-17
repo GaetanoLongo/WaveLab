@@ -232,7 +232,8 @@ describe('derived signals (M6)', () => {
     actions.addDerived((p) => `abs(${p})`, 1, 'Abs');
     actions.deleteSignal(a);
     expect(findSignal(st().project, a)).toBeDefined();
-    expect(st().notice).toMatch(/used by “Abs”/);
+    expect(st().alert?.message).toMatch(/used by another waveform/);
+    expect(st().alert?.items).toEqual(['Abs']);
   });
 
   it('editing an input recompiles its dependents', () => {

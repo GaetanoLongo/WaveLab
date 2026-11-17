@@ -41,8 +41,8 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   await dfield(P, 'Reference').selectOption('svpwm');
   await setD(P, 'Modulation index m', '1.1');
   assert(await p.locator(`${P} .warn`).count() === 0, 'm = 1.1 is still linear with SVPWM (no warning)');
-  await setD(P, 'Carrier f_c', '2550');
-  await setD(P, 'Dead time t_d', '4u');
+  await setD(P, 'Carrier fc', '2550');
+  await setD(P, 'Dead time td', '4u');
   await p.locator(`${P} .check`, { hasText: 'Load currents' }).locator('input').check();
   await setD(P, 'L', '20m');
   await p.click(`${P} button.primary`);

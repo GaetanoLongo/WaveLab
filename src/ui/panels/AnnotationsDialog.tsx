@@ -24,6 +24,7 @@ function Dialog({ focus }: { focus: string }) {
   return (
     <Modal title="Annotations" onClose={close} className="annotations-dialog" footer={<button className="primary" onClick={close}>Done</button>}>
       {list.length === 0 && <p className="hint-text">No annotations in this figure. Use the Annotations menu in the toolbar to add some.</p>}
+      {list.length > 0 && <p className="hint-text">Tip: double-click an annotation in the plot to edit it here.</p>}
       <div className="ann-list">
         {list.map((a) => {
           const unit = (a.on && findSignal(project, a.on)?.unit) || '';
@@ -62,6 +63,17 @@ function Dialog({ focus }: { focus: string }) {
                 <label>Colour</label>
                 <input type="color" value={a.color} onChange={(e) => upd({ color: e.target.value }, `ann-color-${a.id}`)} />
               </div>
+              {a.kind !== 'text' && (
+                <NumberField
+                  label="Line thickness ×"
+                  plain
+                  min={0.25}
+                  max={10}
+                  value={a.width ?? 1}
+                  onCommit={(v) => upd({ width: v }, `ann-width-${a.id}`)}
+                  title="Multiple of the default line thickness (1 = default)"
+                />
+              )}
               <div className="field-pair">
                 <NumberField label={a.kind === 'dim-t' ? 'From t' : 't'} unit="s" value={a.t0} onCommit={(v) => upd(a.kind === 'dim-y' || a.kind === 'text' ? { t0: v, t1: v } : { t0: v })} />
                 {a.kind !== 'dim-t' && <NumberField label={a.kind === 'dim-y' ? 'From y' : 'y'} unit={unit} value={a.y0} onCommit={(v) => upd(a.kind === 'text' ? { y0: v, y1: v } : { y0: v })} />}

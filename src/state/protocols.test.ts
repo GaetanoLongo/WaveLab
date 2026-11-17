@@ -25,6 +25,18 @@ describe('serial protocols decode back to the payload', () => {
     expect(parseBytes('4g', 'hex')).toBeNull();
   });
 
+  it('UART bit clock is optional and rises in the middle of each bit', () => {
+    make({ protocol: 'uart', data: 'Hi' });
+    expect(() => sig('CLK')).toThrow();
+    make({ protocol: 'uart', data: 'Hi', uartClock: true });
+    const clk = sig('CLK');
+    const T = 1 / 9600;
+    expect(bit(clk.value(0.25 * T))).toBe(0);
+    expect(bit(clk.value(0.75 * T))).toBe(1);
+    expect(bit(clk.value(1.25 * T))).toBe(0);
+    expect(bit(clk.value(1.75 * T))).toBe(1);
+  });
+
   it('UART 8E1: start bit, LSB first, even parity, stop; idle high', () => {
     make({ protocol: 'uart', data: 'Hi', parity: 'even', baud: 9600 });
     const tx = sig('TX');

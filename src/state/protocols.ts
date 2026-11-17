@@ -31,6 +31,8 @@ export interface ProtocolConfig {
   stopBits: 1 | 2;
   /** Idle bits between UART frames. */
   gap: number;
+  /** Also create a bit-clock signal (one period per bit, rising edge at the middle of the bit = sampling point). */
+  uartClock: boolean;
   // SPI
   spiClock: number;
   spiMode: 0 | 1 | 2 | 3;
@@ -55,6 +57,7 @@ export const DEFAULT_PROTOCOL: ProtocolConfig = {
   parity: 'none',
   stopBits: 1,
   gap: 1,
+  uartClock: false,
   spiClock: 1e6,
   spiMode: 0,
   lsbFirst: false,
@@ -139,7 +142,12 @@ export function buildProtocol(c: ProtocolConfig, newId: (prefix: string) => stri
       dim(tx.id, (f.start + 1) * T, (f.start + 1 + c.dataBits) * T, show(f.byte));
       if (f.parityAt >= 0) label(tx.id, (f.parityAt + 0.15) * T, 'P');
     }
-    return { signals: B.signals, groups: [B.group('UART', [tx])], annotations: anns, yRanges, duration: s.length * T };
+    const members = [tx];
+    if (c.uartClock) {
+      // Half-bit cells: low then high, so the rising edge falls in the middle of each bit.
+      members.push(line('CLK', '01'.repeat(s.length), T / 2, 'low'));
+    }
+    return { signals: B.signals, groups: [B.group('UART', members)], annotations: anns, yRanges, duration: s.length * T };
   }
 
   if (c.protocol === 'spi') {

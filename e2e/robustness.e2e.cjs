@@ -91,7 +91,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   await p.click('.tool:has-text("PWM generator")');
   const dfield = (label) => p.locator('.pwm-dialog .field', { has: p.locator(`label:text-is("${label}")`) }).locator('input, select').first();
   await dfield('Topology').selectOption('full-bipolar');
-  for (const [l, v] of [['Carrier frequency f_c', '1025'], ['Dead time t_d', '0']]) {
+  for (const [l, v] of [['Carrier frequency f_c', '1025'], ['Dead time td', '0']]) {
     const f = dfield(l); if (await f.count()) { await f.click(); await f.fill(v); await f.press('Enter'); }
   }
   await p.click('.pwm-dialog button.primary');

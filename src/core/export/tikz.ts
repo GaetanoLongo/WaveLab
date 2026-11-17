@@ -128,15 +128,16 @@ export function figureToTikz(input: FigureInput, o: TikzOptions): string {
     for (const r of anns.filter((x) => x.panel.id === pl.id)) {
       const a = r.a;
       const c = colour(a.color);
+      const lw = (base: number) => (base * (a.width ?? 1)).toFixed(2);
       const P = (t: number, v: number) => `(axis cs:${num(t / tf)},${num(v / yf)})`;
       if (a.kind === 'text') body.push(`\\node[anchor=west, text=${c}, font=\\small] at ${P(a.t0, a.y0)} {${texLabel(a.text)}};`);
       else if (a.kind === 'arrow') {
-        body.push(`\\draw[${c}, -{Stealth[length=5pt]}, line width=0.6pt] ${P(a.t0, a.y0)} -- ${P(a.t1, a.y1)};`);
+        body.push(`\\draw[${c}, -{Stealth[length=5pt]}, line width=${lw(0.6)}pt] ${P(a.t0, a.y0)} -- ${P(a.t1, a.y1)};`);
         if (a.text) body.push(`\\node[anchor=${a.t1 > a.t0 ? 'east' : 'west'}, text=${c}, font=\\small] at ${P(a.t0, a.y0)} {${texLabel(a.text)}};`);
       } else if (a.kind === 'dim-t') {
-        body.push(`\\draw[${c}, {Bar[]Stealth[length=4pt]}-{Stealth[length=4pt]Bar[]}, line width=0.5pt] ${P(a.t0, a.y0)} -- node[above, font=\\footnotesize] {${texLabel(dimensionLabel(a, r.unit))}} ${P(a.t1, a.y0)};`);
+        body.push(`\\draw[${c}, {Bar[]Stealth[length=4pt]}-{Stealth[length=4pt]Bar[]}, line width=${lw(0.5)}pt] ${P(a.t0, a.y0)} -- node[above, font=\\footnotesize] {${texLabel(dimensionLabel(a, r.unit))}} ${P(a.t1, a.y0)};`);
       } else {
-        body.push(`\\draw[${c}, {Bar[]Stealth[length=4pt]}-{Stealth[length=4pt]Bar[]}, line width=0.5pt] ${P(a.t0, a.y0)} -- node[right, font=\\footnotesize] {${texLabel(dimensionLabel(a, r.unit))}} ${P(a.t0, a.y1)};`);
+        body.push(`\\draw[${c}, {Bar[]Stealth[length=4pt]}-{Stealth[length=4pt]Bar[]}, line width=${lw(0.5)}pt] ${P(a.t0, a.y0)} -- node[right, font=\\footnotesize] {${texLabel(dimensionLabel(a, r.unit))}} ${P(a.t0, a.y1)};`);
       }
     }
   });

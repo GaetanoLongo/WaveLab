@@ -6,6 +6,7 @@ import { formatSI } from '../../core/units/si';
 import { DEFAULT_PWM, expectedFundamental, linearLimit, PWM_REFERENCE_LABELS, type PwmConfig, type PwmReference, type PwmTopology } from '../../state/pwm';
 import { actions } from '../../state/store';
 import { NumberField } from '../fields/NumberField';
+import { MathLabel } from '../MathLabel';
 import { Modal } from '../Modal';
 
 export const usePwmDialog = create<{ open: boolean }>(() => ({ open: false }));
@@ -131,7 +132,9 @@ function Dialog() {
           <h3>Check</h3>
           <dl className="readout">
             <div>
-              <dt>m_f = f_c / f₁</dt>
+              <dt>
+                <MathLabel text="m_f = f_c / f_1" />
+              </dt>
               <dd>{Number(mf.toPrecision(6))}</dd>
             </div>
             <div>
@@ -141,7 +144,9 @@ function Dialog() {
             {c.topology === 'full-unipolar' && (
               <div>
                 <dt>Output ripple frequency</dt>
-                <dd>{formatSI(2 * c.fc, 'Hz')} (2·f_c)</dd>
+                <dd>
+                  {formatSI(2 * c.fc, 'Hz')} (2·f<sub>c</sub>)
+                </dd>
               </div>
             )}
           </dl>
@@ -151,7 +156,7 @@ function Dialog() {
             </p>
           )}
           {Math.abs(mf - Math.round(mf)) > 1e-9 && (
-            <p className="hint-text">Non-integer m_f: the pattern repeats only after several reference periods (the spectrum dialog handles this with more periods).</p>
+            <p className="hint-text">Non-integer m<sub>f</sub>: the pattern repeats only after several reference periods (the spectrum dialog handles this with more periods).</p>
           )}
           <p className="hint-text">
             Creates ordinary editable signals in new groups: carrier and references (shared panel), leg commands, gate signals and ideal
