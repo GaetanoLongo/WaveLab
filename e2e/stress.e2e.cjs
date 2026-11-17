@@ -258,6 +258,7 @@ async function areaDialogs() {
   }
   for (const [parity, bits, stop, clk] of [['even', '7', '2', true], ['odd', '5', '1', false], ['none', '8', '1', true]]) {
     await runDialog('UART / SPI', '.protocol-dialog', async () => {
+      await p.locator('.protocol-dialog .seg button:has-text("UART")').click(); // the dialog remembers its last protocol
       await p.locator('.protocol-dialog select[aria-label="Parity"]').selectOption(parity);
       await p.locator('.protocol-dialog select[aria-label="Data bits"]').selectOption(bits);
       await p.locator('.protocol-dialog select[aria-label="Stop bits"]').selectOption(stop);

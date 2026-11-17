@@ -239,6 +239,6 @@ export function buildProtocol(c: ProtocolConfig, newId: (prefix: string) => stri
   label(sSda.id, 2 * qT, 'S');
   for (const f of fields) dim(sSda.id, (f.at + 1) * qT, (f.at + 1 + 4 * f.n) * qT, f.text);
   for (const a of acks) label(sSda.id, (a.at + 1.6) * qT, a.text, a.text === 'N' ? '#c0392b' : '#5b6577');
-  label(sSda.id, (sda.length - 3) * qT, 'P');
+  label(sSda.id, (sda.length - 1.2) * qT, 'P');
   return { signals: B.signals, groups: [B.group('I²C', [sSda, sScl])], annotations: anns, yRanges, duration: sda.length * qT };
 }
