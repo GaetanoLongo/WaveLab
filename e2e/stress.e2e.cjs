@@ -113,10 +113,11 @@ async function newProject() {
   await p.keyboard.press('Escape').catch(() => {});
   if (await p.locator('.modal-backdrop').count()) await p.keyboard.press('Escape').catch(() => {});
   if (await p.locator('.recovery-banner').count()) await p.click('.recovery-banner button:has-text("Discard")').catch(() => {});
-  await p.click('button[title="New project"]').catch(() => {});
+  if (await p.locator('.phone-tabs').count()) { await p.click('button[aria-label="More actions"]').catch(() => {}); await p.click('.popover.menu button:has-text("New project")').catch(() => {}); }
+  else await p.click('button[title="New project"]').catch(() => {});
   await p.waitForTimeout(80);
 }
-const tools = () => p.locator('.toolbox .tool');
+const tools = () => p.locator('.tool');
 /** In the phone layout the toolbox lives in the "Add" tab, and selecting a signal switches away from it. */
 async function addTab() { if (await p.locator('.phone-tabs').count()) await p.click('.phone-tabs button:has-text("Add")').catch(() => {}); }
 async function closeModals() {
@@ -157,7 +158,7 @@ async function areaWaveforms() {
   for (const w of waveforms) {
     await step(`waveform ${w}: defaults`, async () => {
       await newProject();
-      await p.click(`.toolbox .tool:has-text("${w}")`, { timeout: 4000 });
+      await p.click(`.tool:has-text("${w}")`, { timeout: 4000 });
       await p.waitForTimeout(120);
     });
     const fields = await p.locator('.properties .field input:not([type=checkbox]):not([type=color]):not([type=range])').count().catch(() => 0);
@@ -184,7 +185,7 @@ async function areaWaveforms() {
 async function runDialog(tool, dlg, configure, label) {
   await step(label, async () => {
     await newProject();
-    await p.click(`.toolbox .tool:has-text("${tool}")`);
+    await p.click(`.tool:has-text("${tool}")`);
     await p.waitForSelector(dlg);
     await configure();
     const prim = p.locator(`${dlg} footer button.primary`);
@@ -200,7 +201,7 @@ async function areaDialogs() {
   await openPage();
   // PWM: topology × (reference for 3-phase) × carrier, with load and dead time
   const dlg = '.pwm-dialog';
-  await step('open PWM to list options', async () => { await p.click('.toolbox .tool:has-text("PWM generator")'); await p.waitForSelector(dlg); });
+  await step('open PWM to list options', async () => { await p.click('.tool:has-text("PWM generator")'); await p.waitForSelector(dlg); });
   const topologies = await selectOptions(dlg, 0);
   await closeModals();
   for (const topo of topologies) {
@@ -226,7 +227,7 @@ async function areaDialogs() {
   }
 
   // Rectifier
-  await step('open rectifier to list options', async () => { await p.click('.toolbox .tool:has-text("Rectifier")'); await p.waitForSelector('.rectifier-dialog'); });
+  await step('open rectifier to list options', async () => { await p.click('.tool:has-text("Rectifier")'); await p.waitForSelector('.rectifier-dialog'); });
   const rtops = await selectOptions('.rectifier-dialog', 0);
   await closeModals();
   for (const t of rtops) for (const load of [false, true]) {
@@ -237,7 +238,7 @@ async function areaDialogs() {
   }
 
   // Modulation
-  await step('open modulation to list options', async () => { await p.click('.toolbox .tool:has-text("AM / FM / PM")'); await p.waitForSelector('.modal'); });
+  await step('open modulation to list options', async () => { await p.click('.tool:has-text("AM / FM / PM")'); await p.waitForSelector('.modal'); });
   const kinds = await selectOptions('.modal', 0);
   const msgs = await selectOptions('.modal', 1);
   await closeModals();
@@ -282,16 +283,16 @@ async function areaDialogs() {
 async function buildComplexProject() {
   await newProject();
   await addTab();
-  await p.click('.toolbox .tool:has-text("PWM generator")');
+  await p.click('.tool:has-text("PWM generator")');
   await p.waitForSelector('.pwm-dialog');
   await p.locator('.pwm-dialog footer button.primary').click();
   await p.waitForTimeout(500);
   // lowpass on the selected output
   await addTab();
-  await p.click('.toolbox .tool:has-text("Low-pass (RC)")').catch(() => {});
+  await p.click('.tool:has-text("Low-pass (RC)")').catch(() => {});
   await p.waitForTimeout(300);
   await addTab();
-  await p.click('.toolbox .tool:has-text("Sine")');
+  await p.click('.tool:has-text("Sine")');
 }
 async function areaViews() {
   await openPage();
@@ -381,7 +382,7 @@ async function areaLayouts() {
     await step(`layout ${w}x${h}: build`, buildComplexProject);
     await step(`layout ${w}x${h}: protocol + modulation`, async () => {
       if (w < 600) await p.click('.phone-tabs button:has-text("Add")').catch(() => {});
-      await p.click('.toolbox .tool:has-text("UART / SPI")'); await p.locator('.protocol-dialog .field:has(label:text-is("Data")) input').fill('Hello World');
+      await p.click('.tool:has-text("UART / SPI")'); await p.locator('.protocol-dialog .field:has(label:text-is("Data")) input').fill('Hello World');
       await p.locator('.protocol-dialog footer button.primary').click(); await p.waitForTimeout(500);
     });
     await step(`layout ${w}x${h}: screenshot + clipped elements`, async () => {
@@ -400,7 +401,7 @@ async function areaLayouts() {
     for (const dlg of ['PWM generator', 'Rectifier', 'AM / FM / PM']) {
       await step(`layout ${w}x${h}: dialog ${dlg} fits`, async () => {
         if (w < 600) await p.click('.phone-tabs button:has-text("Add")').catch(() => {});
-        await p.click(`.toolbox .tool:has-text("${dlg}")`); await p.waitForSelector('.modal');
+        await p.click(`.tool:has-text("${dlg}")`); await p.waitForSelector('.modal');
         const r = await p.evaluate(() => { const m = document.querySelector('.modal').getBoundingClientRect(); return { r: m.right, b: m.bottom, l: m.left, t: m.top, w: innerWidth, h: innerHeight }; });
         if (r.r > r.w + 1 || r.l < -1) note('DIALOG-CLIPPED', `${dlg} at ${w}x${h}: x ${Math.round(r.l)}..${Math.round(r.r)} of ${r.w}`);
         const foot = await p.evaluate(() => { const f = document.querySelector('.modal footer button.primary'); if (!f) return true; const r = f.getBoundingClientRect(); return r.bottom <= innerHeight + 1 && r.top >= 0; });
