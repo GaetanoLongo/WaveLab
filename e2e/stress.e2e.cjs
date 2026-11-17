@@ -18,6 +18,7 @@ const only = (process.argv[3] || '').split(',').filter(Boolean);
 const want = (a) => only.length === 0 || only.includes(a);
 fs.mkdirSync(out, { recursive: true });
 
+let shots = 0;
 const findings = [];
 const seen = new Set();
 let area = '';
@@ -89,6 +90,7 @@ async function scan(tag = '') {
     note('SCAN', e.message);
     return;
   }
+  if (r.overlaps.length && shots < 12) { shots++; await p.screenshot({ path: path.join(out, `overlap-${shots}.png`) }).catch(() => {}); }
   if (r.overlaps.length) note('OVERLAP', `text overlap${tag}: ${[...new Set(r.overlaps)].slice(0, 6).join('; ')}`);
   if (r.bad.length) note('BAD-VALUE', `${tag} ${[...new Set(r.bad)].join(', ')} shown in the interface`);
   if (r.overflow) note('OVERFLOW', `horizontal page overflow ${r.overflow}${tag}`);
@@ -115,6 +117,8 @@ async function newProject() {
   await p.waitForTimeout(80);
 }
 const tools = () => p.locator('.toolbox .tool');
+/** In the phone layout the toolbox lives in the "Add" tab, and selecting a signal switches away from it. */
+async function addTab() { if (await p.locator('.phone-tabs').count()) await p.click('.phone-tabs button:has-text("Add")').catch(() => {}); }
 async function closeModals() {
   for (let i = 0; i < 3 && (await p.locator('.modal-backdrop').count()); i++) {
     const prim = p.locator('.modal footer button.primary');
@@ -277,13 +281,16 @@ async function areaDialogs() {
 // ---------------------------------------------------------------------------------------------
 async function buildComplexProject() {
   await newProject();
+  await addTab();
   await p.click('.toolbox .tool:has-text("PWM generator")');
   await p.waitForSelector('.pwm-dialog');
   await p.locator('.pwm-dialog footer button.primary').click();
   await p.waitForTimeout(500);
   // lowpass on the selected output
+  await addTab();
   await p.click('.toolbox .tool:has-text("Low-pass (RC)")').catch(() => {});
   await p.waitForTimeout(300);
+  await addTab();
   await p.click('.toolbox .tool:has-text("Sine")');
 }
 async function areaViews() {
@@ -358,7 +365,8 @@ async function areaExport() {
     const d = await dl; const f = path.join(out, 'saved.wlab'); await d.saveAs(f);
     const before = await p.locator('.signal-list .row').count();
     await newProject();
-    await p.locator('input[type=file]').first().setInputFiles(f).catch(async () => { /* no input: use drag and drop path */ });
+    const [chooser] = await Promise.all([p.waitForEvent('filechooser'), p.click('button[aria-label^="Open project"]')]);
+    await chooser.setFiles(f);
     await p.waitForTimeout(800);
     const after = await p.locator('.signal-list .row').count();
     if (after !== before) note('FILE', `reopened project has ${after} signals, saved had ${before}`);

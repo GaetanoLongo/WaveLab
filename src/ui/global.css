@@ -308,7 +308,9 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 .phone-panel { flex: 1; min-height: 0; overflow-y: auto; background: var(--panel); -webkit-overflow-scrolling: touch; }
 .phone-panel .signal-list { border-bottom: 0; }
 .phone-panel .signal-list ul { max-height: none; }
-.phone-panel .toolbox-inner .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.phone-panel .toolbox-inner .tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; }
+.phone-panel .toolbox-inner .tool { min-width: 0; overflow: hidden; }
+.phone-panel .toolbox-inner .tool > span, .phone-panel .toolbox-inner .tool { text-overflow: ellipsis; white-space: nowrap; }
 .phone-panel .tools-hint { margin-top: 0; }
 
 .toolbar.compact { flex-wrap: nowrap; gap: 0; padding: 4px 6px; }
