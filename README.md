@@ -79,6 +79,9 @@ differentiation (ideal edges become impulse markers), moving average and RMS, **
 - **Cursors**: two time cursors and two level cursors; values, Δt, 1/Δt, ΔY.
 - **Interval measurements** between the time cursors (or over the visible window): max, min, peak-to-peak,
   mean, RMS, duty cycle, frequency, crest factor, form factor.
+- **Edges and pulses** (oscilloscope style): 10–90 % rise and fall time, pulse widths at 50 %, overshoot,
+  undershoot and settling time (±2 %), measured on the curve drawn in the window; levels come from a
+  histogram, so ringing does not move them.
 - **Power**: pick a current signal and get P, S, PF, non-active power and, from the fundamentals, Q₁ and the
   displacement power factor.
 - **Spectrum**: exact Fourier series over whole periods (no FFT, no leakage) as bars and a table in peak,
@@ -86,6 +89,13 @@ differentiation (ideal edges become impulse markers), moving average and RMS, **
 - **XY (Lissajous)** and **eye diagram** views with SVG/PNG export; the eye view measures the eye height.
 
 ![Three-phase space-vector PWM and its exact spectrum](docs/images/pwm-spectrum.png)
+
+### Measured data
+**Import CSV data…** (or drop a `.csv`, `.tsv` or `.txt` file on the window) turns an oscilloscope or logger
+export into ordinary editable signals: the time column and its unit (“Time (ms)”) are found automatically,
+decimal commas, tabs, semicolons and comment lines are accepted, and files with more than 150 000 rows are
+reduced while keeping every peak. Use the measurements, spectrum and operations on them, and overlay them
+with the ideal waveforms.
 
 ### Power electronics
 - **PWM generator** — half bridge, full bridge (bipolar/unipolar) or three-phase; triangle or sawtooth
@@ -203,6 +213,9 @@ written down in **[docs/CONVENTIONS.md](docs/CONVENTIONS.md)**. In short:
 - Files are validated when opened: errors name the offending field, and the current work is never replaced
   by a broken file.
 - While you have unsaved changes, a **recovery copy** is kept in this browser and offered at the next start.
+- **Share** copies a link that opens your project: the compressed project is in the address after the `#`,
+  so nothing is uploaded and nobody needs an account. Long projects make long links (some chat apps cut
+  them); then send the file instead.
 - Nothing leaves your computer: there is no server, no tracking and no account.
 
 ## Development

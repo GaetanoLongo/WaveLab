@@ -58,3 +58,14 @@ Still open:
 Still open:
 - Arguments at the allowed extremes can stall the page for 3–10 s: `movavg(x, 1e6)`, `dnum(x, 1e6)`, `integral(movavg(...))`, or a 1 s window over a 1 kHz signal through moving-window operators (~2 ms per feature). A real fix is a compute budget that aborts runaway evaluations (one deadline checked in the scanning and integration loops, caught where traces are drawn) or running the engine in a Web Worker.
 - A user annotation placed on the axis labels overlaps them (by design: annotations are drawn on top).
+
+## Second round: performance, share link, edge measurements, CSV import
+
+- **Deep operation chains** (abs → low-pass → negate → moving average, repeated): a filter over a smooth input integrated numerically on every evaluation, and each integration evaluated the layer below, so cost multiplied per layer (never finished at depth 10; the original code took 11 s at depth 6). Smooth pieces are now tabulated once (Chebyshev, ≤ 8 time constants per table) and a periodic feature cache answers any window from one period. A 30-deep chain draws in ~0.5 s. Checked against an independent RK4 integration (1e-6).
+- **Compute budget** (`core/signals/budget.ts`): hot loops call `checkBudget()`; the outermost evaluation of a signal (or one drawn trace, one measurement, one spectrum) is limited to 3–15 s. On overrun the signal is marked heavy for 15 s (answers "undefined" at once instead of retrying), the trace is left out and the status bar says why.
+- **Share link**, **edge and pulse measurements** (rise/fall, widths, overshoot, settling; verified against τ·ln 9 and the second-order overshoot formula), **CSV import** (time column and unit detection, up to 150 000 points per trace with peak-preserving reduction).
+- Keyboard and touch (stress areas `keyboard`, `touch`): dialogs take, trap and return focus; signal rows are reachable by keyboard with Shift+F10; controls are ≥ 32 px on touch screens.
+
+Still open:
+- Dense PWM with dead time and load at fc ≫ f₁ remains slow to create (5 s at 100 kHz, much more for three phases); the budget now stops it instead of freezing, but the exact filter integration per switching cycle is inherently expensive.
+- Nested operators typed inside ONE expression (e.g. `lowpass(movavg(lowpass(x, …), …), …)`) do not get the per-layer period cache that separate signals get.
