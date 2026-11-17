@@ -538,7 +538,11 @@ export const actions = {
     const idx = ord.findIndex((s) => s.id === sig.id);
     commit((d) => {
       d.signals = d.signals.filter((s) => s.id !== sig.id);
-      for (const fig of d.figures) for (const panel of fig.panels) panel.traces = panel.traces.filter((t) => t.signalId !== sig.id);
+      for (const fig of d.figures) {
+        for (const panel of fig.panels) panel.traces = panel.traces.filter((t) => t.signalId !== sig.id);
+        // Annotations placed on this signal's panel fall back to the first panel.
+        for (const a of fig.annotations ?? []) if (a.on === sig.id) a.on = null;
+      }
     });
     const remaining = ord.filter((s) => s.id !== sig.id);
     if (get().selectedId === sig.id || findSignal(get().project, get().selectedId) === undefined) {
