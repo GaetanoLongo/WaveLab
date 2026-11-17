@@ -94,6 +94,41 @@ describe('lowpass (first-order lag)', () => {
     expect(jump!.right).toBe(-3); // square is ±1 here: both low
   });
 
+  it('tabulated smooth pieces agree with an independent RK4 integration of τy′ + y = x', () => {
+    const rect = expr('abs(S)', { S: gen('sine') }); // smooth pieces between zero crossings
+    const tau = 1.3e-3;
+    const y = expr('lowpass(R, 1.3m)', { R: rect });
+    // Reference: integrate the ODE from a long way back (the start-up transient has decayed by e^-300).
+    const f = (t: number, v: number) => (rect.value(t) - v) / tau;
+    const h = 2e-6;
+    let t = -0.4;
+    let v = 0.6;
+    const probes = [0.0123, 0.0171, 0.0295, 0.0333];
+    const got: number[] = [];
+    while (got.length < probes.length) {
+      const k1 = f(t, v);
+      const k2 = f(t + h / 2, v + (h / 2) * k1);
+      const k3 = f(t + h / 2, v + (h / 2) * k2);
+      const k4 = f(t + h, v + h * k3);
+      v += (h / 6) * (k1 + 2 * k2 + 2 * k3 + k4);
+      t += h;
+      const p = probes[got.length]!;
+      if (Math.abs(t - p) < h / 2) got.push(v);
+    }
+    probes.forEach((p, i) => expect(y.value(p)).toBeCloseTo(got[i]!, 6));
+  });
+
+  it('a long chain of operations stays fast (each filter layer used to multiply the cost)', () => {
+    let s: SignalEval = gen('sine');
+    const layers = ['abs(X)', 'lowpass(X, 1m)', '-X', 'movavg(X, 2m)'];
+    for (let i = 0; i < 16; i++) s = expr(layers[i % 4]!.replace('X', 'X'), { X: s });
+    const t0 = performance.now();
+    for (let i = 0; i < 400; i++) s.value(i * 1e-4);
+    s.features(0, 0.04, 400);
+    expect(performance.now() - t0).toBeLessThan(10000); // was: never finished
+    expect(Number.isFinite(s.value(0.0123))).toBe(true);
+  }, 60000);
+
   it('R-L load: mean current = mean voltage / R; ripple from the exact solution', () => {
     // 1 kHz 0/48 V square, 25 % duty, R = 2 Ω, L = 1 mH → τ = 0.5 ms
     const v = gen('square', (d) => {

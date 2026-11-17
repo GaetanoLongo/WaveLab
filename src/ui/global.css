@@ -505,3 +505,7 @@ table.harmonics td { padding: 2px 6px; border-bottom: 1px solid var(--panel-2); 
   .name-btn, .fig-name, .fig-add, .range-btn { min-height: 32px; min-width: 32px; }
   .range-btn { display: inline-flex; align-items: center; }
 }
+
+.csv-preview { border-collapse: collapse; font-size: 11px; width: 100%; }
+.csv-preview th, .csv-preview td { border: 1px solid var(--border); padding: 2px 6px; text-align: right; white-space: nowrap; }
+.csv-preview th { background: var(--panel-2); font-weight: 600; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }

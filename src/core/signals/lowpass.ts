@@ -16,11 +16,32 @@
  */
 
 import { integrateSmooth, scannedFeatures } from './operators';
+import { checkBudget } from './budget';
 import { MAX_SAMPLES } from './scan';
 import { DEFAULT_MAX_FEATURES, type SignalEval } from './types';
 
+/** Chebyshev (second kind) nodes and barycentric weights for the tabulated smooth pieces. */
+const CHEB_N = 20;
+const CHEB_X = Array.from({ length: CHEB_N + 1 }, (_, j) => Math.cos((Math.PI * j) / CHEB_N));
+const CHEB_W = Array.from({ length: CHEB_N + 1 }, (_, j) => (j % 2 ? -1 : 1) * (j === 0 || j === CHEB_N ? 0.5 : 1));
+/** A table covers at most this many time constants (a smooth, well-resolved stretch). */
+const TABLE_TAU = 8;
+/** Pieces longer than this many time constants are integrated directly (rare: tiny τ on a slow input). */
+const DIRECT_TAU = 200;
+
+interface Table {
+  a: number;
+  h: number;
+  /** y at the Chebyshev nodes (node j sits at ξ = cos(jπ/N), i.e. j = 0 is the end of the stretch). */
+  ys: number[];
+}
+
 interface Seg {
   a: number;
+  /** End of the piece (the start of the next one). */
+  b?: number;
+  /** Tabulated stretches of a smooth piece, built on first use. */
+  tables?: Array<Table | undefined>;
   ya: number;
   /** x on [a, next): 'lin' = exactly linear (slope k from x(a+)), else smooth. */
   lin: boolean;
@@ -66,11 +87,12 @@ export function lowpassOf(x: SignalEval, tau: number, start?: { t0: number; y0: 
     const segs: Seg[] = [];
     let y = ya;
     for (let i = 0; i + 1 < cuts.length; i++) {
+      checkBudget();
       const s0 = cuts[i]!;
       const s1 = cuts[i + 1]!;
       if (!(s1 > s0)) continue;
       const c = classify(s0, s1, rightAt.get(s0));
-      segs.push({ a: s0, ya: y, ...c });
+      segs.push({ a: s0, b: s1, ya: y, ...c });
       y = step(y, s0, s1, c);
     }
     return { segs, yb: y };
@@ -86,7 +108,41 @@ export function lowpassOf(x: SignalEval, tau: number, start?: { t0: number; y0: 
     }
     return segs[lo]!;
   };
-  const at = (s: Seg, t: number) => step(s.ya, s.a, t, s);
+  /**
+   * y(t) on a smooth piece. Integrating numerically on every call makes a filter fed by another
+   * filter (or by a moving average of one…) cost the product of their integrations. Instead the
+   * piece is tabulated once, in stretches of at most TABLE_TAU time constants, at Chebyshev nodes
+   * (each from the exact integration), and evaluated by barycentric interpolation: spectral accuracy
+   * for these smooth, monotonic pieces, and a call costs a few dozen flops.
+   */
+  const at = (s: Seg, t: number): number => {
+    if (s.lin || s.b === undefined) return step(s.ya, s.a, t, s);
+    const h = s.b - s.a;
+    if (!(h > 0) || h / tau > DIRECT_TAU || t <= s.a) return step(s.ya, s.a, t, s);
+    const m = Math.max(1, Math.ceil(h / (TABLE_TAU * tau)));
+    const subh = h / m;
+    const idx = Math.min(m - 1, Math.max(0, Math.floor((t - s.a) / subh)));
+    const tables = (s.tables ??= new Array<Table | undefined>(m));
+    for (let i = 0; i <= idx; i++) {
+      if (tables[i]) continue;
+      const a0 = s.a + i * subh;
+      const y0 = i === 0 ? s.ya : tables[i - 1]!.ys[0]!;
+      const ys = CHEB_X.map((xi) => step(y0, a0, a0 + ((xi + 1) / 2) * subh, s));
+      tables[i] = { a: a0, h: subh, ys };
+    }
+    const tb = tables[idx]!;
+    const xi = (2 * (t - tb.a)) / tb.h - 1;
+    let num = 0;
+    let den = 0;
+    for (let j = 0; j <= CHEB_N; j++) {
+      const d = xi - CHEB_X[j]!;
+      if (Math.abs(d) < 1e-15) return tb.ys[j]!;
+      const w = CHEB_W[j]! / d;
+      num += w * tb.ys[j]!;
+      den += w;
+    }
+    return num / den;
+  };
 
   let value: (t: number) => number;
   let periodic = false;

@@ -18,6 +18,8 @@ import { Resizer } from './Resizer';
 import { setLayout, useLayout, DEFAULT_LAYOUT } from '../state/layout';
 import { ContextMenu, showContextMenu, type MenuItem } from './ContextMenu';
 import { signalMenuItems } from './signalMenu';
+import { openSharedFromAddress } from './share';
+import { installPopoverClamp } from './popoverClamp';
 import { formatSI } from '../core/units/si';
 import { compiled } from '../state/compiled';
 import { useSettings } from '../state/settings';
@@ -33,6 +35,7 @@ import { Toolbar } from './Toolbar';
 import { useShortcuts } from './useShortcuts';
 import { editAnnotation, selectAnnotation, useAnnotate } from './annotate';
 import { AnnotationsDialog } from './panels/AnnotationsDialog';
+import { CsvImportDialog, openCsvFile } from './panels/CsvImportDialog';
 import { discardRecovery, restoreRecovery, startRecovery, useRecovery } from '../state/recovery';
 import { PHONE_QUERY, useMediaQuery } from './useMediaQuery';
 
@@ -43,6 +46,13 @@ export const usePhoneTab = create<{ tab: PhoneTab }>(() => ({ tab: 'add' }));
 export function App() {
   useShortcuts();
   useEffect(startRecovery, []);
+  useEffect(installPopoverClamp, []);
+  useEffect(() => {
+    void openSharedFromAddress();
+    const onHash = () => void openSharedFromAddress();
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
   const phone = useMediaQuery(PHONE_QUERY);
   const [dropping, setDropping] = useState(false);
   const hasFile = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files');
@@ -63,8 +73,12 @@ export function App() {
         setDropping(false);
         const f = e.dataTransfer.files[0];
         if (!f) return;
+        if (/\.(csv|tsv|txt|dat)$/i.test(f.name)) {
+          void openCsvFile(f);
+          return;
+        }
         if (!/\.(wlab|json)$/i.test(f.name)) {
-          editor.setState({ notice: `“${f.name}” is not a WaveLab project (.wlab).` });
+          editor.setState({ notice: `“${f.name}” is neither a WaveLab project (.wlab) nor a data file (.csv, .tsv, .txt).` });
           return;
         }
         if (isDirty(editor.getState()) && !window.confirm('Discard unsaved changes?')) return;
@@ -80,6 +94,7 @@ export function App() {
       <ProtocolDialog />
       <ViewsDialog />
       <AnnotationsDialog />
+      <CsvImportDialog />
       <AxesDialog />
       <AlertDialog />
       <ContextMenu />

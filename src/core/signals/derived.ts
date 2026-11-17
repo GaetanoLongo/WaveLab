@@ -35,6 +35,7 @@ import {
   movingRmsOf,
   numericDerivativeOf,
 } from './operators';
+import { checkBudget } from './budget';
 import { leftValue, MAX_SAMPLES, same, scanSegment } from './scan';
 import { DEFAULT_MAX_FEATURES, type Feature, type FeatureQuery, type Impulse, type SignalEval } from './types';
 
@@ -500,6 +501,7 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
     if (span / step > MAX_SAMPLES) step = span / MAX_SAMPLES;
 
     for (let i = 1; i < points.length - 1; i++) {
+      checkBudget();
       const t = points[i]!;
       const tEnd = ends[i]!;
       let L = ev(t, true, null);

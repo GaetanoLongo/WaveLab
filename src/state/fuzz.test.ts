@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { ExprError, FUNCTIONS, parseExpr } from '../core/expr/parse';
 import { defaultGenerator } from '../core/model/defaults';
-import type { GeneratorDef } from '../core/model/signal-defs';
+import type { GeneratorDef, GeneratorKind } from '../core/model/signal-defs';
 import { parseProjectFile, ProjectFileError, serializeProject } from '../core/io/project-file';
 import { sampleSignal } from '../core/plot/sampler';
 import { compileDerived } from '../core/signals/derived';
@@ -211,4 +211,59 @@ describe('project file fuzz', () => {
     expect(slow).toEqual([]);
     expect(loaded + rejected).toBeGreaterThan(300);
   }, 280000);
+});
+
+describe('CSV import fuzz', () => {
+  it('random text never throws in the parser or the import; usable tables import into valid projects', async () => {
+    const { parseCsv, guessTimeColumn } = await import('../core/io/csv');
+    const R = rng(4242);
+    const pieces = ['0', '1', '-1', '1e-3', '2.5E+2', '1,5', '', ' ', '\t', ';', ',', 'abc', 'NaN', 'inf', '"x"', '#c', '1e999', '0x10', '--', '.5', '5.', '\r', '\n', '\n', '\n', '  ', 'Time (ms)', 'V'];
+    const unexpected: string[] = [];
+    let usable = 0;
+    for (let i = 0; i < 400; i++) {
+      let text = '';
+      const n = R.int(60);
+      for (let k = 0; k < n; k++) text += R.pick(pieces);
+      try {
+        const t = parseCsv(text);
+        if (typeof t === 'string') continue;
+        usable++;
+        const tc = guessTimeColumn(t);
+        actions.newProject();
+        const cols = Array.from({ length: t.columns }, (_, c) => c).filter((c) => c !== tc);
+        const err = actions.createCsvImport(t, { timeColumn: tc, timeUnit: R.pick(['s', 'ms', 'us', 'ns'] as const), sampleInterval: R.pick([1e-3, 0, -1, 1e-9]), startAtZero: R.next() < 0.5, columns: cols.length ? cols : [0], interp: R.pick(['linear', 'step'] as const), unit: 'V', fileName: 'f.csv' });
+        if (err === null) {
+          const p = editor.getState().project;
+          for (const s of p.signals) {
+            const f = compiled(s, p);
+            f.value(0);
+            f.features(-1, 10, 400);
+          }
+          // an imported project must also survive save / load
+          parseProjectFile(serializeProject(p));
+        }
+      } catch (e) {
+        unexpected.push(`${JSON.stringify(text).slice(0, 80)} → ${String(e)}`);
+      }
+    }
+    expect(unexpected).toEqual([]);
+    expect(usable).toBeGreaterThan(5);
+  }, 120000);
+});
+
+describe('share link fuzz', () => {
+  it('projects built by the generators survive encode → decode → parse unchanged', async () => {
+    const { encodeShare, decodeShare } = await import('../core/io/share');
+    const R = rng(99);
+    const kinds: GeneratorKind[] = ['sine', 'square', 'pulse', 'triangle', 'chirp', 'noise', 'prbs', 'bits', 'piecewise'];
+    for (let i = 0; i < 25; i++) {
+      actions.newProject();
+      for (let k = 0; k < 1 + R.int(8); k++) actions.addSignal(R.pick(kinds));
+      if (R.next() < 0.5) actions.createPwm({ ...DEFAULT_PWM, topology: R.pick(['half', 'three-phase'] as const) });
+      const text = serializeProject(editor.getState().project);
+      const back = await decodeShare(await encodeShare(text));
+      expect(JSON.parse(back)).toEqual(JSON.parse(text));
+      expect(parseProjectFile(back).project.signals.length).toBe(editor.getState().project.signals.length);
+    }
+  }, 120000);
 });

@@ -4,6 +4,7 @@
  * state changes and golden-section refinement of extrema.
  */
 
+import { checkBudget } from './budget';
 import type { Feature, SignalEval } from './types';
 
 export const MAX_SAMPLES = 20_000;
@@ -34,6 +35,7 @@ export function scanSegment(
   const vs: number[] = new Array(n + 1);
   const sigs: string[] = new Array(n + 1);
   for (let i = 0; i <= n; i++) {
+    checkBudget();
     const t = i === n ? b : a + ((b - a) * i) / n;
     const sig: number[] = [];
     // Segment ends use one-sided limits (inside the segment).
@@ -64,6 +66,7 @@ export function scanSegment(
       let l = lo;
       let h = hi0;
       for (let k = 0; k < 64 && h - l > 1e-15 * Math.max(1, Math.abs(h)); k++) {
+        checkBudget();
         const m = (l + h) / 2;
         if (m <= l || m >= h) break;
         if (sigAt(m) === sLo) l = m;

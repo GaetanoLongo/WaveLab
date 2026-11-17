@@ -10,7 +10,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   const out = process.argv[2] || fs.mkdtempSync(path.join(os.tmpdir(), 'wavelab-'));
   const url = process.env.WAVELAB_URL || 'http://localhost:4173/WaveLab/';
   const b = await chromium.launch();
-  const ctx = await b.newContext({ viewport: { width: 1400, height: 900 } });
+  const ctx = await b.newContext({ viewport: { width: 1400, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
   await ctx.addInitScript(() => { delete window.showSaveFilePicker; delete window.showOpenFilePicker; });
   const p = await ctx.newPage();
   const errs = []; p.on('pageerror', (e) => errs.push(e.message));
@@ -150,6 +150,74 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   await p.click('.annotations-dialog button:has-text("Done")');
   const wAfter = await p.evaluate(() => { const t = [...document.querySelectorAll('.plot-svg text')].find((e) => e.textContent === 'S'); return t.getBoundingClientRect().width; });
   assert(wAfter > wBefore * 1.5, `annotation text size multiplier works (${wBefore.toFixed(1)} → ${wAfter.toFixed(1)} px)`);
+
+  // --- Share link: copy, open in a fresh page, same project ---
+  await p.click('.toolbar button:has-text("New project"), button[title="New project"]').catch(() => {});
+  await p.click('.tool:has-text("Sine")'); await p.click('.tool:has-text("Square")');
+  const signalsBefore = await names();
+  await p.click('.toolbar button:has-text("Share")');
+  const link = await p.evaluate(() => navigator.clipboard.readText());
+  assert(/#share=d?[A-Za-z0-9_-]+$/.test(link) || /#share=/.test(link), 'Share copies a link: ' + link.slice(0, 60) + '…');
+  assert((await p.locator('.status .notice').innerText()).includes('Link copied'), 'a notice says the link was copied');
+  const p2 = await ctx.newPage();
+  await p2.goto(link);
+  await p2.waitForSelector('.signal-list .row');
+  const signalsAfter = await p2.locator('.signal-list .name').allInnerTexts();
+  assert(JSON.stringify(signalsAfter) === JSON.stringify(signalsBefore), 'the link opens the same signals: ' + signalsAfter);
+  assert(!(await p2.evaluate(() => location.hash)), 'the fragment is removed from the address after opening');
+  const badPage = await ctx.newPage();
+  badPage.on("dialog", (d) => d.accept());
+  await badPage.goto(url + '#share=dAAAAAAAA');
+  await badPage.waitForSelector(".toolbar");
+  assert(await badPage.locator(".toolbar").count() === 1, 'a damaged link does not break the app');
+  await badPage.close(); await p2.close();
+
+  // --- Edge and pulse measurements ---
+  await p.click('button[title="New project"]').catch(() => {});
+  await p.click('.tool:has-text("Square")');
+  await p.click('.tool:has-text("Low-pass (RC)")');
+  await p.waitForSelector('.measure .edges', { timeout: 8000 });
+  const edgeText = await p.locator('.measure .edges').innerText();
+  assert(/Rise/.test(edgeText) && /Fall/.test(edgeText) && /width/.test(edgeText), 'the Measure panel shows edge and pulse measurements: ' + edgeText.replace(/\s+/g, ' ').slice(0, 90));
+
+  // --- CSV import (a scope-style export with the unit in the header) ---
+  await p.click('button[title="New project"]').catch(() => {});
+  const csvPath = path.join(out, 'scope.csv');
+  const lines = ['Time (ms),CH1 (V),CH2 (V)'];
+  for (let i = 0; i <= 400; i++) lines.push(`${(i * 0.05).toFixed(2)},${(2 * Math.sin((2 * Math.PI * 50 * i * 0.05) / 1000)).toFixed(5)},${i % 80 < 40 ? 3.3 : 0}`);
+  fs.writeFileSync(csvPath, lines.join('\n') + '\n');
+  const [chooser] = await Promise.all([p.waitForEvent('filechooser'), p.click('.tool:has-text("Import CSV data")')]);
+  await chooser.setFiles(csvPath);
+  await p.waitForSelector('.modal');
+  assert((await p.locator('.modal h2').innerText()).includes('scope.csv'), 'the import dialog opens for the file');
+  assert((await p.locator('.modal select').first().inputValue()) === '0', 'the time column is found automatically');
+  assert((await p.locator('.modal select').nth(1).inputValue()) === 'ms', 'the time unit is read from the header (ms)');
+  assert((await p.locator('.modal .readout').innerText()).includes('401'), 'the dialog states the number of rows');
+  await p.click('.modal footer button.primary');
+  const imported = await p.locator('.signal-list .name').allInnerTexts();
+  assert(imported.length === 2 && imported[0].startsWith('CH1'), 'two signals were created: ' + imported);
+  await p.locator('.signal-list .row').first().click();
+  await p.waitForTimeout(600);
+  const maxText = await p.locator('.measure .m-grid').first().innerText();
+  assert(/Max\s+2 V|Max\s+1\.99/.test(maxText), 'the imported signal measures like the data (peak ≈ 2 V): ' + maxText.replace(/\s+/g, ' ').slice(0, 60));
+  await p.click('.tool:has-text("Absolute value")');
+  assert((await p.locator('.signal-list .row').count()) === 3, 'imported data works with the operations');
+
+  // --- Popovers stay inside the window at common laptop widths (the toolbar wraps there) ---
+  for (const w of [1280, 1100, 900]) {
+    await p.setViewportSize({ width: w, height: 800 });
+    await p.waitForTimeout(300);
+    const triggers = await p.locator('.toolbar .popover-anchor > button').count();
+    for (let i = 0; i < triggers; i++) {
+      await p.locator('.toolbar .popover-anchor > button').nth(i).click();
+      await p.waitForTimeout(150);
+      const r = await p.evaluate(() => { const e = document.querySelector('.popover'); if (!e) return null; const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; });
+      assert(r && r.l >= 0 && r.r <= w + 0.5 && r.b <= 800 + 0.5, `popover ${i} fits in the ${w}px window` + (r ? ` (x ${Math.round(r.l)}…${Math.round(r.r)}, bottom ${Math.round(r.b)})` : ' (not found)'));
+      await p.keyboard.press('Escape');
+      await p.mouse.click(w / 2, 400).catch(() => {});
+    }
+  }
+  await p.setViewportSize({ width: 1400, height: 900 });
 
   assert(errs.length === 0, 'no page errors: ' + errs.join('; '));
   await b.close();

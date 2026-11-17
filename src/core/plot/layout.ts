@@ -13,6 +13,7 @@ import { logTicks, niceTicks } from './ticks';
 import { autoYRange } from './viewport';
 import type { Annotation } from '../model/project';
 import { drawAnnotations, resolveAnnotations } from './annotations';
+import { beginFrame, budgeted, endFrame } from '../signals/budget';
 
 export interface PlotTheme {
   id: string;
@@ -421,7 +422,17 @@ function autoYRangeRaw(signals: SignalEval[]): Range | null {
   return [mid - span / 2, mid + span / 2];
 }
 
+/** Draw a figure. All traces share one 8 s allowance (see `beginFrame`); a trace over its share is left out. */
 export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureLayout } {
+  beginFrame(8000);
+  try {
+    return buildFigureInner(input);
+  } finally {
+    endFrame();
+  }
+}
+
+function buildFigureInner(input: FigureInput): { scene: Scene; layout: FigureLayout } {
   const layout = computeLayout(input);
   const th = input.theme;
   const fs = th.fontSize;
@@ -500,7 +511,8 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
 
     // Traces.
     for (const tr of traces) {
-      const sampled = sampleSignal(tr.signal, t0, t1, layout.plotW);
+      // One slow trace must not hold up the figure: it is left out (and the user is told).
+      const sampled = budgeted(tr.signal, 4000, () => sampleSignal(tr.signal, t0, t1, layout.plotW), () => ({ mode: 'exact' as const, lines: [] }));
       const polylines: number[][] = [];
       for (const line of sampled.lines) {
         let flat: number[] = [];

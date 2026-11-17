@@ -12,7 +12,7 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "node e2e/editor.e2e.cjs && node e2e/snap.e2e.cjs && node e2e/files.e2e.cjs && node e2e/ops.e2e.cjs && node e2e/calculus.e2e.cjs && node e2e/mobile.e2e.cjs && node e2e/measure.e2e.cjs && node e2e/style.e2e.cjs && node e2e/waveforms.e2e.cjs && node e2e/figures.e2e.cjs && node e2e/grid.e2e.cjs && node e2e/spectrum.e2e.cjs && node e2e/pwm.e2e.cjs && node e2e/robustness.e2e.cjs && node e2e/power.e2e.cjs && node e2e/sources.e2e.cjs && node e2e/annotations.e2e.cjs && node e2e/digital.e2e.cjs && node e2e/ux.e2e.cjs"
+    "e2e": "node e2e/editor.e2e.cjs && node e2e/snap.e2e.cjs && node e2e/files.e2e.cjs && node e2e/ops.e2e.cjs && node e2e/calculus.e2e.cjs && node e2e/mobile.e2e.cjs && node e2e/measure.e2e.cjs && node e2e/style.e2e.cjs && node e2e/waveforms.e2e.cjs && node e2e/figures.e2e.cjs && node e2e/grid.e2e.cjs && node e2e/spectrum.e2e.cjs && node e2e/pwm.e2e.cjs && node e2e/robustness.e2e.cjs && node e2e/power.e2e.cjs && node e2e/sources.e2e.cjs && node e2e/annotations.e2e.cjs && node e2e/digital.e2e.cjs && node e2e/ux.e2e.cjs && node e2e/measure-ui.e2e.cjs"
   },
   "dependencies": {
     "immer": "^10.1.1",

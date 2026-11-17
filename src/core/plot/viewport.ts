@@ -1,6 +1,7 @@
 /** Pure helpers for the shared time axis and vertical ranges (zoom, pan, fit). */
 
 import type { SignalEval } from '../signals/types';
+import { budgeted } from '../signals/budget';
 import { rangeOfBounded, unionRanges, type Range } from './range';
 
 export const MIN_SPAN = 1e-12;
@@ -47,7 +48,7 @@ export function autoYRange(signals: SignalEval[]): Range {
     signals.map((s) => {
       const [a, b] = fitTimeRange([s]);
       const m = (b - a) * 0.01;
-      return rangeOfBounded(s, a - m, b + m);
+      return budgeted(s, 3000, () => rangeOfBounded(s, a - m, b + m), () => null);
     }),
   );
   if (!r) return [-1, 1];
