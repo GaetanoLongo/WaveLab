@@ -17,7 +17,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   p.on('dialog', (d) => d.accept());
   for (let i = 0; i < 20; i++) { try { await p.goto(url); break; } catch { await p.waitForTimeout(300); } }
   await p.evaluate(() => localStorage.clear()); await p.reload();
-  const field = (label) => p.locator('.properties .field', { has: p.locator(`label:text-is("${label}")`) }).locator('input').first();
+  const field = (label) => p.locator('.properties .field', { has: p.locator('label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input').first();
   const setField = async (label, text) => { const f = field(label); await f.click(); await f.fill(text); await f.press('Enter'); };
   const names = () => p.locator('.signal-list .name').allInnerTexts();
   const select = (i) => p.locator('.signal-list .row').nth(i).click();
@@ -60,7 +60,8 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   // Delete protection
   await select(0);
   await p.keyboard.press('Delete');
-  assert((await p.locator('.notice').innerText()).includes('used by “Vsum”'), 'input used by an expression cannot be deleted');
+  assert((await p.locator('.alert-dialog').innerText()).includes('Vsum'), 'input used by an expression cannot be deleted (popup names the dependent)');
+  await p.click('.alert-dialog button.primary');
 
   // PWM: triangle carrier 1 kHz, reference = Sine (10 V) → make reference 0.8 amplitude
   await p.click('.tool:has-text("Triangle")');

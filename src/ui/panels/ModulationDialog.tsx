@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import { DEFAULT_MODULATION, MODULATION_LABELS, modulationFigures, type ModulationConfig, type ModulationKind } from '../../state/modulation';
 import { actions } from '../../state/store';
 import { NumberField } from '../fields/NumberField';
+import { MathLabel } from '../MathLabel';
 import { Modal } from '../Modal';
 
 export const useModulationDialog = create<{ open: boolean }>(() => ({ open: false }));
@@ -87,16 +88,20 @@ function Dialog() {
           <dl className="readout">
             {modulationFigures(c).map(([k, v]) => (
               <div key={k}>
-                <dt>{k}</dt>
-                <dd>{v}</dd>
+                <dt>
+                  <MathLabel text={k} />
+                </dt>
+                <dd>
+                  <MathLabel text={v} />
+                </dd>
               </div>
             ))}
           </dl>
           {c.fc / c.fm < 4 && <p className="warn">The carrier is not much faster than the message: the result is hard to read.</p>}
           <p className="hint-text">
-            Creates ordinary editable signals: the message, the carrier (or its phase ramp θ_c for FM/PM, collapsed group) and the modulated
-            signal{c.kind === 'am' ? ' with its envelope' : ''}. Use Spectrum… on the result: with a sine message the FM/PM lines follow the
-            Bessel functions J_n(β).
+            <MathLabel
+              text={`Creates ordinary editable signals: the message, the carrier (or its phase ramp \\theta_c for FM/PM, collapsed group) and the modulated signal${c.kind === 'am' ? ' with its envelope' : ''}. Use Spectrum… on the result: with a sine message the FM/PM lines follow the Bessel functions J_n(\\beta).`}
+            />
           </p>
         </section>
       </div>

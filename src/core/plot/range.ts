@@ -4,7 +4,7 @@
  * ends or at feature limits.
  */
 
-import type { SignalEval } from '../signals/types';
+import type { Feature, SignalEval } from '../signals/types';
 
 export type Range = readonly [number, number];
 
@@ -23,14 +23,34 @@ export function rangeOf(s: SignalEval, a: number, b: number): Range | null {
   return rangeExact(s, a, b);
 }
 
+/**
+ * Like rangeOf, but with a bounded cost: if [a, b] holds more than `maxFeatures` features, only
+ * the leading part of the window that does is used (each retry takes a quarter). Used for the
+ * automatic vertical range of signals without a period, whose natural window (1 s) can hold
+ * hundreds of thousands of edges. Deterministic: depends on feature counts, not on timing.
+ */
+export function rangeOfBounded(s: SignalEval, a: number, b: number, maxFeatures = 250): Range | null {
+  if (s.period !== undefined && b - a >= s.period) return rangeOf(s, a, b);
+  let hi = b;
+  for (let i = 0; i < 10; i++) {
+    const q = s.features(a, hi, maxFeatures);
+    if (!q.truncated) return rangeFrom(s, a, hi, q.features);
+    hi = a + (hi - a) / 4;
+  }
+  return rangeFrom(s, a, hi, s.features(a, hi, maxFeatures).features);
+}
+
 function rangeExact(s: SignalEval, a: number, b: number): Range | null {
+  return rangeFrom(s, a, b, s.features(a, b).features);
+}
+
+function rangeFrom(s: SignalEval, a: number, b: number, features: readonly Feature[]): Range | null {
   let mn = Infinity;
   let mx = -Infinity;
   const add = (v: number) => {
     if (v < mn) mn = v;
     if (v > mx) mx = v;
   };
-  const { features } = s.features(a, b);
   add(s.value(a));
   const last = features[features.length - 1];
   add(last && last.t >= b ? last.left : s.value(b));

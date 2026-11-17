@@ -40,7 +40,14 @@ input.invalid { border-color: var(--danger); background: #fdf1f0; }
 
 /* ---------- layout ---------- */
 .app { display: flex; flex-direction: column; height: 100%; }
-.workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px minmax(0, 1fr) 300px; }
+.workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 5px minmax(0, 1fr) 5px 300px; }
+.workspace [hidden] { display: none; }
+.resizer { background: transparent; position: relative; z-index: 2; touch-action: none; }
+.resizer.col { cursor: col-resize; width: 5px; margin: 0 -1px; }
+.resizer.row { cursor: row-resize; height: 6px; }
+.measure > .resizer.row { position: sticky; top: 0; margin: -4px -10px -2px; z-index: 3; }
+.resizer:hover, .resizer:active { background: var(--accent-soft); }
+.measure { position: relative; }
 .toolbox, .inspector { background: var(--panel); overflow-y: auto; }
 .toolbox { border-right: 1px solid var(--border); }
 .inspector { border-left: 1px solid var(--border); display: flex; flex-direction: column; }
@@ -50,7 +57,10 @@ input.invalid { border-color: var(--danger); background: #fdf1f0; }
 @media (max-width: 980px) {
   /* One scrolling column. Scroll containers have no automatic minimum height in a grid,
      so the toolbox gets a fixed height and the inspector grows with its content. */
-  .workspace { grid-template-columns: 1fr; grid-template-rows: auto minmax(min(360px, 85vh), 1fr) auto; overflow-y: auto; }
+  .workspace { grid-template-columns: 1fr !important; grid-template-rows: auto minmax(min(360px, 85vh), 1fr) auto; overflow-y: auto; }
+  .workspace > .resizer, .workspace > span { display: none; }
+  .workspace > aside[hidden] { display: block; }
+  .tb-side { display: none; } /* the side panels are stacked here, not hideable */
   .toolbox { border-right: none; border-bottom: 1px solid var(--border); height: min(220px, 45vh); }
   .inspector { border-left: none; border-top: 1px solid var(--border); overflow: visible; }
 }
@@ -69,6 +79,7 @@ input.invalid { border-color: var(--danger); background: #fdf1f0; }
 .tb-group { display: inline-flex; align-items: center; padding: 0 4px; border-left: 1px solid var(--border); }
 .tb.text { border-color: transparent; background: transparent; padding: 4px 8px; }
 .tb.text:hover { background: var(--panel-2); border-color: var(--border); }
+.tb.text.toggle.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .sep { flex: 1; }
 .seg { display: inline-flex; margin-left: 4px; }
 .seg button { border-radius: 0; padding: 4px 9px; }
@@ -297,7 +308,9 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 .phone-panel { flex: 1; min-height: 0; overflow-y: auto; background: var(--panel); -webkit-overflow-scrolling: touch; }
 .phone-panel .signal-list { border-bottom: 0; }
 .phone-panel .signal-list ul { max-height: none; }
-.phone-panel .toolbox-inner .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.phone-panel .toolbox-inner .tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; }
+.phone-panel .toolbox-inner .tool { min-width: 0; overflow: hidden; }
+.phone-panel .toolbox-inner .tool > span, .phone-panel .toolbox-inner .tool { text-overflow: ellipsis; white-space: nowrap; }
 .phone-panel .tools-hint { margin-top: 0; }
 
 .toolbar.compact { flex-wrap: nowrap; gap: 0; padding: 4px 6px; }
@@ -309,6 +322,7 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
 .popover.menu { width: 220px; padding: 6px; display: flex; flex-direction: column; }
 .popover.menu button { justify-content: flex-start; border: 0; background: transparent; padding: 8px 10px; width: 100%; }
 .popover.menu button:hover:not(:disabled) { background: var(--accent-soft); }
+.popover.menu button.danger { color: var(--danger); }
 .popover.menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; width: 100%; }
 
 @media (max-width: 760px) {
@@ -482,3 +496,12 @@ table.harmonics td { padding: 2px 6px; border-bottom: 1px solid var(--panel-2); 
 .views-options { display: flex; flex-direction: column; gap: 6px; }
 .views-plot svg { width: 100%; height: auto; display: block; border: 1px solid var(--border); border-radius: 6px; }
 @media (max-width: 760px) { .views-body { grid-template-columns: 1fr; } }
+
+.alert-dialog .modal-body ul { margin: 6px 0 0; padding-left: 20px; }
+.alert-dialog { max-width: 420px; }
+
+/* Touch screens: every control is at least 32 px high and wide. */
+@media (max-width: 760px), (pointer: coarse) {
+  .name-btn, .fig-name, .fig-add, .range-btn { min-height: 32px; min-width: 32px; }
+  .range-btn { display: inline-flex; align-items: center; }
+}

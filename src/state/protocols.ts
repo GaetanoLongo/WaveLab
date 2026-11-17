@@ -31,6 +31,8 @@ export interface ProtocolConfig {
   stopBits: 1 | 2;
   /** Idle bits between UART frames. */
   gap: number;
+  /** Also create a bit-clock signal (one period per bit, rising edge at the middle of the bit = sampling point). */
+  uartClock: boolean;
   // SPI
   spiClock: number;
   spiMode: 0 | 1 | 2 | 3;
@@ -55,6 +57,7 @@ export const DEFAULT_PROTOCOL: ProtocolConfig = {
   parity: 'none',
   stopBits: 1,
   gap: 1,
+  uartClock: false,
   spiClock: 1e6,
   spiMode: 0,
   lsbFirst: false,
@@ -108,13 +111,18 @@ export function buildProtocol(c: ProtocolConfig, newId: (prefix: string) => stri
       const p: BitsParams = { bits, bitTime, high: H, low: L, encoding: 'nrz', repeat: false, idle };
       d.params = p;
     });
-    yRanges[s.id] = [L - 0.15 * D, H + 0.55 * D];
+    yRanges[s.id] = [L - 0.15 * D, H + 0.68 * D];
     return s;
   };
-  const dim = (on: string, t0: number, t1: number, text: string, color = '#1c2330') =>
-    anns.push({ kind: 'dim-t', on, t0, t1, y0: labelY, y1: labelY, text, color });
+  // Field brackets are shortened slightly so adjacent ones do not share an arrowhead, and the
+  // single-letter markers (S, A, P) sit just above the bracket line, clear of its end ticks.
+  const dim = (on: string, t0: number, t1: number, text: string, color = '#1c2330') => {
+    const inset = (t1 - t0) * 0.015;
+    anns.push({ kind: 'dim-t', on, t0: t0 + inset, t1: t1 - inset, y0: labelY, y1: labelY, text, color });
+  };
+  const markY = labelY + 0.2 * D;
   const label = (on: string, t: number, text: string, color = '#5b6577') =>
-    anns.push({ kind: 'text', on, t0: t, t1: t, y0: labelY, y1: labelY, text, color });
+    anns.push({ kind: 'text', on, t0: t, t1: t, y0: markY, y1: markY, text, color });
 
   if (c.protocol === 'uart') {
     const T = 1 / c.baud;
@@ -139,7 +147,12 @@ export function buildProtocol(c: ProtocolConfig, newId: (prefix: string) => stri
       dim(tx.id, (f.start + 1) * T, (f.start + 1 + c.dataBits) * T, show(f.byte));
       if (f.parityAt >= 0) label(tx.id, (f.parityAt + 0.15) * T, 'P');
     }
-    return { signals: B.signals, groups: [B.group('UART', [tx])], annotations: anns, yRanges, duration: s.length * T };
+    const members = [tx];
+    if (c.uartClock) {
+      // Half-bit cells: low then high, so the rising edge falls in the middle of each bit.
+      members.push(line('CLK', '01'.repeat(s.length), T / 2, 'low'));
+    }
+    return { signals: B.signals, groups: [B.group('UART', members)], annotations: anns, yRanges, duration: s.length * T };
   }
 
   if (c.protocol === 'spi') {
@@ -224,8 +237,8 @@ export function buildProtocol(c: ProtocolConfig, newId: (prefix: string) => stri
   const sSda = line('SDA', sda, qT, 'high');
   const sScl = line('SCL', scl, qT, 'high');
   label(sSda.id, 2 * qT, 'S');
+  label(sSda.id, (sda.length - 1.2) * qT, 'P'); // before the ACK markers: these yield when crowded
   for (const f of fields) dim(sSda.id, (f.at + 1) * qT, (f.at + 1 + 4 * f.n) * qT, f.text);
   for (const a of acks) label(sSda.id, (a.at + 1.6) * qT, a.text, a.text === 'N' ? '#c0392b' : '#5b6577');
-  label(sSda.id, (sda.length - 3) * qT, 'P');
   return { signals: B.signals, groups: [B.group('I²C', [sSda, sScl])], annotations: anns, yRanges, duration: sda.length * qT };
 }

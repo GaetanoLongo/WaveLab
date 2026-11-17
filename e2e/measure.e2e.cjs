@@ -16,9 +16,9 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   p.on('dialog', (d) => d.accept());
   for (let i = 0; i < 20; i++) { try { await p.goto(url); break; } catch { await p.waitForTimeout(300); } }
   await p.evaluate(() => localStorage.clear()); await p.reload();
-  const prop = (label) => p.locator('.properties .field', { has: p.locator(`label:text-is("${label}")`) }).locator('input').first();
+  const prop = (label) => p.locator('.properties .field', { has: p.locator('label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input').first();
   const setProp = async (label, text) => { const f = prop(label); await f.click(); await f.fill(text); await f.press('Enter'); };
-  const mfield = (label) => p.locator('.measure .field', { has: p.locator(`label:text-is("${label}")`) }).locator('input').first();
+  const mfield = (label) => p.locator('.measure .field', { has: p.locator('label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input').first();
   const setM = async (label, text) => { const f = mfield(label); await f.click(); await f.fill(text); await f.press('Enter'); };
   const mval = async (name) => p.locator('.measure .m-grid dt', { hasText: new RegExp(`^${name}$`) }).first().locator('xpath=following-sibling::dd[1]').innerText();
 
@@ -55,6 +55,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   // Level cursors; drag B to ~5 V → snaps to the level
   await p.click('.measure button:has-text("Level cursors")');
   assert(await mfield('Cursor A').inputValue() === '1.25 V' && await mfield('Cursor B').inputValue() === '3.75 V', 'level cursors at 25 % / 75 % of the range');
+  await p.waitForTimeout(400); // the panel grew: let the plot re-layout before reading pixel positions
   const yB = await p.evaluate(() => {
     const lines = [...document.querySelectorAll('.plot-svg line')].filter((l) => l.getAttribute('stroke') === '#6741d9');
     return +lines[1].getAttribute('y1');

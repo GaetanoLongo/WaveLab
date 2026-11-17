@@ -20,7 +20,16 @@ export interface AutoFundamental {
   /** Where the value comes from, for the UI. */
   source: 'period' | 'input' | 'span';
   inputName?: string;
+  /** Set when the pattern repeats only after this many periods and fewer were used (approximate). */
+  fullPeriods?: number;
 }
+
+/**
+ * Longest window (in periods of the fundamental) used automatically. A PWM whose carrier and
+ * reference frequencies are not commensurate repeats only after thousands of periods (e.g.
+ * 14 Hz / 170.37 Hz: 100 s); integrating that exactly blocks the page for many seconds.
+ */
+export const MAX_AUTO_PERIODS = 40;
 
 export function autoFundamental(p: Project, sig: SignalDef, ev: SignalEval, span: number): AutoFundamental {
   if (!ev.period) return { f1: 1 / span, periods: 1, source: 'span' };
@@ -55,5 +64,7 @@ export function autoFundamental(p: Project, sig: SignalDef, ev: SignalEval, span
   const best = pick(sines) ?? pick(inputs);
   if (!best || best.kind !== 'generator') return own;
   const f1 = best.timing.frequency;
-  return { f1, periods: Math.round(ev.period * f1), source: 'input', inputName: best.name };
+  const full = Math.round(ev.period * f1);
+  if (full > MAX_AUTO_PERIODS) return { f1, periods: MAX_AUTO_PERIODS, source: 'input', inputName: best.name, fullPeriods: full };
+  return { f1, periods: full, source: 'input', inputName: best.name };
 }

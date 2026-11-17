@@ -13,13 +13,13 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   const errs = []; p.on('pageerror', (e) => errs.push(e.message));
   for (let i = 0; i < 20; i++) { try { await p.goto(url); break; } catch { await p.waitForTimeout(300); } }
   await p.evaluate(() => localStorage.clear()); await p.reload();
-  const dfield = (label) => p.locator('.pwm-dialog .field', { has: p.locator(`label:text-is("${label}")`) }).locator('input, select').first();
+  const dfield = (label) => p.locator('.pwm-dialog .field', { has: p.locator('label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input, select').first();
   const setD = async (label, v) => { const f = dfield(label); await f.click(); await f.fill(v); await f.press('Enter'); };
 
   await p.click('.tool:has-text("PWM generator")');
   assert(await p.locator('.pwm-dialog').count() === 1, 'PWM dialog opens');
   await dfield('Topology').selectOption('three-phase');
-  await setD('Dead time t_d', '2u');
+  await setD('Dead time td', '2u');
   assert((await p.locator('.pwm-dialog .readout').innerText()).includes('277.1 V'), 'expected v_AB fundamental √3/2·0.8·400 = 277.1 V shown');
   await setD('Modulation index m', '1.2');
   assert(await p.locator('.pwm-dialog .warn').count() === 1, 'overmodulation warning for m > 1');

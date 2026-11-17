@@ -76,9 +76,10 @@ export function filter2Of(u: SignalEval, kind: Filter2Kind, f0: number, Q: numbe
   };
 
   /** Classify [a, b]: linear input piece? */
-  const classify = (a: number, b: number) => {
+  const classify = (a: number, b: number, rightAtA?: number) => {
     const h = b - a;
-    const ua = u.value(a);
+    // At a feature time use its right limit (the reported time can precede a merged jump by ~1e-15 s).
+    const ua = rightAtA !== undefined && Number.isFinite(rightAtA) ? rightAtA : u.value(a);
     const ub = u.value(b - h * 1e-9);
     const k = (ub - ua) / (h * (1 - 1e-9));
     const tol = 1e-12 * Math.max(Math.abs(ua), Math.abs(ub), 1e-300);
@@ -123,13 +124,15 @@ export function filter2Of(u: SignalEval, kind: Filter2Kind, f0: number, Q: numbe
     const q = u.features(a, b, MAX_SAMPLES);
     if (q.truncated) return null;
     const cuts = [a, ...q.features.map((f) => f.t).filter((t) => t > a && t < b), b];
+    const rightAt = new Map<number, number>();
+    for (const f of q.features) rightAt.set(f.t, f.right);
     const segs: Seg[] = [];
     let x = x0;
     for (let i = 0; i + 1 < cuts.length; i++) {
       const s0 = cuts[i]!;
       const s1 = cuts[i + 1]!;
       if (!(s1 > s0)) continue;
-      const c = classify(s0, s1);
+      const c = classify(s0, s1, rightAt.get(s0));
       segs.push({ a: s0, x, c });
       x = step(x, s0, s1 - s0, c);
     }
@@ -185,21 +188,35 @@ export function filter2Of(u: SignalEval, kind: Filter2Kind, f0: number, Q: numbe
     const C = Math.max((u.scale ?? 1 / f0) * 16, 1e-15);
     const starts = new Map<number, number[]>([[0, [0, 0]]]);
     const chunks = new Map<number, Seg[] | null>();
-    let maxJ = 0;
+    // The slowest pole decays at rate α − β (or α): after 45/rate the initial state is forgotten
+    // (e^-45 ≈ 3e-20), so a query far from 0 starts at most K chunks earlier, from rest.
+    const rate = disc > 0 ? alpha - beta : alpha;
+    const K = Math.ceil(45 / Math.max(rate, 1e-12) / C) + 2;
+    const startOf = (j: number): number[] | null => {
+      const known = starts.get(j);
+      if (known !== undefined) return known;
+      let k = j;
+      while (k > 0 && !starts.has(k) && j - k < K) k--;
+      if (!starts.has(k)) starts.set(k, [0, 0]);
+      let x = starts.get(k)!;
+      for (; k < j; k++) {
+        const r = build(k * C, (k + 1) * C, x);
+        if (!r) return null;
+        if (chunks.size < 4096) chunks.set(k, r.segs);
+        x = r.xb;
+        starts.set(k + 1, x);
+      }
+      return x;
+    };
     stateAt = (t) => {
       if (t < 0) return [0, 0];
       const j = Math.floor(t / C);
-      if (j > 1e5) return [NaN, NaN];
-      while (maxJ < j) {
-        const r = build(maxJ * C, (maxJ + 1) * C, starts.get(maxJ)!);
-        if (!r) return [NaN, NaN];
-        chunks.set(maxJ, r.segs);
-        starts.set(maxJ + 1, r.xb);
-        maxJ++;
-      }
+      if (j > 1e7) return [NaN, NaN];
       let segs = chunks.get(j);
       if (segs === undefined) {
-        const r = build(j * C, (j + 1) * C, starts.get(j)!);
+        const s0 = startOf(j);
+        if (!s0) return [NaN, NaN];
+        const r = build(j * C, (j + 1) * C, s0);
         segs = r ? r.segs : null;
         if (chunks.size < 4096) chunks.set(j, segs);
       }

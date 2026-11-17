@@ -16,7 +16,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   p.on('dialog', (d) => d.accept());
   for (let i = 0; i < 20; i++) { try { await p.goto(url); break; } catch { await p.waitForTimeout(300); } }
   await p.evaluate(() => localStorage.clear()); await p.reload();
-  const prop = (label) => p.locator('.properties .field', { has: p.locator(`label:text-is("${label}")`) }).locator('input').first();
+  const prop = (label) => p.locator('.properties .field', { has: p.locator('label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input').first();
   const setProp = async (label, text) => { const f = prop(label); await f.click(); await f.fill(text); await f.press('Enter'); };
   const panels = () => p.locator('.plot-svg clipPath').count();
   const rename = async (row, name) => { await row.locator('.name').dblclick(); await p.keyboard.press('Control+a'); await p.keyboard.type(name); await p.keyboard.press('Enter'); };
@@ -61,7 +61,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   assert(await p.locator('.fig-tab').count() === 2 && (await p.locator('.fig-tab.on .fig-name').innerText()) === 'Figure 2', 'new figure tab is active');
   assert(await p.locator('.signal-list .row:not(.other)').count() === 0, 'new figure starts empty');
   assert(await p.locator('.others').evaluate((e) => e.open), '"Not in this figure" opens automatically for an empty figure');
-  await p.locator('.others .row', { hasText: 'Gate' }).locator('button').click();
+  await p.locator('.others .row', { hasText: 'Gate' }).locator('button[title="Show in this figure"]').click();
   assert(await p.locator('.signal-list .row:not(.other) .name').allInnerTexts().then((x) => x.join()) === 'Gate', 'existing signal added to the figure');
   await p.locator('.range-btn').click();
   const from = p.locator('.axes-dialog section[data-axis="x"] .field', { has: p.locator('label:text-is("To")') }).locator('input');

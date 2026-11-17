@@ -46,7 +46,7 @@ export interface PwmConfig {
   carrier: 'triangle' | 'saw-up' | 'saw-down';
   /** Carrier frequency (Hz). */
   fc: number;
-  /** Reference (modulating) frequency (Hz). */
+  /** Reference (modulating) frequency (Hz). 0 = a DC reference (single-phase topologies only): the output is then a constant-duty pulse train. */
   f1: number;
   /** Modulation index (reference peak / carrier peak). */
   m: number;
@@ -96,7 +96,7 @@ export function buildPwm(c: PwmConfig, newId: (prefix: string) => string, colorS
   const style = (lw = 1.6) => ({ color: paletteColor(colour++), lineWidth: lw, dash: 'solid' as const, visible: true, showInLegend: true });
   const ref = (id: string) => `#{${id}}`;
 
-  const gen = (name: string, unit: string, build: (d: GeneratorSignalDef) => void, kind: 'triangle' | 'sawtooth' | 'sine'): GeneratorSignalDef => {
+  const gen = (name: string, unit: string, build: (d: GeneratorSignalDef) => void, kind: 'triangle' | 'sawtooth' | 'sine' | 'dc'): GeneratorSignalDef => {
     const d: GeneratorSignalDef = {
       id: newId('s'),
       name,
@@ -147,11 +147,15 @@ export function buildPwm(c: PwmConfig, newId: (prefix: string) => string, colorS
       phases.length > 1 ? `v_{ref,${k}}` : 'v_{ref}',
       '',
       (d) => {
+        if (d.generator === 'dc') {
+          d.params.level = c.m;
+          return;
+        }
         d.timing.frequency = c.f1;
         d.timing.phaseDeg = c.phaseDeg + ph;
         if (d.generator === 'sine') Object.assign(d.params, { amplitude: c.m, offset: 0 });
       },
-      'sine',
+      c.f1 > 0 ? 'sine' : 'dc',
     ),
   );
 
@@ -286,7 +290,10 @@ export function buildPwm(c: PwmConfig, newId: (prefix: string) => string, colorS
     ...(ref3 ? [{ id: newId('g'), name: 'Sinusoidal references', share: true, collapsed: true, traces: refs.map((s) => ({ signalId: s.id })), yAxis: axis }] : []),
     { id: newId('g'), name: 'Leg commands', share: false, collapsed: true, traces: legs.map((l) => ({ signalId: l.gate.id })), yAxis: axis },
   ];
-  if (hidden.length) groups.push({ id: newId('g'), name: 'Intermediate (ideal)', share: false, collapsed: true, traces: hidden.map((s) => ({ signalId: s.id })), yAxis: axis });
+  // A signal belongs to one group per figure: those already listed in a load group stay there.
+  const inLoadGroups = new Set(loadGroups.flatMap((g) => g.traces.map((t) => t.signalId)));
+  const hiddenOnly = hidden.filter((s) => !inLoadGroups.has(s.id));
+  if (hiddenOnly.length) groups.push({ id: newId('g'), name: 'Intermediate (ideal)', share: false, collapsed: true, traces: hiddenOnly.map((s) => ({ signalId: s.id })), yAxis: axis });
   if (gates.length) groups.push({ id: newId('g'), name: c.deadTime > 0 ? 'Gates (dead time)' : 'Gates', share: false, traces: gates.map((g) => ({ signalId: g.id })), yAxis: axis });
   groups.push({ id: newId('g'), name: c.load && c.deadTime > 0 && c.complementary ? 'Voltages (ideal)' : 'Voltages', share: false, traces: [...poles, ...outputs].map((s) => ({ signalId: s.id })), yAxis: axis });
   groups.push(...loadGroups);
@@ -302,13 +309,14 @@ export function linearLimit(c: PwmConfig): number {
 /** Expected fundamental amplitude of the main output for m ≤ 1 (linear range). */
 export function expectedFundamental(c: PwmConfig): { label: string; value: number } {
   // (valid for m ≤ linearLimit(c))
+  const what = c.f1 > 0 ? 'fundamental (peak)' : 'mean value';
   switch (c.topology) {
     case 'half':
-      return { label: 'v_out fundamental (peak)', value: (c.m * c.vdc) / 2 };
+      return { label: `v_out ${what}`, value: (c.m * c.vdc) / 2 };
     case 'full-bipolar':
     case 'full-unipolar':
-      return { label: 'v_AB fundamental (peak)', value: c.m * c.vdc };
+      return { label: `v_AB ${what}`, value: c.m * c.vdc };
     case 'three-phase':
-      return { label: 'v_AB fundamental (peak)', value: (Math.sqrt(3) / 2) * c.m * c.vdc };
+      return { label: `v_AB ${what}`, value: (Math.sqrt(3) / 2) * c.m * c.vdc };
   }
 }

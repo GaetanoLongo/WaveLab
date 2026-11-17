@@ -110,6 +110,10 @@ function Dialog() {
                 </div>
               </div>
               <NumberField label="Idle bits between frames" plain min={0} max={100} value={c.gap} onCommit={(v) => set({ gap: Math.round(v) })} />
+              <label className="check" title="Adds a CLK signal at the baud rate; its rising edges fall in the middle of each bit (the sampling points)">
+                <input type="checkbox" checked={c.uartClock} onChange={(e) => set({ uartClock: e.target.checked })} />
+                Also create a bit clock (CLK)
+              </label>
             </>
           )}
           {c.protocol === 'spi' && (

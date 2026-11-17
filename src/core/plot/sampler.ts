@@ -13,7 +13,7 @@
  * Undefined (NaN) regions split the output into separate polylines (gaps).
  */
 
-import type { SignalEval } from '../signals/types';
+import type { Feature, SignalEval } from '../signals/types';
 import { rangeOf } from './range';
 
 export interface Polyline {
@@ -101,13 +101,20 @@ function sampleEnvelope(s: SignalEval, t0: number, t1: number, cols: number): Sa
   // One query for the whole window, then per-column min/max from the feature limits and
   // the column edges (monotonic between features). Much cheaper than one query per column
   // for expression signals, whose queries recurse through all their inputs.
-  const all = s.features(t0, t1, ENVELOPE_MAX_FEATURES);
+  // A periodic signal repeats: one period holds every feature, whatever the window length.
+  // (Querying the whole window of a dense PWM signal costs seconds per redraw when zoomed out.)
+  const T = s.period;
+  const periodic = T !== undefined && T > 0 && t1 - t0 > 4 * T;
+  const pq = periodic ? s.features(0, T!, ENVELOPE_MAX_FEATURES) : null;
+  const all = periodic ? { features: [], truncated: true } : s.features(t0, t1, ENVELOPE_MAX_FEATURES);
   const feats = all.truncated ? null : all.features;
   let fi = 0;
   for (let i = 0; i < cols; i++) {
     const c0 = t0 + i * dt;
     let r: readonly [number, number] | null;
-    if (feats) {
+    if (periodic && pq && !pq.truncated) {
+      r = periodicColumnRange(s, T!, pq.features, c0, c0 + dt);
+    } else if (feats) {
       let mn = Infinity;
       let mx = -Infinity;
       const add = (v: number) => {
@@ -143,4 +150,36 @@ function sampleEnvelope(s: SignalEval, t0: number, t1: number, cols: number): Sa
     }
   }
   return { mode: 'envelope', lines: out.finish() };
+}
+
+/** [min, max] of a periodic signal over [c0, c1], from the features of one period [0, T]. */
+function periodicColumnRange(s: SignalEval, T: number, feats: readonly Feature[], c0: number, c1: number): readonly [number, number] | null {
+  let mn = Infinity;
+  let mx = -Infinity;
+  const add = (v: number) => {
+    if (v < mn) mn = v;
+    if (v > mx) mx = v;
+  };
+  const over = (x: number, y: number) => {
+    // [x, y] lies inside [0, T] (up to rounding)
+    add(s.value(x));
+    add(s.left ? s.left(y) : s.value(y));
+    for (const f of feats) {
+      if (f.t < x) continue;
+      if (f.t > y) break;
+      add(f.left);
+      add(f.right);
+    }
+  };
+  if (c1 - c0 >= T) over(0, T);
+  else {
+    const u0 = ((c0 % T) + T) % T;
+    const u1 = u0 + (c1 - c0);
+    if (u1 <= T) over(u0, u1);
+    else {
+      over(u0, T);
+      over(0, u1 - T);
+    }
+  }
+  return mn <= mx ? [mn, mx] : null;
 }

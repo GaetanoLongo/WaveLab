@@ -35,9 +35,11 @@ export function lowpassOf(x: SignalEval, tau: number, start?: { t0: number; y0: 
   const T = x.period;
 
   /** Classify [a, b] once: linear pieces get the closed form. */
-  const classify = (a: number, b: number): { lin: boolean; xa: number; k: number } => {
+  const classify = (a: number, b: number, rightAtA?: number): { lin: boolean; xa: number; k: number } => {
     const h = b - a;
-    const xa = x.value(a);
+    // At a feature time the piece starts from the feature's right limit: the reported time can be
+    // a hair before the real jump (events merged within 1e-14 s), where value(a) is still the old level.
+    const xa = rightAtA !== undefined && Number.isFinite(rightAtA) ? rightAtA : x.value(a);
     const xb = x.value(b - h * 1e-9);
     const k = (xb - xa) / (h * (1 - 1e-9));
     const tol = 1e-12 * Math.max(Math.abs(xa), Math.abs(xb), 1e-300);
@@ -59,13 +61,15 @@ export function lowpassOf(x: SignalEval, tau: number, start?: { t0: number; y0: 
     const q = x.features(a, b, MAX_SAMPLES);
     if (q.truncated) return null;
     const cuts = [a, ...q.features.map((f) => f.t).filter((t) => t > a && t < b), b];
+    const rightAt = new Map<number, number>();
+    for (const f of q.features) rightAt.set(f.t, f.right);
     const segs: Seg[] = [];
     let y = ya;
     for (let i = 0; i + 1 < cuts.length; i++) {
       const s0 = cuts[i]!;
       const s1 = cuts[i + 1]!;
       if (!(s1 > s0)) continue;
-      const c = classify(s0, s1);
+      const c = classify(s0, s1, rightAt.get(s0));
       segs.push({ a: s0, ya: y, ...c });
       y = step(y, s0, s1, c);
     }
@@ -114,18 +118,32 @@ export function lowpassOf(x: SignalEval, tau: number, start?: { t0: number; y0: 
     const C = Math.max((x.scale ?? tau) * 16, 1e-15);
     const chunks = new Map<number, Seg[] | null>();
     const startY = new Map<number, number>([[0, y0]]);
-    let maxJ = 0;
+    // The filter forgets its past: after 45τ the initial state has decayed by e^-45 ≈ 3e-20.
+    // A query far from t0 therefore starts at most K chunks earlier, from y = 0, instead of
+    // walking (and freezing the page for seconds) all the way from t0.
+    const K = Math.ceil((45 * tau) / C) + 2;
+    const startOf = (j: number): number => {
+      const known = startY.get(j);
+      if (known !== undefined) return known;
+      let k = j;
+      while (k > 0 && !startY.has(k) && j - k < K) k--;
+      if (!startY.has(k)) startY.set(k, 0);
+      let y = startY.get(k)!;
+      for (; k < j; k++) {
+        const r = buildSegs(t0 + k * C, t0 + (k + 1) * C, y);
+        if (!r) return NaN;
+        if (chunks.size < 4096) chunks.set(k, r.segs);
+        y = r.yb;
+        startY.set(k + 1, y);
+      }
+      return y;
+    };
     const chunk = (j: number): Seg[] | null => {
       let c = chunks.get(j);
       if (c !== undefined) return c;
-      while (maxJ < j) {
-        const r = buildSegs(t0 + maxJ * C, t0 + (maxJ + 1) * C, startY.get(maxJ)!);
-        if (!r) return null;
-        if (chunks.size < 4096) chunks.set(maxJ, r.segs);
-        startY.set(maxJ + 1, r.yb);
-        maxJ++;
-      }
-      const r = buildSegs(t0 + j * C, t0 + (j + 1) * C, startY.get(j)!);
+      const ys = startOf(j);
+      if (Number.isNaN(ys)) return null;
+      const r = buildSegs(t0 + j * C, t0 + (j + 1) * C, ys);
       c = r ? r.segs : null;
       if (chunks.size < 4096) chunks.set(j, c);
       return c;

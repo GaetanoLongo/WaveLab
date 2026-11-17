@@ -6,6 +6,7 @@
 
 import { useId, useRef, useState } from 'react';
 import { formatSI, parseSI } from '../../core/units/si';
+import { MathLabel } from '../MathLabel';
 
 export interface NumberFieldProps {
   label: string;
@@ -84,7 +85,7 @@ export function NumberField(p: NumberFieldProps) {
   return (
     <div className="field">
       <label htmlFor={id} title={p.title}>
-        {p.label}
+        <MathLabel text={p.label} />
       </label>
       <input
         id={id}
@@ -99,7 +100,9 @@ export function NumberField(p: NumberFieldProps) {
           setText(shown);
           setEditing(true);
           const el = e.currentTarget;
-          requestAnimationFrame(() => el.select());
+          // select() focuses the field in Chromium: only select while it still has the focus, or an
+          // Enter/Escape pressed within the same frame (which blurs it) would hand the focus back.
+          requestAnimationFrame(() => document.activeElement === el && el.select());
         }}
         onChange={(e) => {
           setText(e.target.value);

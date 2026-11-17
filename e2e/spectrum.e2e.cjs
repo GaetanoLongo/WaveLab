@@ -14,7 +14,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   const errs = []; p.on('pageerror', (e) => errs.push(e.message));
   for (let i = 0; i < 20; i++) { try { await p.goto(url); break; } catch { await p.waitForTimeout(300); } }
   await p.evaluate(() => localStorage.clear()); await p.reload();
-  const sfield = (label) => p.locator('.spectrum-dialog .field', { has: p.locator(`label:text-is("${label}")`) }).locator('input, select').first();
+  const sfield = (label) => p.locator('.spectrum-dialog .field', { has: p.locator('label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input, select').first();
   const summary = async (k) => p.locator('.spectrum-summary div', { has: p.locator(`dt:text-is("${k}")`) }).locator('dd').innerText();
   const row = async (order) => p.locator('table.harmonics tbody tr', { has: p.locator(`td:first-child:text-is("${order}")`) }).locator('td').allInnerTexts();
 

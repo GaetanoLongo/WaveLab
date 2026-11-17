@@ -90,6 +90,8 @@ export interface PlotViewProps {
   onAnnotationChange?(id: string, patch: Partial<Annotation>, key: string): void;
   onAnnotationSelect?(id: string | null): void;
   onAnnotationEdit?(id: string): void;
+  /** Right-click: what is under the pointer (signal / annotation) and the data coordinates there. */
+  onContextMenu?(info: { clientX: number; clientY: number; signalId: string | null; annotationId: string | null; t: number | null; y: number | null; panelId: string | null; panelSignalId: string | null }): void;
 }
 
 type FigureInputAxes = { x?: AxisStyle; y?: Record<string, AxisStyle> };
@@ -551,6 +553,25 @@ export function PlotView(props: PlotViewProps) {
         setGuide(null);
       }}
       onPointerLeave={() => props.onCursor?.(null)}
+      onContextMenu={(e) => {
+        if (!props.onContextMenu) return;
+        e.preventDefault();
+        const { x, y } = localPos(e.currentTarget, e);
+        const inside = x >= layout.plotX && x <= layout.plotX + layout.plotW;
+        const panel = inside ? panelAt(layout, y) : null;
+        const ah = props.onAnnotationSelect || props.onAnnotationEdit ? annotationAt(resolvedAnns, layout, x, y) : null;
+        const hit = ah ? null : hitTest(layout, props.traces, x, y, 8);
+        props.onContextMenu({
+          clientX: e.clientX,
+          clientY: e.clientY,
+          signalId: hit,
+          annotationId: ah?.a.id ?? null,
+          t: panel ? pxToT(layout, x) : null,
+          y: panel ? pxToY(panel, y) : null,
+          panelId: panel?.id ?? null,
+          panelSignalId: panel?.traceIds[0] ?? null,
+        });
+      }}
       onDoubleClick={(e) => {
         const { x, y } = localPos(e.currentTarget, e);
         const ah = props.onAnnotationEdit ? annotationAt(resolvedAnns, layout, x, y) : null;

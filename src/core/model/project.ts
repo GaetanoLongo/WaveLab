@@ -97,6 +97,10 @@ export interface Annotation {
   y1: number;
   text: string;
   color: string;
+  /** Line thickness of arrows and dimension markers, as a multiple of the default (1 when absent). */
+  width?: number;
+  /** Text size as a multiple of the figure's font size (1 when absent). */
+  size?: number;
 }
 
 export interface Figure {

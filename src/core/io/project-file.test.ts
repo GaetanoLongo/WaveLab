@@ -102,11 +102,20 @@ describe('project file validation', () => {
     expect(() => parseProjectFile(JSON.stringify(g))).toThrow(/duty must be between 0 and 1/);
   });
 
-  it('repairs the order list: drops dangling references, appends unlisted signals', () => {
+  it('repairs the order list: drops dangling references; signals in no figure stay in none', () => {
     const f = good();
     f.project.figures[0].panels[0].traces = [{ signalId: 'zzz' }, { signalId: 'b' }];
     const p = parseProjectFile(JSON.stringify(f)).project;
-    expect(p.figures[0]!.panels[0]!.traces.map((t) => t.signalId)).toEqual(['b', 'a', 'c']);
+    // “Remove from this figure” can leave a signal only in the project: reopening must not move it back.
+    expect(p.figures[0]!.panels[0]!.traces.map((t) => t.signalId)).toEqual(['b']);
+    expect(p.signals.map((s) => s.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('a file that lists no traces at all shows every signal in the first figure', () => {
+    const f = good();
+    f.project.figures[0].panels[0].traces = [];
+    const p = parseProjectFile(JSON.stringify(f)).project;
+    expect(p.figures[0]!.panels[0]!.traces.map((t) => t.signalId)).toEqual(['a', 'b', 'c']);
   });
 
   it('rejects duplicate ids', () => {

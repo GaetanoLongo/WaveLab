@@ -106,10 +106,12 @@ function readProject(v: unknown): Project {
   });
   const figures = arr(p.figures, 'project.figures').map((f, i) => readFigure(f, `figures[${i}]`, ids));
   if (figures.length === 0) throw new ProjectFileError('project.figures must contain at least one figure.');
-  // A signal may appear in any figure; signals shown in none are added to the first figure.
+  // A signal may appear in any figure, or in none (“Remove from this figure” can leave it only in the
+  // project, and it must stay that way after reopening). Only when the file lists no trace at all
+  // (a hand-made or minimal file) are the signals added to the first figure so that something shows.
   const listed = new Set(figures.flatMap((f) => f.panels.flatMap((pa) => pa.traces.map((t) => t.signalId))));
   const first = figures[0]!;
-  for (const s of signals) if (!listed.has(s.id)) first.panels[first.panels.length - 1]!.traces.push({ signalId: s.id });
+  if (listed.size === 0) for (const s of signals) first.panels[first.panels.length - 1]!.traces.push({ signalId: s.id });
   const figIds = new Set<string>();
   for (const f of figures) {
     if (figIds.has(f.id)) throw new ProjectFileError(`Duplicate figure id "${f.id}".`);
@@ -463,6 +465,8 @@ function readAnnotations(v: unknown, path: string, ids: Set<string>): Annotation
       y1: num(o.y1, `${p}.y1`),
       text: str(o.text, `${p}.text`),
       color,
+      ...(o.width !== undefined && o.width !== null ? { width: Math.min(20, Math.max(0.1, num(o.width, `${p}.width`))) } : {}),
+      ...(o.size !== undefined && o.size !== null ? { size: Math.min(8, Math.max(0.3, num(o.size, `${p}.size`))) } : {}),
     };
   });
 }

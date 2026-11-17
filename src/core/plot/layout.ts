@@ -433,6 +433,32 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
   const xt = timeTicks(layout, xs);
   const scale = th.lineScale;
 
+  // Tick labels already drawn: a later label that would touch one of them is left out (adjacent
+  // short panels, or the first time label next to the lowest value label in the corner).
+  const placedTicks: Array<{ x0: number; x1: number; y0: number; y1: number }> = [];
+  const textRect = (x: number, y: number, text: string, size: number, anchor: 'start' | 'middle' | 'end', baseline: 'top' | 'middle' | 'bottom') => {
+    const w = estimateWidth(text, size);
+    const h = size * 1.25;
+    const x0 = anchor === 'start' ? x : anchor === 'end' ? x - w : x - w / 2;
+    const y0 = baseline === 'top' ? y : baseline === 'bottom' ? y - h : y - h / 2;
+    return { x0, x1: x0 + w, y0, y1: y0 + h };
+  };
+  const touches = (r: { x0: number; x1: number; y0: number; y1: number }) =>
+    placedTicks.some((p) => r.x0 < p.x1 - 0.5 && p.x0 < r.x1 - 0.5 && r.y0 < p.y1 - 0.5 && p.y0 < r.y1 - 0.5);
+
+  // The time labels under the last panel are reserved first: where the lowest value label of the
+  // last panel would touch the first time label (corner), the value label yields.
+  const lastPanel = layout.panels[layout.panels.length - 1];
+  const xLabelOk = new Set<number>();
+  if (lastPanel) {
+    xt.major.forEach((t, i) => {
+      const rect = textRect(tToPx(layout, t), lastPanel.y + lastPanel.h + 6, xt.labels[i]!, fs * 0.92, 'middle', 'top');
+      if (touches(rect)) return;
+      placedTicks.push(rect);
+      xLabelOk.add(i);
+    });
+  }
+
   layout.panels.forEach((pl, idx) => {
     const pin = input.panels[idx];
     const traces = pin?.traces ?? [];
@@ -523,10 +549,15 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
     const every = pl.log ? 1 : Math.max(1, Math.ceil((pfs * 1.15) / Math.max(spacing, 1e-9)));
     yt.major.forEach((v, i) => {
       if (every > 1 && Math.round(v / yt.step) % every !== 0) return;
+      const ly = yToPx(pl, v);
+      const rect = textRect(pl.x - 6, ly, yt.labels[i]!, pfs * 0.92, 'end', 'middle');
+      // Decade labels of a log axis are what makes it readable: they are never dropped.
+      if (!pl.log && touches(rect)) return;
+      placedTicks.push(rect);
       items.push({
         type: 'text',
         x: pl.x - 6,
-        y: yToPx(pl, v),
+        y: ly,
         text: yt.labels[i]!,
         size: pfs * 0.92,
         fill: th.mutedText,
@@ -593,6 +624,7 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
     // X tick labels and title under the last panel only (shared axis).
     if (isLast) {
       xt.major.forEach((t, i) => {
+        if (!xLabelOk.has(i)) return;
         items.push({
           type: 'text',
           x: tToPx(layout, t),
@@ -619,7 +651,7 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
 
   if (input.annotations?.length) {
     const unitOf = (id: string) => input.panels.flatMap((p) => p.traces).find((t) => t.id === id)?.unit;
-    drawAnnotations(items, resolveAnnotations(input.annotations, layout, unitOf), layout, fs, th.lineScale, input.selectedAnnotation);
+    drawAnnotations(items, resolveAnnotations(input.annotations, layout, unitOf), layout, fs, th.lineScale, input.selectedAnnotation, th.plotBackground);
   }
   if (input.cursors) drawCursors(items, input.cursors, layout, fs);
 
@@ -640,14 +672,15 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
  */
 function fitTitle(full: string, base: string, h: number, fs: number): { text: string; size: number } | null {
   if (!full) return null;
-  const room = h - 4;
+  // Width estimates are a little optimistic for wide glyphs: keep a margin so neighbouring titles never touch.
+  const room = (h - 8) / 1.1;
   for (const text of base && base !== full ? [full, base] : [full]) {
     for (const size of [fs, fs * 0.85, fs * 0.75]) if (estimateWidth(text, size) <= room) return { text, size };
   }
   const size = fs * 0.75;
   const plain = plainText(base || full);
-  const chars = Math.floor(room / (size * 0.58)) - 1;
-  return chars >= 2 ? { text: `${plain.slice(0, chars)}…`, size } : null;
+  const chars = Math.floor(room / (size * 0.75)) - 1;
+  return chars >= 3 ? { text: `${plain.slice(0, chars)}…`, size } : null;
 }
 
 /** Time-axis ticks exactly as drawn (shared with snapping so the grid matches). */

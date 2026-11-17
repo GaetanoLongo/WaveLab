@@ -25,6 +25,18 @@ describe('serial protocols decode back to the payload', () => {
     expect(parseBytes('4g', 'hex')).toBeNull();
   });
 
+  it('UART bit clock is optional and rises in the middle of each bit', () => {
+    make({ protocol: 'uart', data: 'Hi' });
+    expect(() => sig('CLK')).toThrow();
+    make({ protocol: 'uart', data: 'Hi', uartClock: true });
+    const clk = sig('CLK');
+    const T = 1 / 9600;
+    expect(bit(clk.value(0.25 * T))).toBe(0);
+    expect(bit(clk.value(0.75 * T))).toBe(1);
+    expect(bit(clk.value(1.25 * T))).toBe(0);
+    expect(bit(clk.value(1.75 * T))).toBe(1);
+  });
+
   it('UART 8E1: start bit, LSB first, even parity, stop; idle high', () => {
     make({ protocol: 'uart', data: 'Hi', parity: 'even', baud: 9600 });
     const tx = sig('TX');
@@ -91,6 +103,9 @@ describe('serial protocols decode back to the payload', () => {
     make({ protocol: 'i2c', read: true, data: 'AA', dataFormat: 'hex' });
     const texts = editor.getState().project.figures[0]!.annotations!.map((a) => a.text);
     expect(texts).toContain('0x50 R');
-    expect(texts[texts.length - 2]).toBe('N');
+    expect(texts).toContain('N'); // the last byte is not acknowledged
+    expect(texts.filter((t) => t === 'A').length).toBe(1); // only the address byte is
+    expect(texts).toContain('S');
+    expect(texts).toContain('P');
   });
 });

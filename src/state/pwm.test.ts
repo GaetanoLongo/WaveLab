@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { measureInterval } from '../core/measure/measure';
+import { autoYRange } from '../core/plot/viewport';
 import { harmonicSpectrum } from '../core/measure/spectrum';
 import { compiled } from './compiled';
 import { DEFAULT_PWM, expectedFundamental, type PwmConfig } from './pwm';
@@ -20,6 +22,17 @@ describe('PWM generator (checked against textbook results with the exact spectru
     actions.createPwm(c);
     return c;
   };
+
+  it('DC reference (f1 = 0): constant duty, mean value = m·Vdc; refused for three-phase', () => {
+    const c = make({ topology: 'full-bipolar', f1: 0, m: 0.5, fc: 1000 });
+    // Whole carrier periods: mean of v_AB = m·Vdc.
+    const sp = harmonicSpectrum(sig('v_{AB}'), { f1: 1000, periods: 1, t0: 0, maxOrder: 5 });
+    expect(sp.dc).toBeCloseTo(expectedFundamental(c).value, 3);
+    expect(expectedFundamental(c).label).toMatch(/mean/);
+    actions.newProject();
+    expect(actions.createPwm({ ...DEFAULT_PWM, topology: 'three-phase', f1: 0 })).toMatch(/DC reference/);
+    expect(st().project.signals.length).toBe(0);
+  });
 
   it('full bridge bipolar: v_AB fundamental = m·Vdc, two levels ±Vdc', () => {
     const c = make({ topology: 'full-bipolar' });
@@ -125,5 +138,60 @@ describe('PWM: zero-sequence injection, load current, dead-time voltages', () =>
     expect(Math.abs(err - expected) / expected).toBeLessThan(0.1);
     // The real current is smaller than the ideal one.
     expect(spectrumOf('i_{a}').fundamental).toBeLessThan(spectrumOf('i_{a,ideal}').fundamental);
+  });
+});
+
+describe('regression: delayed gate edges are not lost to rounding', () => {
+  it('three-phase DPWM with dead time: every dead-time edge is a jump, and the load currents stay fast', () => {
+    actions.newProject();
+    actions.createPwm({ ...DEFAULT_PWM, topology: 'three-phase', reference: 'dpwm', carrier: 'triangle', load: true, deadTime: 2e-6 });
+    const p = st().project;
+    const get = (n: string) => compiled(p.signals.find((x) => x.name === n)!, p);
+    // The turn-on edge of S_B+ is the gate edge plus the dead time (found by value probing).
+    const s = get('S_{B+}');
+    const jumps = s.features(0, 0.02).features.filter((f) => f.kind === 'jump');
+    // Every change of the sampled value must coincide with a reported jump.
+    const edges: number[] = [];
+    let prev = s.value(0);
+    for (let t = 1e-7; t < 0.02; t += 1e-7) {
+      const v = s.value(t);
+      if (v !== prev) edges.push(t);
+      prev = v;
+    }
+    expect(edges.length).toBeGreaterThan(10);
+    for (const e of edges) expect(jumps.some((j) => Math.abs(j.t - e) < 2e-7)).toBe(true);
+    // The load current used to take ~17 s (numerical integration over a hidden step).
+    const t0 = performance.now();
+    get('i_{c}').features(0, 0.04);
+    expect(performance.now() - t0).toBeLessThan(15000);
+    // Measuring a load current (RMS, mean, …) used to need ~1 s each: a hidden step in its input
+    // forced numerical integration over every segment.
+    const t1 = performance.now();
+    for (const n of ['i_{a}', 'i_{b}']) measureInterval(get(n), -0.0004, 0.04);
+    expect(performance.now() - t1).toBeLessThan(8000);
+  }, 30000);
+
+  it('non-commensurate carrier and reference: the automatic vertical range stays cheap', () => {
+    actions.newProject();
+    actions.createPwm({ ...DEFAULT_PWM, topology: 'three-phase', reference: 'dpwm', carrier: 'triangle', fc: 14, f1: 170.37, load: true, deadTime: 2e-6 });
+    const p = st().project;
+    const sigs = p.signals.filter((x) => /^i_\{[abc]\}$/.test(x.name)).map((x) => compiled(x, p));
+    expect(sigs.length).toBe(3);
+    const t0 = performance.now();
+    const r = autoYRange(sigs); // used to need ~20 s: the load currents over their natural 1 s window
+    expect(performance.now() - t0).toBeLessThan(10000);
+    expect(r[1]).toBeGreaterThan(r[0]);
+  }, 30000);
+
+  it('a very dense PWM with dead time or load starts with the first 100 carrier cycles', () => {
+    actions.newProject();
+    actions.createPwm({ ...DEFAULT_PWM, topology: 'full-unipolar', fc: 100e3, f1: 170, load: true, deadTime: 2e-6 });
+    const [lo, hi] = st().view.xRange;
+    expect(hi - lo).toBeLessThanOrEqual(100 / 100e3 * 1.05);
+    expect(st().notice).toMatch(/first 100 carrier cycles/);
+    actions.newProject();
+    actions.createPwm({ ...DEFAULT_PWM, fc: 1050, f1: 50, load: true }); // ordinary: two reference periods
+    const [a, b] = st().view.xRange;
+    expect(b - a).toBeGreaterThan(0.03);
   });
 });

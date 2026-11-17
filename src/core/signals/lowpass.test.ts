@@ -65,6 +65,35 @@ describe('lowpass (first-order lag)', () => {
     expect(tr.value(0.005)).toBeCloseTo(1 - Math.exp(-0.005 / 4e-3), 12);
   });
 
+  it('aperiodic input far from t = 0 is computed from a bounded history (no page-freezing walk from 0)', () => {
+    // Two incommensurate squares: dense, never-repeating edges.
+    const q1 = gen('square');
+    const q2 = gen('square', (d) => (d.timing.frequency = 50 * Math.SQRT2 * 3));
+    const x = expr('Q1 * Q2', { Q1: q1, Q2: q2 });
+    expect(x.period).toBeUndefined();
+    const far = expr('lowpass(X, 1m)', { X: x });
+    const t0 = performance.now();
+    const v = far.value(300.0021);
+    expect(performance.now() - t0).toBeLessThan(8000);
+    // Reference: the same filter started from rest 0.5 s earlier (the start-up transient has decayed by e^-500).
+    const ref = expr('lowpass(X, 1m, 299.5, 0)', { X: x });
+    expect(v).toBeCloseTo(ref.value(300.0021), 10);
+    // Near 0 the exact walk and the bounded one agree too.
+    const near = expr('lowpass(X, 1m, 1.5, 0)', { X: x });
+    expect(far.value(2.0003)).toBeCloseTo(near.value(2.0003), 10);
+  });
+
+  it('events closer than the merge tolerance form one jump (left before the first, right after the last)', () => {
+    const g1 = gen('square'); // falls at 10 ms
+    const g2 = gen('square', (d) => (d.timing.delay = 8e-16)); // falls 8e-16 s later
+    const x = expr('Q1 + 2 * Q2', { Q1: g1, Q2: g2 });
+    const jump = x.features(0.009, 0.011).features.find((f) => f.kind === 'jump');
+    expect(jump).toBeDefined();
+    expect(jump!.t).toBeCloseTo(0.01, 12);
+    expect(jump!.left).toBe(3);
+    expect(jump!.right).toBe(-3); // square is ±1 here: both low
+  });
+
   it('R-L load: mean current = mean voltage / R; ripple from the exact solution', () => {
     // 1 kHz 0/48 V square, 25 % duty, R = 2 Ω, L = 1 mH → τ = 0.5 ms
     const v = gen('square', (d) => {

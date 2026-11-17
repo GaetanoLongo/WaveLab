@@ -9,6 +9,7 @@ import { openExportDialog } from './export/ExportDialog';
 import { openAxes, openSettings } from './Modal';
 import { forgetFileHandle, openProject, saveProject } from './fileio';
 import { MathLabel } from './MathLabel';
+import { setLayout, useLayout } from '../state/layout';
 
 const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
 
@@ -72,7 +73,8 @@ function CompactToolbar() {
   const redo = useEditor(canRedo);
   const hasSel = useEditor((s) => s.selectedId !== null);
   const hasClip = useEditor((s) => s.clipboard !== null);
-  const mode = useActiveFigure().mode;
+  const fig = useActiveFigure();
+  const mode = fig.mode;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -130,6 +132,7 @@ function CompactToolbar() {
             {item('zoomOut', 'Zoom out', () => zoomBy(2))}
             {item('fit', 'Auto vertical scale', actions.resetYRanges)}
             <hr />
+            {item('settings', fig.showLegend ? 'Hide legend' : 'Show legend', () => actions.setShowLegend(!fig.showLegend))}
             {item('axes', 'Axes…', () => openAxes('all'))}
             {item('spectrum', 'Spectrum…', openSpectrum)}
             {item('settings', 'Figure settings…', openSettings)}
@@ -145,7 +148,9 @@ export function Toolbar({ compact = false }: { compact?: boolean }) {
   const redo = useEditor(canRedo);
   const hasSel = useEditor((s) => s.selectedId !== null);
   const hasClip = useEditor((s) => s.clipboard !== null);
-  const mode = useActiveFigure().mode;
+  const fig = useActiveFigure();
+  const mode = fig.mode;
+  const L = useLayout();
   if (compact) return <CompactToolbar />;
 
   return (
@@ -185,6 +190,25 @@ export function Toolbar({ compact = false }: { compact?: boolean }) {
         </button>
         <button className={mode === 'stacked' ? 'on' : ''} onClick={() => actions.setMode('stacked')} title="One plot per signal, shared time axis">
           <Icon name="stacked" size={14} /> Stacked
+        </button>
+      </div>
+      <div className="tb-group" role="group" aria-label="View">
+        <button
+          className={`tb text toggle${fig.showLegend ? ' on' : ''}`}
+          aria-pressed={fig.showLegend}
+          title={fig.showLegend ? 'Hide the legend of this figure' : 'Show the legend of this figure'}
+          onClick={() => actions.setShowLegend(!fig.showLegend)}
+        >
+          Legend
+        </button>
+        <button className={`tb text toggle tb-side${L.toolboxOpen ? ' on' : ''}`} aria-pressed={L.toolboxOpen} title="Show/hide the toolbox (drag its edge to resize)" onClick={() => setLayout({ toolboxOpen: !L.toolboxOpen })}>
+          Toolbox
+        </button>
+        <button className={`tb text toggle tb-side${L.inspectorOpen ? ' on' : ''}`} aria-pressed={L.inspectorOpen} title="Show/hide the signal list and properties (drag its edge to resize)" onClick={() => setLayout({ inspectorOpen: !L.inspectorOpen })}>
+          Properties
+        </button>
+        <button className={`tb text toggle${L.measureOpen ? ' on' : ''}`} aria-pressed={L.measureOpen} title="Show/hide the measurement panel (drag its top edge to resize)" onClick={() => setLayout({ measureOpen: !L.measureOpen })}>
+          Measure
         </button>
       </div>
       <div className="sep" />
