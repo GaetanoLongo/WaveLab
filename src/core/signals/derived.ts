@@ -476,9 +476,23 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
     bp.sort((x, y) => x - y);
     const tol = 1e-14 * Math.max(1, Math.abs(t0), Math.abs(t1));
     const points = [t0];
-    for (const t of bp) if (t - points[points.length - 1]! > tol) points.push(t);
-    if (t1 - points[points.length - 1]! > tol) points.push(t1);
-    else points[points.length - 1] = t1;
+    // ends[i]: the last breakpoint merged into points[i]. Events closer than `tol` form one
+    // cluster: its left limit is taken at the first time and its right limit after the last,
+    // so a jump 1e-15 s after a kink is not lost.
+    const ends = [t0];
+    for (const t of bp) {
+      if (t - points[points.length - 1]! > tol) {
+        points.push(t);
+        ends.push(t);
+      } else ends[ends.length - 1] = t;
+    }
+    if (t1 - points[points.length - 1]! > tol) {
+      points.push(t1);
+      ends.push(t1);
+    } else {
+      points[points.length - 1] = t1;
+      ends[ends.length - 1] = t1;
+    }
 
     // 2./3. Sample each segment.
     const span = t1 - t0;
@@ -487,8 +501,9 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
 
     for (let i = 1; i < points.length - 1; i++) {
       const t = points[i]!;
+      const tEnd = ends[i]!;
       let L = ev(t, true, null);
-      let R = ev(t, false, null);
+      let R = ev(tEnd, false, null);
       if (same(L, R)) {
         // A breakpoint of a delayed input is f.t + shift; evaluating the input at (t − shift)
         // can land one ulp on the wrong side of its edge, so an exact one-sided limit can
@@ -517,7 +532,7 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
     }
 
     for (let i = 0; !onlyBreakpoints && i + 1 < points.length; i++) {
-      scanSegment(points[i]!, points[i + 1]!, step, ev, !logicRoot, result);
+      scanSegment(ends[i]!, points[i + 1]!, step, ev, !logicRoot, result);
       if (result.length > maxCount * 2) break;
     }
 

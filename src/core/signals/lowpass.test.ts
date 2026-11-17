@@ -83,6 +83,17 @@ describe('lowpass (first-order lag)', () => {
     expect(far.value(2.0003)).toBeCloseTo(near.value(2.0003), 10);
   });
 
+  it('events closer than the merge tolerance form one jump (left before the first, right after the last)', () => {
+    const g1 = gen('square'); // falls at 10 ms
+    const g2 = gen('square', (d) => (d.timing.delay = 8e-16)); // falls 8e-16 s later
+    const x = expr('Q1 + 2 * Q2', { Q1: g1, Q2: g2 });
+    const jump = x.features(0.009, 0.011).features.find((f) => f.kind === 'jump');
+    expect(jump).toBeDefined();
+    expect(jump!.t).toBeCloseTo(0.01, 12);
+    expect(jump!.left).toBe(3);
+    expect(jump!.right).toBe(-3); // square is ±1 here: both low
+  });
+
   it('R-L load: mean current = mean voltage / R; ripple from the exact solution', () => {
     // 1 kHz 0/48 V square, 25 % duty, R = 2 Ω, L = 1 mH → τ = 0.5 ms
     const v = gen('square', (d) => {
