@@ -114,18 +114,32 @@ export function lowpassOf(x: SignalEval, tau: number, start?: { t0: number; y0: 
     const C = Math.max((x.scale ?? tau) * 16, 1e-15);
     const chunks = new Map<number, Seg[] | null>();
     const startY = new Map<number, number>([[0, y0]]);
-    let maxJ = 0;
+    // The filter forgets its past: after 45τ the initial state has decayed by e^-45 ≈ 3e-20.
+    // A query far from t0 therefore starts at most K chunks earlier, from y = 0, instead of
+    // walking (and freezing the page for seconds) all the way from t0.
+    const K = Math.ceil((45 * tau) / C) + 2;
+    const startOf = (j: number): number => {
+      const known = startY.get(j);
+      if (known !== undefined) return known;
+      let k = j;
+      while (k > 0 && !startY.has(k) && j - k < K) k--;
+      if (!startY.has(k)) startY.set(k, 0);
+      let y = startY.get(k)!;
+      for (; k < j; k++) {
+        const r = buildSegs(t0 + k * C, t0 + (k + 1) * C, y);
+        if (!r) return NaN;
+        if (chunks.size < 4096) chunks.set(k, r.segs);
+        y = r.yb;
+        startY.set(k + 1, y);
+      }
+      return y;
+    };
     const chunk = (j: number): Seg[] | null => {
       let c = chunks.get(j);
       if (c !== undefined) return c;
-      while (maxJ < j) {
-        const r = buildSegs(t0 + maxJ * C, t0 + (maxJ + 1) * C, startY.get(maxJ)!);
-        if (!r) return null;
-        if (chunks.size < 4096) chunks.set(maxJ, r.segs);
-        startY.set(maxJ + 1, r.yb);
-        maxJ++;
-      }
-      const r = buildSegs(t0 + j * C, t0 + (j + 1) * C, startY.get(j)!);
+      const ys = startOf(j);
+      if (Number.isNaN(ys)) return null;
+      const r = buildSegs(t0 + j * C, t0 + (j + 1) * C, ys);
       c = r ? r.segs : null;
       if (chunks.size < 4096) chunks.set(j, c);
       return c;

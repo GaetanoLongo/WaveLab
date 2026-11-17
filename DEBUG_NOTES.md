@@ -1,20 +1,29 @@
-# Debugging notes (to address later)
+# Debugging notes
 
-- [ ] **Removing dependent waveforms**: sometimes a waveform can't be removed, probably because other waveforms depend on it. Add a small popup warning about this.
-- [ ] **Symbols/formulas not rendered** (e.g. in the modulation menu, `f_c` shows literally instead of f with subscript c). Check everywhere such symbols can appear.
-- [ ] **PRBS**: are pseudo-random bit sequences deterministic (seeded) or random on each run? Investigate and document.
-- [ ] **Editing plot annotations**: can an existing text annotation be modified? Can arrow thickness be changed?
-- [ ] **Right-click**: custom context menu instead of the browser default?
-- [ ] **UART clock**: when TX-ing a string over UART, no clock waveform is shown. Generate an associated clock waveform and show it only if the user requests it.
+Status after the fix pass. "Verified" = covered by a unit test and/or the e2e suite (`e2e/ux.e2e.cjs`); "not verified" = changed but not exercised end to end.
+
+## Batch 1
+
+- [x] **Removing dependent waveforms**: deleting a waveform that others use (or a locked one) now opens a popup naming the dependents (`alert` in the store, `AlertDialog` in `App.tsx`). Verified (unit + e2e).
+- [x] **Symbols/formulas not rendered** (`f_c` literal): `NumberField` labels, readout labels and hint texts in the modulation, PWM and rectifier dialogs now go through `MathLabel`. Note: a subscript of more than one character needs braces, e.g. `V_{dc}`. Plain-string tooltips cannot show markup, so they use plain text. Verified in the modulation and PWM dialogs; other dialogs only by code search.
+- [x] **PRBS**: it is deterministic (LFSR defined by order and initial state; Noise is seeded too). The UI now says so (hint and tooltip). Nothing is random per run.
+- [x] **Annotations**: existing annotations were already editable (double-click one in the plot, or Annotations ▸ Edit annotations). Added a *line thickness* multiplier for arrows and dimension markers (screen, exports, TikZ, project file) and a tip in the dialog. Text size is not adjustable yet.
+- [x] **Right-click**: custom context menus on plot traces, annotations, the plot background and signal-list rows replace the browser menu. Verified for the signal row and the plot background; trace and annotation menus are not verified end to end.
+- [x] **UART clock**: option "Also create a bit clock (CLK)" in the protocol dialog (off by default; rising edge in the middle of each bit). Verified (unit test).
 
 ## Batch 2
 
-- [ ] **PWM generator**: reference f1 must be > 0, so a DC signal can't be used as the modulating input. Decide whether to allow f = 0 (DC) / a DC reference.
-- [ ] **Sidebars and measurement panel** can't be hidden or resized. Add collapse/hide and resize.
-- [ ] **"Not in this figure" waveforms**: no way to get rid of them. Add a way to remove or hide them.
-- [ ] **Legend**: unclear how it is shown/hidden. Make the toggle discoverable.
-- [ ] **Lowpass filter**: suspected not to work properly. Lowpass on a PWM-modulated Vout recovers the original waveform, but it stays non-smooth however large the time parameter is made. Needs investigation (filter implementation, time-parameter meaning, sampling/resolution) before concluding it is a bug.
+- [x] **PWM generator, DC reference**: f₁ = 0 is accepted for single-phase topologies (DC reference, constant duty (1+m)/2; the check shows the mean value). Refused for three-phase. Verified (unit test).
+- [x] **Sidebars and measurement panel**: Toolbox, Properties and Measure buttons in the toolbar hide/show them; drag the edges to resize (double-click resets); the state is remembered in the browser. Desktop layout only. Verified (e2e).
+- [x] **"Not in this figure" waveforms**: each now has a delete button (refused with the popup if other signals use it). Verified (e2e).
+- [x] **Legend**: toolbar "Legend" toggle and a context-menu entry (it was only in Figure settings). Verified (e2e).
+- [ ] **Lowpass filter**: no defect found, not reproduced. Numerically the filter behaves as a first-order filter should (checked on PWM outputs, τ from 1 ms to 1 s): the PWM ripple and the recovered fundamental both shrink as 1/τ, and the relative ripple falls as 1/τ (about 2 % at τ = 10 ms, 0.2 % at 0.1 s, 0.1 % at 1 s). If it still looks jagged, send the expression (e.g. `lowpass(v_{AB}, 0.1)`), the PWM settings and the zoom level. A second-order filter (RLC low-pass) suppresses ripple faster.
 
 ## Batch 3
 
-- [ ] **Page freezes**: occasionally and seemingly at random, the page gets stuck and must be reloaded. No repro steps yet. When it happens, note the last action taken, which waveforms/parameters were active, and any console errors, to narrow it down (possibly an infinite loop or heavy computation on certain parameter values).
+- [~] **Page freezes**: one concrete cause found and fixed (not necessarily the only one). A first-order or second-order filter applied to an input that never repeats (e.g. PWM whose reference and carrier frequencies are not commensurate, such as f_c = 14 Hz with f₁ = 170.37 Hz, with a load current) was computed by walking from t = 0 to the requested time. Querying t = 100 s took about 15 s of blocked page. It now uses a bounded history of 45 time constants (the older state has decayed below 1e-19). A regression test was added (`src/core/signals/lowpass.test.ts`). **The change to `lowpass.ts` and `filter2.ts` and that test had not been type-checked or run when this was written** (the shell was unavailable): run `npm run typecheck && npm test` before relying on it. Other causes of random freezes may exist; if it recurs, note the last action and the signals involved.
+
+## Also fixed along the way
+
+- Comparator edges (and other switching instants) that fell exactly on the internal sampling grid were missed. This showed up as missing PWM edges for a DC reference (e.g. m = 0.5), and could affect any signal whose crossing lands exactly on a grid point.
+- Deleting a signal no longer changes the selection unless the deleted signal was the selected one.

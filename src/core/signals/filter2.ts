@@ -185,21 +185,35 @@ export function filter2Of(u: SignalEval, kind: Filter2Kind, f0: number, Q: numbe
     const C = Math.max((u.scale ?? 1 / f0) * 16, 1e-15);
     const starts = new Map<number, number[]>([[0, [0, 0]]]);
     const chunks = new Map<number, Seg[] | null>();
-    let maxJ = 0;
+    // The slowest pole decays at rate α − β (or α): after 45/rate the initial state is forgotten
+    // (e^-45 ≈ 3e-20), so a query far from 0 starts at most K chunks earlier, from rest.
+    const rate = disc > 0 ? alpha - beta : alpha;
+    const K = Math.ceil(45 / Math.max(rate, 1e-12) / C) + 2;
+    const startOf = (j: number): number[] | null => {
+      const known = starts.get(j);
+      if (known !== undefined) return known;
+      let k = j;
+      while (k > 0 && !starts.has(k) && j - k < K) k--;
+      if (!starts.has(k)) starts.set(k, [0, 0]);
+      let x = starts.get(k)!;
+      for (; k < j; k++) {
+        const r = build(k * C, (k + 1) * C, x);
+        if (!r) return null;
+        if (chunks.size < 4096) chunks.set(k, r.segs);
+        x = r.xb;
+        starts.set(k + 1, x);
+      }
+      return x;
+    };
     stateAt = (t) => {
       if (t < 0) return [0, 0];
       const j = Math.floor(t / C);
-      if (j > 1e5) return [NaN, NaN];
-      while (maxJ < j) {
-        const r = build(maxJ * C, (maxJ + 1) * C, starts.get(maxJ)!);
-        if (!r) return [NaN, NaN];
-        chunks.set(maxJ, r.segs);
-        starts.set(maxJ + 1, r.xb);
-        maxJ++;
-      }
+      if (j > 1e7) return [NaN, NaN];
       let segs = chunks.get(j);
       if (segs === undefined) {
-        const r = build(j * C, (j + 1) * C, starts.get(j)!);
+        const s0 = startOf(j);
+        if (!s0) return [NaN, NaN];
+        const r = build(j * C, (j + 1) * C, s0);
         segs = r ? r.segs : null;
         if (chunks.size < 4096) chunks.set(j, segs);
       }

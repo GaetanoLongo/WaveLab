@@ -100,14 +100,15 @@ differentiation (ideal edges become impulse markers), moving average and RMS, **
 ### Communications and digital protocols
 - **AM / DSB-SC / FM / PM** of a sine, square or triangle message; the spectrum shows the Bessel sidebands.
 - **UART, SPI (modes 0–3) and I²C** frames from text or hex bytes, with the decoded fields (bytes, address,
-  ACK/NACK, START/STOP) labelled on the waveforms.
+  ACK/NACK, START/STOP) labelled on the waveforms. UART can also create a bit clock (CLK, rising edge in the
+  middle of each bit) on request.
 
 ![An I²C read with the decoded fields](docs/images/i2c.png)
 
 ### Annotations
 Text labels, arrows and **Δt / ΔV dimension markers** (Annotations button in the toolbar). Markers snap to
 edges and levels, can be created straight from the cursors, follow zoom and plot mode, and are drawn in
-every export. Double-click one to edit it; Delete removes the selected one.
+every export. Double-click one to edit it (text, position, colour and line thickness); Delete removes the selected one.
 
 ### Figures, groups and styles
 - **Groups** (named, collapsible blocks; optionally sharing one panel), **overlay** or **stacked** plots.
@@ -172,6 +173,8 @@ Logic results get configurable high/low levels; comparators and edges are locate
 | Box zoom | Shift+drag | — |
 | Fit everything | double-click | double-tap |
 | Axis settings | double-click an axis or the time range | — |
+| Context menu | right-click a trace, annotation, the plot background or a signal-list row | — |
+| Panels | toolbar buttons Toolbox / Properties / Measure hide them; drag their edges to resize (double-click resets); Legend toggles the legend | — |
 
 | Shortcut | Action |
 |---|---|
