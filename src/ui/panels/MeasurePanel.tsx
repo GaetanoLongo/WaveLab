@@ -14,6 +14,7 @@ import { actions, findSignal, orderedSignals, useEditor } from '../../state/stor
 import { NumberField } from '../fields/NumberField';
 import { MathLabel } from '../MathLabel';
 import { budgeted } from '../../core/signals/budget';
+import { edgeMetrics } from '../../core/measure/edges';
 import { Resizer } from '../Resizer';
 import { setLayout, useLayout } from '../../state/layout';
 import { openSpectrum } from './SpectrumDialog';
@@ -56,6 +57,7 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
   const b = between ? Math.max(t1, t2) : settled[1];
   const active = open || phone;
   const m = useMemo(() => (sig && active ? budgeted(sig, 4000, () => measureInterval(sig, a, b), () => null) : null), [sig, a, b, active]);
+  const edges = useMemo(() => (sig && active ? budgeted(sig, 4000, () => edgeMetrics(sig, a, b), () => null) : null), [sig, a, b, active]);
   const v1 = sig && t1 != null ? sig.value(t1) : NaN;
   const v2 = sig && t2 != null ? sig.value(t2) : NaN;
   // Power: the measured signal is the voltage, the chosen signal the current.
@@ -197,6 +199,64 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
                 <dt title="RMS / rectified mean (mean of |value|)">Form</dt>
                 <dd>{Number.isFinite(m.form) ? m.form.toPrecision(4) : '—'}</dd>
               </dl>
+            </div>
+          )}
+          {m && edges && (edges.note || edges.rise || edges.fall || edges.posWidth || edges.negWidth) && (
+            <div className="m-group wide edges">
+              <h4 title="Measured on the curve drawn in this window; ideal edges are vertical, so their rise time is 0">
+                Edges and pulses{' '}
+                <span className="muted">
+                  {edges.twoLevel ? `(levels ${fmt(edges.base, unit)} / ${fmt(edges.top, unit)})` : edges.note ? '' : '(no two levels: 10–90 % of min–max)'}
+                </span>
+              </h4>
+              {edges.note ? (
+                <p className="hint-text">{edges.note}</p>
+              ) : (
+                <dl className="m-grid">
+                  {edges.rise && (
+                    <>
+                      <dt title={`10 %→90 %, mean of ${edges.rise.count} edge${edges.rise.count > 1 ? 's' : ''}`}>Rise</dt>
+                      <dd>{fmt(edges.rise.value, 's', 4)}</dd>
+                    </>
+                  )}
+                  {edges.fall && (
+                    <>
+                      <dt title={`90 %→10 %, mean of ${edges.fall.count} edge${edges.fall.count > 1 ? 's' : ''}`}>Fall</dt>
+                      <dd>{fmt(edges.fall.value, 's', 4)}</dd>
+                    </>
+                  )}
+                  {edges.posWidth && (
+                    <>
+                      <dt title="High pulse width at 50 %">+ width</dt>
+                      <dd>{fmt(edges.posWidth.value, 's', 5)}</dd>
+                    </>
+                  )}
+                  {edges.negWidth && (
+                    <>
+                      <dt title="Low pulse width at 50 %">− width</dt>
+                      <dd>{fmt(edges.negWidth.value, 's', 5)}</dd>
+                    </>
+                  )}
+                  {edges.overshoot !== undefined && (
+                    <>
+                      <dt title="Peak above the top level, in % of the amplitude">Overshoot</dt>
+                      <dd>{edges.overshoot.toPrecision(3)} %</dd>
+                    </>
+                  )}
+                  {edges.undershoot !== undefined && (
+                    <>
+                      <dt title="Dip below the base level, in % of the amplitude">Undershoot</dt>
+                      <dd>{edges.undershoot.toPrecision(3)} %</dd>
+                    </>
+                  )}
+                  {edges.settling !== undefined && (
+                    <>
+                      <dt title="From the first 10 % crossing until the signal stays within ±2 % of the top level">Settling</dt>
+                      <dd>{fmt(edges.settling, 's', 4)}</dd>
+                    </>
+                  )}
+                </dl>
+              )}
             </div>
           )}
           {m && others.length > 0 && (

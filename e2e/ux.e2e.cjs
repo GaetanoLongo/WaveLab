@@ -172,6 +172,14 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   assert(await badPage.locator(".toolbar").count() === 1, 'a damaged link does not break the app');
   await badPage.close(); await p2.close();
 
+  // --- Edge and pulse measurements ---
+  await p.click('button[title="New project"]').catch(() => {});
+  await p.click('.tool:has-text("Square")');
+  await p.click('.tool:has-text("Low-pass (RC)")');
+  await p.waitForSelector('.measure .edges', { timeout: 8000 });
+  const edgeText = await p.locator('.measure .edges').innerText();
+  assert(/Rise/.test(edgeText) && /Fall/.test(edgeText) && /width/.test(edgeText), 'the Measure panel shows edge and pulse measurements: ' + edgeText.replace(/\s+/g, ' ').slice(0, 90));
+
   assert(errs.length === 0, 'no page errors: ' + errs.join('; '));
   await b.close();
 })().catch((e) => { console.log('FAIL: exception', e.message); process.exit(1); });
