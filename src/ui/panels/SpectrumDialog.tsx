@@ -1,5 +1,6 @@
 /** Harmonic spectrum of a signal: exact Fourier series, THD, bar chart, table, CSV. */
 
+import { budgeted } from '../../core/signals/budget';
 import { autoFundamental } from '../../state/fundamental';
 import { plainText } from '../../core/plot/mathtext';
 import { useMemo, useState } from 'react';
@@ -42,7 +43,7 @@ function Dialog() {
   const [showDc, setShowDc] = useState(false);
   const fund = f1 ?? auto.f1;
 
-  const spec = useMemo(() => (ev ? harmonicSpectrum(ev, { f1: fund, periods, t0, maxOrder }) : null), [ev, fund, periods, t0, maxOrder]);
+  const spec = useMemo(() => (ev ? budgeted(ev, 15000, () => harmonicSpectrum(ev, { f1: fund, periods, t0, maxOrder }), () => null) : null), [ev, fund, periods, t0, maxOrder]);
   const unit = sig?.unit ?? '';
 
   const value = (s: Spectrum, k: number): number => {

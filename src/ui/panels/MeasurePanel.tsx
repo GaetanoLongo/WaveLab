@@ -13,6 +13,7 @@ import { compiled } from '../../state/compiled';
 import { actions, findSignal, orderedSignals, useEditor } from '../../state/store';
 import { NumberField } from '../fields/NumberField';
 import { MathLabel } from '../MathLabel';
+import { budgeted } from '../../core/signals/budget';
 import { Resizer } from '../Resizer';
 import { setLayout, useLayout } from '../../state/layout';
 import { openSpectrum } from './SpectrumDialog';
@@ -54,7 +55,7 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
   const a = between ? Math.min(t1, t2) : settled[0];
   const b = between ? Math.max(t1, t2) : settled[1];
   const active = open || phone;
-  const m = useMemo(() => (sig && active ? measureInterval(sig, a, b) : null), [sig, a, b, active]);
+  const m = useMemo(() => (sig && active ? budgeted(sig, 4000, () => measureInterval(sig, a, b), () => null) : null), [sig, a, b, active]);
   const v1 = sig && t1 != null ? sig.value(t1) : NaN;
   const v2 = sig && t2 != null ? sig.value(t2) : NaN;
   // Power: the measured signal is the voltage, the chosen signal the current.
@@ -65,7 +66,8 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
     if (!sig || !target || !cur || !active) return null;
     const ie = compiled(cur, project);
     const fund = autoFundamental(project, target, sig, b - a);
-    return { m: powerMetrics(sig, ie, a, b, fund.source === 'span' ? undefined : { f1: fund.f1, periods: fund.periods, t0: a }), f1: fund.f1 };
+    const m = budgeted(sig, 4000, () => powerMetrics(sig, ie, a, b, fund.source === 'span' ? undefined : { f1: fund.f1, periods: fund.periods, t0: a }), () => null);
+    return m ? { m, f1: fund.f1 } : null;
   }, [sig, target, cur, project, a, b, active]);
   const timeOn = t1 != null || t2 != null;
   const levelOn = y1 != null || y2 != null;

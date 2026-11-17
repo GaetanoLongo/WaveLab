@@ -18,6 +18,7 @@
  */
 
 import { zeroCrossings } from '../snap/points';
+import { checkBudget } from './budget';
 import { leftValue, MAX_SAMPLES, same, scanSegment } from './scan';
 import { DEFAULT_MAX_FEATURES, type Feature, type FeatureQuery, type Impulse, type SignalEval } from './types';
 
@@ -43,6 +44,7 @@ function gl5(f: (t: number) => number, a: number, b: number): number {
  */
 export function integrateSmooth(f: (t: number) => number, a: number, b: number, depth = 0, whole?: number, tol?: number, prevErr = Infinity): number {
   if (b === a) return 0;
+  checkBudget();
   const w = whole ?? gl5(f, a, b);
   const eps = tol ?? 1e-12 * Math.max(Math.abs(gl5((t) => Math.abs(f(t)), a, b)), 1e-300);
   const m = (a + b) / 2;

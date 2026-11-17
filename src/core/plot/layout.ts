@@ -13,6 +13,7 @@ import { logTicks, niceTicks } from './ticks';
 import { autoYRange } from './viewport';
 import type { Annotation } from '../model/project';
 import { drawAnnotations, resolveAnnotations } from './annotations';
+import { budgeted } from '../signals/budget';
 
 export interface PlotTheme {
   id: string;
@@ -500,7 +501,8 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
 
     // Traces.
     for (const tr of traces) {
-      const sampled = sampleSignal(tr.signal, t0, t1, layout.plotW);
+      // One slow trace must not hold up the figure: it is left out (and the user is told).
+      const sampled = budgeted(tr.signal, 4000, () => sampleSignal(tr.signal, t0, t1, layout.plotW), () => ({ mode: 'exact' as const, lines: [] }));
       const polylines: number[][] = [];
       for (const line of sampled.lines) {
         let flat: number[] = [];

@@ -38,6 +38,7 @@ import type { SignalSet } from './builder';
 import { buildModulation, type ModulationConfig } from './modulation';
 import { buildProtocol, type ProtocolConfig } from './protocols';
 import { buildPwm, type PwmConfig } from './pwm';
+import { onBudgetExceeded } from '../core/signals/budget';
 import type { AxisStyle, StyleOverrides } from '../core/plot/layout';
 import { phaseForDifference } from '../core/signals/phase';
 import { snapPoints, zeroCrossings } from '../core/snap/points';
@@ -1224,3 +1225,9 @@ export function astToDisplay(p: Project, ast: Node): string {
 export function viewOf(st: EditorState, figId: string): ViewState {
   return figId === st.activeFigureId ? st.view : (st.views[figId] ?? defaultView(st.project, figId));
 }
+
+// A signal that cannot be computed within the budget is left out (drawn as undefined): say why.
+onBudgetExceeded(() => {
+  // Deferred: this can fire while a component is rendering.
+  queueMicrotask(() => editor.setState({ notice: 'A signal is too heavy to compute (over 3 s) and was left out. Try a shorter time window, fewer chained operations or a lower carrier frequency.' }));
+});

@@ -16,6 +16,7 @@
  */
 
 import { integrateSmooth, scannedFeatures } from './operators';
+import { checkBudget } from './budget';
 import { MAX_SAMPLES } from './scan';
 import { DEFAULT_MAX_FEATURES, type SignalEval } from './types';
 
@@ -86,6 +87,7 @@ export function lowpassOf(x: SignalEval, tau: number, start?: { t0: number; y0: 
     const segs: Seg[] = [];
     let y = ya;
     for (let i = 0; i + 1 < cuts.length; i++) {
+      checkBudget();
       const s0 = cuts[i]!;
       const s1 = cuts[i + 1]!;
       if (!(s1 > s0)) continue;

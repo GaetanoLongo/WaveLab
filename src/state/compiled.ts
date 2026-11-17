@@ -10,6 +10,7 @@ import type { Project, SignalDef } from '../core/model/project';
 import { compileSignal } from '../core/signals/compile';
 import { compileDerived } from '../core/signals/derived';
 import { refsOf } from '../core/expr/parse';
+import { guardSignal } from '../core/signals/budget';
 import { withPeriodicCache } from '../core/signals/periodic-cache';
 import type { SignalEval } from '../core/signals/types';
 
@@ -51,8 +52,10 @@ function compileIn(def: SignalDef, project: Project, visiting: Set<string>): Sig
 
   const prev = cache.get(def);
   if (prev && prev.deps.size === deps.size && [...deps].every(([k, v]) => prev.deps.get(k) === v)) return prev.ev;
-  const ev = withPeriodicCache(
-    compileDerived({ root: ast, logicHigh: def.logicHigh, logicLow: def.logicLow, threshold: def.threshold, resolution: def.resolution }, deps),
+  const ev = guardSignal(
+    withPeriodicCache(
+      compileDerived({ root: ast, logicHigh: def.logicHigh, logicLow: def.logicLow, threshold: def.threshold, resolution: def.resolution }, deps),
+    ),
   );
   cache.set(def, { ev, deps });
   return ev;

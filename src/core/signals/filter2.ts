@@ -13,6 +13,7 @@
  */
 
 import { scannedFeatures } from './operators';
+import { checkBudget } from './budget';
 import { MAX_SAMPLES } from './scan';
 import { DEFAULT_MAX_FEATURES, type SignalEval } from './types';
 
@@ -129,6 +130,7 @@ export function filter2Of(u: SignalEval, kind: Filter2Kind, f0: number, Q: numbe
     const segs: Seg[] = [];
     let x = x0;
     for (let i = 0; i + 1 < cuts.length; i++) {
+      checkBudget();
       const s0 = cuts[i]!;
       const s1 = cuts[i + 1]!;
       if (!(s1 > s0)) continue;
