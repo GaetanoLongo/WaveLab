@@ -54,6 +54,16 @@ export function checkBudget(): void {
 }
 
 const HEAVY_FOR_MS = 15000;
+const MIN_SLICE_MS = 40;
+let frameDeadline = Infinity;
+
+/** Start a drawing pass: all `budgeted` work until it ends shares about `totalMs`. */
+export function beginFrame(totalMs: number): void {
+  frameDeadline = performance.now() + totalMs;
+}
+export function endFrame(): void {
+  frameDeadline = Infinity;
+}
 /** Signals (guarded objects) abandoned recently, and until when they answer "undefined" at once. */
 const heavy = new WeakMap<object, number>();
 const isHeavy = (ev: object) => (heavy.get(ev) ?? 0) > performance.now();
@@ -70,7 +80,11 @@ const markHeavy = (ev: object) => {
 export function budgeted<T>(ev: SignalEval, ms: number, fn: () => T, fallback: () => T): T {
   if (isHeavy(ev)) return fallback();
   if (depth > 0) return fn(); // already inside a budgeted evaluation: share its deadline
-  deadline = performance.now() + ms;
+  // Inside a drawing pass the traces share one allowance, so thirty heavy traces cost one pass
+  // budget, not thirty: once it is used up, the rest only get a moment each.
+  const left = frameDeadline - performance.now();
+  const allowed = Math.min(ms, Math.max(MIN_SLICE_MS, left));
+  deadline = performance.now() + allowed;
   depth++;
   try {
     return fn();

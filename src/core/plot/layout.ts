@@ -13,7 +13,7 @@ import { logTicks, niceTicks } from './ticks';
 import { autoYRange } from './viewport';
 import type { Annotation } from '../model/project';
 import { drawAnnotations, resolveAnnotations } from './annotations';
-import { budgeted } from '../signals/budget';
+import { beginFrame, budgeted, endFrame } from '../signals/budget';
 
 export interface PlotTheme {
   id: string;
@@ -422,7 +422,17 @@ function autoYRangeRaw(signals: SignalEval[]): Range | null {
   return [mid - span / 2, mid + span / 2];
 }
 
+/** Draw a figure. All traces share one 8 s allowance (see `beginFrame`); a trace over its share is left out. */
 export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureLayout } {
+  beginFrame(8000);
+  try {
+    return buildFigureInner(input);
+  } finally {
+    endFrame();
+  }
+}
+
+function buildFigureInner(input: FigureInput): { scene: Scene; layout: FigureLayout } {
   const layout = computeLayout(input);
   const th = input.theme;
   const fs = th.fontSize;
