@@ -73,7 +73,7 @@ function Dialog() {
               <option value="three-phase">Three-phase bridge</option>
             </select>
           </div>
-          <NumberField label="DC bus V_dc" unit="V" positive value={c.vdc} onCommit={(v) => set({ vdc: v })} />
+          <NumberField label="DC bus V_{dc}" unit="V" positive value={c.vdc} onCommit={(v) => set({ vdc: v })} />
           <h3>Modulation</h3>
           {c.topology === 'three-phase' && (
             <div className="field">

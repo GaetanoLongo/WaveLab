@@ -13,6 +13,8 @@ import { compiled } from '../../state/compiled';
 import { actions, findSignal, orderedSignals, useEditor } from '../../state/store';
 import { NumberField } from '../fields/NumberField';
 import { MathLabel } from '../MathLabel';
+import { Resizer } from '../Resizer';
+import { setLayout, useLayout } from '../../state/layout';
 import { openSpectrum } from './SpectrumDialog';
 import { openViews } from './ViewsDialog';
 
@@ -23,7 +25,9 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
   const project = useEditor((s) => s.project);
   const view = useEditor((s) => s.view);
   const selectedId = useEditor((s) => s.selectedId);
-  const [open, setOpen] = useState(true);
+  const open = useLayout((s) => s.measureOpen);
+  const height = useLayout((s) => s.measureH);
+  const setOpen = (fn: (o: boolean) => boolean) => setLayout({ measureOpen: fn(useLayout.getState().measureOpen) });
   const c = view.cursors;
   const visible = orderedSignals(project).filter((s) => s.style.visible);
   const target = findSignal(project, c.target) ?? visible.find((s) => s.id === selectedId) ?? visible[0];
@@ -90,9 +94,19 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
   );
 
   if (!open && !phone) return <section className="measure collapsed">{header}</section>;
+  const sizing = !phone && height !== null ? { height, maxHeight: 'none' } : undefined;
 
   return (
-    <section className={`measure${phone ? ' phone' : ''}`} aria-label="Measurements">
+    <section className={`measure${phone ? ' phone' : ''}`} aria-label="Measurements" style={sizing}>
+      {!phone && (
+        <Resizer
+          orientation="row"
+          label="Resize measurements"
+          size={(el) => height ?? el.getBoundingClientRect().height}
+          onResize={(d, s) => setLayout({ measureH: s - d })}
+          onReset={() => setLayout({ measureH: null })}
+        />
+      )}
       {header}
       {!target || !sig ? (
         <p className="hint-text">Add a visible signal to measure.</p>

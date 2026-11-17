@@ -18,7 +18,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   await p.evaluate(() => localStorage.clear()); await p.reload();
   const svgText = () => p.locator('.plot-svg text').evaluateAll((els) => els.map((e) => e.textContent));
   const D = '.protocol-dialog';
-  const df = (l) => p.locator(`${D} .field`, { has: p.locator(`label:text-is("${l}")`) }).locator('input, select').first();
+  const df = (l) => p.locator(`${D} .field`, { has: p.locator('label', { hasText: new RegExp('^' + l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input, select').first();
 
   // UART "Hi"
   await p.click('.tool:has-text("UART / SPI / I²C")');

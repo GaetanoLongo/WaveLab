@@ -15,7 +15,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   p.on('dialog', (d) => d.accept());
   for (let i = 0; i < 20; i++) { try { await p.goto(url); break; } catch { await p.waitForTimeout(300); } }
   await p.evaluate(() => localStorage.clear()); await p.reload();
-  const field = (label) => p.locator('.properties .field', { has: p.locator(`label:text-is("${label}")`) }).locator('input, select').first();
+  const field = (label) => p.locator('.properties .field', { has: p.locator('label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input, select').first();
   const setField = async (label, text) => { const f = field(label); await f.click(); await f.fill(text); await f.press('Enter'); };
   const readout = async (label) => p.locator('.properties .readout div', { has: p.locator(`dt:text-is("${label}")`) }).locator('dd').innerText();
   const measure = async (label) => p.locator('.measure .m-grid dt', { hasText: new RegExp(`^${label}$`) }).first().locator('xpath=following-sibling::dd[1]').innerText();
@@ -32,7 +32,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   await setField('Length', '100');
   await p.click('.range-btn');
   const xs = '.axes-dialog section[data-axis="x"]';
-  const ax = async (l, v) => { const f = p.locator(xs).locator('.field', { has: p.locator(`label:text-is("${l}")`) }).locator('input'); await f.click(); await f.fill(v); await f.press('Enter'); };
+  const ax = async (l, v) => { const f = p.locator(xs).locator('.field', { has: p.locator('label', { hasText: new RegExp('^' + l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input'); await f.click(); await f.fill(v); await f.press('Enter'); };
   await ax('To', '10m'); await ax('From', '0');
   await p.keyboard.press('Escape');
   assert((await measure('RMS')).startsWith('100'), 'noise RMS over one period = σ = 100 mV: ' + await measure('RMS'));
@@ -56,7 +56,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   await p.click('button[aria-label^="New"]').catch(() => {});
   await p.click('.tool:has-text("AM / FM / PM")');
   const D = '.modulation-dialog';
-  const df = (l) => p.locator(`${D} .field`, { has: p.locator(`label:text-is("${l}")`) }).locator('input, select').first();
+  const df = (l) => p.locator(`${D} .field`, { has: p.locator('label', { hasText: new RegExp('^' + l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input, select').first();
   await df('Type').selectOption('fm');
   for (const [l, v] of [['Frequency deviation Δf', '100'], ['Message fm', '100']]) { const f = df(l); await f.click(); await f.fill(v); await f.press('Enter'); }
   assert((await p.locator(`${D} .readout dd`).first().innerText()) === '1.000', 'β = Δf/f_m = 1');

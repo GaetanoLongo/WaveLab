@@ -13,7 +13,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   const errs = []; p.on('pageerror', (e) => errs.push(e.message));
   for (let i = 0; i < 20; i++) { try { await p.goto(url); break; } catch { await p.waitForTimeout(300); } }
   await p.evaluate(() => localStorage.clear()); await p.reload();
-  const prop = (label) => p.locator('.properties .field', { has: p.locator(`label:text-is("${label}")`) }).locator('input, select').first();
+  const prop = (label) => p.locator('.properties .field', { has: p.locator('label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input, select').first();
   const setProp = async (label, text) => { const f = prop(label); await f.click(); await f.fill(text); await f.press('Enter'); };
   const mval = async (name) => p.locator('.measure .m-grid dt', { hasText: new RegExp(`^${name}$`) }).first().locator('xpath=following-sibling::dd[1]').innerText();
   const planned = await p.locator('.tool.planned').allInnerTexts();
@@ -49,7 +49,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   assert(await prop('Bits').inputValue() === '1011', 'rejected text reverts to the stored bits');
   await p.locator('.properties label:has-text("Repeat the frame") input').check();
   await p.click('.measure button:has-text("Time cursors")');
-  const mf = (l) => p.locator('.measure .field', { has: p.locator(`label:text-is("${l}")`) }).locator('input').first();
+  const mf = (l) => p.locator('.measure .field', { has: p.locator('label', { hasText: new RegExp('^' + l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input').first();
   for (const [l, v] of [['Cursor 1', '0'], ['Cursor 2', '4m']]) { const f = mf(l); await f.click(); await f.fill(v); await f.press('Enter'); }
   assert(await mval('Duty') === '50.00 %', 'Manchester frame duty is exactly 50 %: ' + await mval('Duty'));
 

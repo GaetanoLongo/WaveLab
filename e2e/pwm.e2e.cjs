@@ -13,7 +13,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   const errs = []; p.on('pageerror', (e) => errs.push(e.message));
   for (let i = 0; i < 20; i++) { try { await p.goto(url); break; } catch { await p.waitForTimeout(300); } }
   await p.evaluate(() => localStorage.clear()); await p.reload();
-  const dfield = (label) => p.locator('.pwm-dialog .field', { has: p.locator(`label:text-is("${label}")`) }).locator('input, select').first();
+  const dfield = (label) => p.locator('.pwm-dialog .field', { has: p.locator('label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input, select').first();
   const setD = async (label, v) => { const f = dfield(label); await f.click(); await f.fill(v); await f.press('Enter'); };
 
   await p.click('.tool:has-text("PWM generator")');

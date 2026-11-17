@@ -14,6 +14,8 @@ import { ViewsDialog } from './panels/ViewsDialog';
 import { Modal, openAxes } from './Modal';
 import { loadFile } from './fileio';
 import { MathLabel } from './MathLabel';
+import { Resizer } from './Resizer';
+import { setLayout, useLayout, DEFAULT_LAYOUT } from '../state/layout';
 import { ContextMenu, showContextMenu, type MenuItem } from './ContextMenu';
 import { signalMenuItems } from './signalMenu';
 import { formatSI } from '../core/units/si';
@@ -86,17 +88,48 @@ export function App() {
       {phone ? (
         <PhoneWorkspace />
       ) : (
-        <div className="workspace">
-          <aside className="toolbox" aria-label="Toolbox">
-            <Toolbox />
-          </aside>
-          <PlotArea />
-          <aside className="inspector">
-            <SignalList />
-            <PropertiesPanel />
-          </aside>
-        </div>
+        <Workspace />
       )}
+    </div>
+  );
+}
+
+/** Desktop layout: toolbox | plot | inspector, each side panel hideable and resizable. */
+function Workspace() {
+  const L = useLayout();
+  const cols = `${L.toolboxOpen ? L.toolboxW : 0}px ${L.toolboxOpen ? 5 : 0}px minmax(0, 1fr) ${L.inspectorOpen ? 5 : 0}px ${L.inspectorOpen ? L.inspectorW : 0}px`;
+  return (
+    <div className="workspace" style={{ gridTemplateColumns: cols }}>
+      <aside className="toolbox" aria-label="Toolbox" hidden={!L.toolboxOpen}>
+        <Toolbox />
+      </aside>
+      {L.toolboxOpen ? (
+        <Resizer
+          orientation="col"
+          label="Resize toolbox"
+          size={() => useLayout.getState().toolboxW}
+          onResize={(d, s) => setLayout({ toolboxW: s + d })}
+          onReset={() => setLayout({ toolboxW: DEFAULT_LAYOUT.toolboxW })}
+        />
+      ) : (
+        <span />
+      )}
+      <PlotArea />
+      {L.inspectorOpen ? (
+        <Resizer
+          orientation="col"
+          label="Resize inspector"
+          size={() => useLayout.getState().inspectorW}
+          onResize={(d, s) => setLayout({ inspectorW: s - d })}
+          onReset={() => setLayout({ inspectorW: DEFAULT_LAYOUT.inspectorW })}
+        />
+      ) : (
+        <span />
+      )}
+      <aside className="inspector" hidden={!L.inspectorOpen}>
+        <SignalList />
+        <PropertiesPanel />
+      </aside>
     </div>
   );
 }

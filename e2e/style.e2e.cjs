@@ -17,9 +17,9 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   for (let i = 0; i < 20; i++) { try { await p.goto(url); break; } catch { await p.waitForTimeout(300); } }
   await p.evaluate(() => localStorage.clear()); await p.reload();
   const svg = () => p.locator('.plot-svg').innerHTML();
-  const dfield = (sel, label) => p.locator(`${sel} .field`, { has: p.locator(`label:text-is("${label}")`) }).locator('input, select').first();
+  const dfield = (sel, label) => p.locator(`${sel} .field`, { has: p.locator('label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input, select').first();
   const setD = async (sel, label, text) => { const f = dfield(sel, label); await f.click(); await f.fill(text); await f.press('Enter'); };
-  const prop = (label) => p.locator('.properties .field', { has: p.locator(`label:text-is("${label}")`) }).locator('input').first();
+  const prop = (label) => p.locator('.properties .field', { has: p.locator('label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input').first();
   const setProp = async (label, text) => { const f = prop(label); await f.click(); await f.fill(text); await f.press('Enter'); };
 
   await p.click('.tool:has-text("Sine")');

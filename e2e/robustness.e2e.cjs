@@ -17,7 +17,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   p.on('dialog', (d) => d.accept());
   for (let i = 0; i < 20; i++) { try { await p.goto(url); break; } catch { await p.waitForTimeout(300); } }
   await p.evaluate(() => localStorage.clear()); await p.reload();
-  const field = (label) => p.locator('.properties .field', { has: p.locator(`label:text-is("${label}")`) }).locator('input, select').first();
+  const field = (label) => p.locator('.properties .field', { has: p.locator('label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input, select').first();
   const setField = async (label, text) => { const f = field(label); await f.click(); await f.fill(text); await f.press('Enter'); };
   const expr = p.locator('.expr-input');
   const names = () => p.locator('.signal-list .name').allInnerTexts();
@@ -89,7 +89,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
 
   // --- Spectrum: automatic fundamental for PWM whose pattern period is longer than 1/f1 ---
   await p.click('.tool:has-text("PWM generator")');
-  const dfield = (label) => p.locator('.pwm-dialog .field', { has: p.locator(`label:text-is("${label}")`) }).locator('input, select').first();
+  const dfield = (label) => p.locator('.pwm-dialog .field', { has: p.locator('label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input, select').first();
   await dfield('Topology').selectOption('full-bipolar');
   for (const [l, v] of [['Carrier frequency f_c', '1025'], ['Dead time td', '0']]) {
     const f = dfield(l); if (await f.count()) { await f.click(); await f.fill(v); await f.press('Enter'); }

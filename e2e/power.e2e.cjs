@@ -14,7 +14,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   const errs = []; p.on('pageerror', (e) => errs.push(e.message));
   for (let i = 0; i < 20; i++) { try { await p.goto(url); break; } catch { await p.waitForTimeout(300); } }
   await p.evaluate(() => localStorage.clear()); await p.reload();
-  const dfield = (dlg, label) => p.locator(`${dlg} .field`, { has: p.locator(`label:text-is("${label}")`) }).locator('input, select').first();
+  const dfield = (dlg, label) => p.locator(`${dlg} .field`, { has: p.locator('label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input, select').first();
   const setD = async (dlg, label, v) => { const f = dfield(dlg, label); await f.click(); await f.fill(v); await f.press('Enter'); };
   const measure = async (label) => p.locator('.measure .m-grid dt', { hasText: new RegExp(`^${label}$`) }).first().locator('xpath=following-sibling::dd[1]').innerText();
 

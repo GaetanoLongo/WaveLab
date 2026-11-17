@@ -11,7 +11,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   for (let i = 0; i < 20; i++) { try { await p.goto(url); break; } catch { await p.waitForTimeout(300); } }
   await p.waitForSelector('.toolbox');
   const names = async () => p.locator('.signal-list .name').allInnerTexts();
-  const field = (label) => p.locator('.properties .field', { has: p.locator(`label:text-is("${label}")`) }).locator('input').first();
+  const field = (label) => p.locator('.properties .field', { has: p.locator('label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).locator('input').first();
   const setField = async (label, text) => { const f = field(label); await f.click(); await f.fill(text); await f.press('Enter'); };
 
   // Acceptance test 1 through the UI
@@ -66,7 +66,8 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   await p.locator('.signal-list .row').nth(0).click();
   assert(await field('Frequency').isDisabled(), 'locked signal fields are disabled');
   await p.keyboard.press('Delete');
-  assert((await p.locator('.notice').innerText()).includes('locked'), 'deleting locked signal shows notice');
+  assert((await p.locator('.alert-dialog').innerText()).includes('locked'), 'deleting locked signal shows a warning popup');
+  await p.click('.alert-dialog button.primary');
   await p.locator('.signal-list .row').nth(0).locator('button[title="Unlock"]').click();
 
   // rename via double-click
