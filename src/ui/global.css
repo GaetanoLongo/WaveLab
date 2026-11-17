@@ -60,6 +60,7 @@ input.invalid { border-color: var(--danger); background: #fdf1f0; }
   .workspace { grid-template-columns: 1fr !important; grid-template-rows: auto minmax(min(360px, 85vh), 1fr) auto; overflow-y: auto; }
   .workspace > .resizer, .workspace > span { display: none; }
   .workspace > aside[hidden] { display: block; }
+  .tb-side { display: none; } /* the side panels are stacked here, not hideable */
   .toolbox { border-right: none; border-bottom: 1px solid var(--border); height: min(220px, 45vh); }
   .inspector { border-left: none; border-top: 1px solid var(--border); overflow: visible; }
 }

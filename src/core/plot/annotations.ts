@@ -4,6 +4,7 @@
  */
 
 import type { Annotation } from '../model/project';
+import { plainText } from './mathtext';
 import { formatSI } from '../units/si';
 import { tToPx, yToPx, type FigureLayout, type PanelLayout } from './layout';
 import type { SceneItem } from './scene';
@@ -52,12 +53,46 @@ function head(items: SceneItem[], x: number, y: number, dx: number, dy: number, 
   items.push({ type: 'path', polylines: [p], stroke: color, width: w, dash: 'solid' });
 }
 
-export function drawAnnotations(items: SceneItem[], list: ResolvedAnnotation[], l: FigureLayout, fs: number, lineScale = 1, selectedId?: string | null) {
+/** Rough text width in px (0.56 em per character of the visible text). */
+export function textWidthPx(text: string, size: number): number {
+  return plainText(text).length * size * 0.56;
+}
+
+/**
+ * Label that fits in `maxPx`: the text itself, else without its leading word (so “0x48 'H'”
+ * becomes “'H'”), else truncated with an ellipsis, else nothing.
+ */
+export function fitLabel(text: string, maxPx: number, size: number): string {
+  if (textWidthPx(text, size) <= maxPx) return text;
+  const words = text.split(' ');
+  for (let i = 1; i < words.length; i++) {
+    const t = words.slice(i).join(' ');
+    if (textWidthPx(t, size) <= maxPx) return t;
+  }
+  const plain = plainText(text);
+  const chars = Math.floor(maxPx / (size * 0.56)) - 1;
+  return chars >= 2 && plain === text ? `${text.slice(0, chars)}…` : '';
+}
+
+/** Text with a plot-coloured backing so grid lines and traces do not run through it. */
+function haloText(items: SceneItem[], bg: string | undefined, t: Extract<SceneItem, { type: 'text' }>) {
+  if (bg && t.text) {
+    const w = textWidthPx(t.text, t.size) + 4;
+    const h = t.size * 1.2;
+    const x = t.anchor === 'start' ? t.x - 2 : t.anchor === 'end' ? t.x - w + 2 : t.x - w / 2;
+    const y = t.baseline === 'top' ? t.y : t.baseline === 'bottom' ? t.y - h : t.y - h / 2;
+    items.push({ type: 'rect', x, y, w, h, fill: bg, opacity: 0.85 });
+  }
+  items.push(t);
+}
+
+export function drawAnnotations(items: SceneItem[], list: ResolvedAnnotation[], l: FigureLayout, fsBase: number, lineScale = 1, selectedId?: string | null, bg?: string) {
   const baseW = 1.3 * lineScale;
-  const hs = Math.max(6, fs * 0.6);
   for (const r of list) {
     const { a } = r;
     const w = baseW * (a.width ?? 1);
+    const fs = fsBase * (a.size ?? 1);
+    const hs = Math.max(6, fs * 0.6);
     const g = annotationPx(r, l);
     if (a.id === selectedId) {
       // Selection halo.
@@ -65,7 +100,7 @@ export function drawAnnotations(items: SceneItem[], list: ResolvedAnnotation[], 
     }
     switch (a.kind) {
       case 'text':
-        items.push({ type: 'text', x: g.x0, y: g.y0, text: a.text || 'Text', size: fs, fill: a.color, anchor: 'start', baseline: 'middle' });
+        haloText(items, bg, { type: 'text', x: g.x0, y: g.y0, text: a.text || 'Text', size: fs, fill: a.color, anchor: 'start', baseline: 'middle' });
         break;
       case 'arrow': {
         items.push({ type: 'line', x1: g.x0, y1: g.y0, x2: g.x1, y2: g.y1, stroke: a.color, width: w });
@@ -73,7 +108,7 @@ export function drawAnnotations(items: SceneItem[], list: ResolvedAnnotation[], 
         if (a.text) {
           // Label beyond the tail, on the side away from the head.
           const left = g.x1 > g.x0;
-          items.push({
+          haloText(items, bg, {
             type: 'text',
             x: g.x0 + (left ? -4 : 4),
             y: g.y0,
@@ -93,7 +128,8 @@ export function drawAnnotations(items: SceneItem[], list: ResolvedAnnotation[], 
         items.push({ type: 'line', x1: g.x0, y1: g.y0, x2: g.x1, y2: g.y0, stroke: a.color, width: w });
         head(items, g.x0, g.y0, g.x0 - g.x1, 0, hs, a.color, w);
         head(items, g.x1, g.y0, g.x1 - g.x0, 0, hs, a.color, w);
-        items.push({ type: 'text', x: (g.x0 + g.x1) / 2, y: g.y0 - 4, text: dimensionLabel(a, r.unit), size: fs * 0.92, fill: a.color, anchor: 'middle', baseline: 'bottom' });
+        const room = Math.abs(g.x1 - g.x0) - 2 * hs - 4;
+        haloText(items, bg, { type: 'text', x: (g.x0 + g.x1) / 2, y: g.y0 - 4, text: fitLabel(dimensionLabel(a, r.unit), room, fs * 0.92), size: fs * 0.92, fill: a.color, anchor: 'middle', baseline: 'bottom' });
         break;
       }
       case 'dim-y': {
@@ -103,7 +139,7 @@ export function drawAnnotations(items: SceneItem[], list: ResolvedAnnotation[], 
         items.push({ type: 'line', x1: g.x0, y1: g.y0, x2: g.x0, y2: g.y1, stroke: a.color, width: w });
         head(items, g.x0, g.y0, 0, g.y0 - g.y1, hs, a.color, w);
         head(items, g.x0, g.y1, 0, g.y1 - g.y0, hs, a.color, w);
-        items.push({ type: 'text', x: g.x0 + ext + 3, y: (g.y0 + g.y1) / 2, text: dimensionLabel(a, r.unit), size: fs * 0.92, fill: a.color, anchor: 'start', baseline: 'middle' });
+        haloText(items, bg, { type: 'text', x: g.x0 + ext + 3, y: (g.y0 + g.y1) / 2, text: dimensionLabel(a, r.unit), size: fs * 0.92, fill: a.color, anchor: 'start', baseline: 'middle' });
         break;
       }
     }

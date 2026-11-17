@@ -464,6 +464,7 @@ function readAnnotations(v: unknown, path: string, ids: Set<string>): Annotation
       text: str(o.text, `${p}.text`),
       color,
       ...(o.width !== undefined && o.width !== null ? { width: Math.min(20, Math.max(0.1, num(o.width, `${p}.width`))) } : {}),
+      ...(o.size !== undefined && o.size !== null ? { size: Math.min(8, Math.max(0.3, num(o.size, `${p}.size`))) } : {}),
     };
   });
 }

@@ -619,7 +619,7 @@ export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureL
 
   if (input.annotations?.length) {
     const unitOf = (id: string) => input.panels.flatMap((p) => p.traces).find((t) => t.id === id)?.unit;
-    drawAnnotations(items, resolveAnnotations(input.annotations, layout, unitOf), layout, fs, th.lineScale, input.selectedAnnotation);
+    drawAnnotations(items, resolveAnnotations(input.annotations, layout, unitOf), layout, fs, th.lineScale, input.selectedAnnotation, th.plotBackground);
   }
   if (input.cursors) drawCursors(items, input.cursors, layout, fs);
 

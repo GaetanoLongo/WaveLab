@@ -85,6 +85,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   await p.click('.toolbar button:has-text("Measure")');
   await p.screenshot({ path: path.join(out, 'ux.png') });
 
+  if (await p.locator('.recovery-banner').count()) await p.click('.recovery-banner button:has-text("Discard")');
   // --- "Not in this figure" signals can be deleted ---
   await p.click('.tool:has-text("Sine")');
   await p.click('.figure-tabs button[aria-label="New figure"]');
@@ -109,6 +110,46 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   await p.click('.protocol-dialog .check:has-text("bit clock") input');
   await p.click('.protocol-dialog button.primary');
   assert((await names()).includes('CLK'), 'CLK signal created on request');
+
+  // --- Protocol labels do not overlap (11-byte UART at the default zoom) ---
+  const textOverlaps = () => p.evaluate(() => {
+    const ts = [...document.querySelectorAll('.plot-svg text')].filter((t) => t.textContent.trim());
+    const bb = ts.map((t) => { const r = t.getBoundingClientRect(); return { r, s: t.textContent }; });
+    const bad = [];
+    for (let i = 0; i < bb.length; i++) for (let j = i + 1; j < bb.length; j++) {
+      const a = bb[i].r, b = bb[j].r;
+      if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) bad.push(bb[i].s + ' / ' + bb[j].s);
+    }
+    return bad;
+  });
+  await p.click('.tool:has-text("UART / SPI")');
+  await p.locator('.protocol-dialog .field:has(label:text-is("Data")) input').fill('Hello World');
+  await p.click('.protocol-dialog button.primary');
+  await p.waitForTimeout(500);
+  const bad = await textOverlaps();
+  assert(bad.length === 0, 'no overlapping text in the UART frame view: ' + bad.join(', '));
+
+  // --- Context menu on a trace and on an annotation; annotation text size ---
+  const pt = await p.evaluate(() => {
+    const path = [...document.querySelectorAll('.plot-svg path[data-signal]')].find((e) => e.getAttribute('stroke-width') && e.getAttribute('stroke-opacity') !== '0.2') || document.querySelector('.plot-svg path[data-signal]');
+    const len = path.getTotalLength(); const m = path.getScreenCTM(); const q = path.getPointAtLength(len * 0.5);
+    return { x: q.x * m.a + m.e, y: q.y * m.d + m.f };
+  });
+  await p.mouse.click(pt.x, pt.y, { button: 'right' });
+  const tItems = await p.locator('.context-menu button').allInnerTexts();
+  assert(tItems.includes('Fit view to this signal') && tItems.includes('Duplicate'), 'right-click on a trace: ' + tItems.join(', '));
+  await p.keyboard.press('Escape');
+  const ann = await p.evaluate(() => { const t = [...document.querySelectorAll('.plot-svg text')].find((e) => e.textContent === 'S'); const r = t.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  await p.mouse.click(ann.x, ann.y, { button: 'right' });
+  const aItems = await p.locator('.context-menu button').allInnerTexts();
+  assert(aItems.includes('Edit annotation…') && aItems.includes('Delete annotation'), 'right-click on an annotation: ' + aItems.join(', '));
+  await p.click('.context-menu button:has-text("Edit annotation")');
+  const sizeField = p.locator('.annotations-dialog .ann-item.focused .field', { has: p.locator('label', { hasText: 'Text size' }) }).locator('input');
+  const wBefore = await p.evaluate(() => { const t = [...document.querySelectorAll('.plot-svg text')].find((e) => e.textContent === 'S'); return t.getBoundingClientRect().width; });
+  await sizeField.click(); await sizeField.fill('2'); await sizeField.press('Enter');
+  await p.click('.annotations-dialog button:has-text("Done")');
+  const wAfter = await p.evaluate(() => { const t = [...document.querySelectorAll('.plot-svg text')].find((e) => e.textContent === 'S'); return t.getBoundingClientRect().width; });
+  assert(wAfter > wBefore * 1.5, `annotation text size multiplier works (${wBefore.toFixed(1)} → ${wAfter.toFixed(1)} px)`);
 
   assert(errs.length === 0, 'no page errors: ' + errs.join('; '));
   await b.close();

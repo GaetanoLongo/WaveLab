@@ -100,7 +100,9 @@ export function NumberField(p: NumberFieldProps) {
           setText(shown);
           setEditing(true);
           const el = e.currentTarget;
-          requestAnimationFrame(() => el.select());
+          // select() focuses the field in Chromium: only select while it still has the focus, or an
+          // Enter/Escape pressed within the same frame (which blurs it) would hand the focus back.
+          requestAnimationFrame(() => document.activeElement === el && el.select());
         }}
         onChange={(e) => {
           setText(e.target.value);

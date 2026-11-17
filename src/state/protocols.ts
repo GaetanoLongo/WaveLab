@@ -111,13 +111,18 @@ export function buildProtocol(c: ProtocolConfig, newId: (prefix: string) => stri
       const p: BitsParams = { bits, bitTime, high: H, low: L, encoding: 'nrz', repeat: false, idle };
       d.params = p;
     });
-    yRanges[s.id] = [L - 0.15 * D, H + 0.55 * D];
+    yRanges[s.id] = [L - 0.15 * D, H + 0.68 * D];
     return s;
   };
-  const dim = (on: string, t0: number, t1: number, text: string, color = '#1c2330') =>
-    anns.push({ kind: 'dim-t', on, t0, t1, y0: labelY, y1: labelY, text, color });
+  // Field brackets are shortened slightly so adjacent ones do not share an arrowhead, and the
+  // single-letter markers (S, A, P) sit just above the bracket line, clear of its end ticks.
+  const dim = (on: string, t0: number, t1: number, text: string, color = '#1c2330') => {
+    const inset = (t1 - t0) * 0.015;
+    anns.push({ kind: 'dim-t', on, t0: t0 + inset, t1: t1 - inset, y0: labelY, y1: labelY, text, color });
+  };
+  const markY = labelY + 0.2 * D;
   const label = (on: string, t: number, text: string, color = '#5b6577') =>
-    anns.push({ kind: 'text', on, t0: t, t1: t, y0: labelY, y1: labelY, text, color });
+    anns.push({ kind: 'text', on, t0: t, t1: t, y0: markY, y1: markY, text, color });
 
   if (c.protocol === 'uart') {
     const T = 1 / c.baud;

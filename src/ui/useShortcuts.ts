@@ -38,7 +38,7 @@ export function useShortcuts() {
         void openProject();
         return;
       }
-      if (useExportDialog.getState().open || anyDialogOpen() || useSpectrum.getState().open || usePwmDialog.getState().open || useRectifierDialog.getState().open ||  useModulationDialog.getState().open || useProtocolDialog.getState().open || useViewsDialog.getState().open !== null || useAnnotate.getState().editing !== null) return; // modals handle their own keys
+      if (useExportDialog.getState().open || anyDialogOpen() || useSpectrum.getState().open || usePwmDialog.getState().open || useRectifierDialog.getState().open ||  useModulationDialog.getState().open || useProtocolDialog.getState().open || useViewsDialog.getState().open !== null || useAnnotate.getState().editing !== null || editor.getState().alert !== null) return; // modals handle their own keys
       if (isTyping(e.target)) return;
 
       if (mod && k === 'z' && !e.shiftKey) {

@@ -201,10 +201,10 @@ export function Toolbar({ compact = false }: { compact?: boolean }) {
         >
           Legend
         </button>
-        <button className={`tb text toggle${L.toolboxOpen ? ' on' : ''}`} aria-pressed={L.toolboxOpen} title="Show/hide the toolbox (drag its edge to resize)" onClick={() => setLayout({ toolboxOpen: !L.toolboxOpen })}>
+        <button className={`tb text toggle tb-side${L.toolboxOpen ? ' on' : ''}`} aria-pressed={L.toolboxOpen} title="Show/hide the toolbox (drag its edge to resize)" onClick={() => setLayout({ toolboxOpen: !L.toolboxOpen })}>
           Toolbox
         </button>
-        <button className={`tb text toggle${L.inspectorOpen ? ' on' : ''}`} aria-pressed={L.inspectorOpen} title="Show/hide the signal list and properties (drag its edge to resize)" onClick={() => setLayout({ inspectorOpen: !L.inspectorOpen })}>
+        <button className={`tb text toggle tb-side${L.inspectorOpen ? ' on' : ''}`} aria-pressed={L.inspectorOpen} title="Show/hide the signal list and properties (drag its edge to resize)" onClick={() => setLayout({ inspectorOpen: !L.inspectorOpen })}>
           Properties
         </button>
         <button className={`tb text toggle${L.measureOpen ? ' on' : ''}`} aria-pressed={L.measureOpen} title="Show/hide the measurement panel (drag its top edge to resize)" onClick={() => setLayout({ measureOpen: !L.measureOpen })}>

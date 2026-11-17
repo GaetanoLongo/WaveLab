@@ -63,6 +63,15 @@ function Dialog({ focus }: { focus: string }) {
                 <label>Colour</label>
                 <input type="color" value={a.color} onChange={(e) => upd({ color: e.target.value }, `ann-color-${a.id}`)} />
               </div>
+              <NumberField
+                label="Text size ×"
+                plain
+                min={0.3}
+                max={8}
+                value={a.size ?? 1}
+                onCommit={(v) => upd({ size: v }, `ann-size-${a.id}`)}
+                title="Multiple of the figure's font size (1 = default)"
+              />
               {a.kind !== 'text' && (
                 <NumberField
                   label="Line thickness ×"
