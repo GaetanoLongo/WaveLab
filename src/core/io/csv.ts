@@ -26,7 +26,8 @@ function toNumber(f: string, decimalComma: boolean): number {
   if (f === '') return NaN;
   const t = decimalComma ? f.replace(',', '.') : f;
   if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t)) return NaN;
-  return Number(t);
+  const v = Number(t);
+  return Number.isFinite(v) ? v : NaN; // 1e999 overflows to Infinity: not a usable value
 }
 
 /** Parse the text; a string result is the reason it cannot be used. */

@@ -41,6 +41,8 @@ describe('parseCsv', () => {
   });
   it('rejects numbers that are not numbers (NaN, inf, 1e, 0x10, thousands separators)', () => {
     expect(parseCsv('t,v\nNaN,1\ninf,2\n1e,3\n0x10,4\n')).toMatch(/Fewer than two rows/);
+    // Overflow (1e999) is Infinity in JavaScript: it must not become a value either.
+    expect(parseCsv('t,v\n0,1e999\n1,2\n2,-1e999\n')).toMatch(/Fewer than two rows/);
   });
 });
 

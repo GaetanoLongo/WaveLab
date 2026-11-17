@@ -72,7 +72,10 @@ function num(text) {
   const dy = await stat('ΔY');
   near(Math.abs(dy), 2, 1e-6, '|ΔY| between the peak at 5 ms and the trough at 15 ms');
 
-  // Measuring between the cursors changes the window: one half period of a sine: mean = 2A/π
+  near(await stat('Mean'), 0, 1e-6, 'mean between the peak and the trough of a sine (symmetric: 0)');
+  // Measuring between the cursors changes the window: 0…10 ms is one half period of the sine: mean = 2A/π
+  for (const [l, v] of [['Cursor 1', '0'], ['Cursor 2', '10m']]) { const f = mf(l); await f.click(); await f.fill(v); await f.press('Enter'); }
+  await p.waitForTimeout(500);
   near(await stat('Mean'), 2 / Math.PI, 1e-4, 'mean of a half period of a sine (2A/π)');
 
   assert(errs.length === 0, 'no page errors: ' + errs.join('; '));
