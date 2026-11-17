@@ -11,6 +11,7 @@ import { openPwm } from './PwmDialog';
 import { openRectifier } from './RectifierDialog';
 import { openModulation } from './ModulationDialog';
 import { openProtocol } from './ProtocolDialog';
+import { chooseCsvFile } from './CsvImportDialog';
 import { WaveGlyph } from '../icons';
 
 interface Entry {
@@ -227,6 +228,15 @@ export function Toolbox() {
           {PLANNED_DIGITAL.map(([l, w]) => (
             <Planned key={l} label={l} when={w} />
           ))}
+        </div>
+      </details>
+      <details open>
+        <summary>Measured data</summary>
+        <div className="tools">
+          <button className="tool" title="Import an oscilloscope or logger export (CSV, TSV, text) as signals to overlay with the ideal ones. You can also drop the file on the window." onClick={chooseCsvFile}>
+            <span className="op-glyph">⇪</span>
+            <span>Import CSV data…</span>
+          </button>
         </div>
       </details>
       <details open>

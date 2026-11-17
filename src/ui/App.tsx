@@ -34,6 +34,7 @@ import { Toolbar } from './Toolbar';
 import { useShortcuts } from './useShortcuts';
 import { editAnnotation, selectAnnotation, useAnnotate } from './annotate';
 import { AnnotationsDialog } from './panels/AnnotationsDialog';
+import { CsvImportDialog, openCsvFile } from './panels/CsvImportDialog';
 import { discardRecovery, restoreRecovery, startRecovery, useRecovery } from '../state/recovery';
 import { PHONE_QUERY, useMediaQuery } from './useMediaQuery';
 
@@ -70,8 +71,12 @@ export function App() {
         setDropping(false);
         const f = e.dataTransfer.files[0];
         if (!f) return;
+        if (/\.(csv|tsv|txt|dat)$/i.test(f.name)) {
+          void openCsvFile(f);
+          return;
+        }
         if (!/\.(wlab|json)$/i.test(f.name)) {
-          editor.setState({ notice: `“${f.name}” is not a WaveLab project (.wlab).` });
+          editor.setState({ notice: `“${f.name}” is neither a WaveLab project (.wlab) nor a data file (.csv, .tsv, .txt).` });
           return;
         }
         if (isDirty(editor.getState()) && !window.confirm('Discard unsaved changes?')) return;
@@ -87,6 +92,7 @@ export function App() {
       <ProtocolDialog />
       <ViewsDialog />
       <AnnotationsDialog />
+      <CsvImportDialog />
       <AxesDialog />
       <AlertDialog />
       <ContextMenu />

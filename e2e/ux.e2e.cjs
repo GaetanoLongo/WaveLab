@@ -180,6 +180,29 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   const edgeText = await p.locator('.measure .edges').innerText();
   assert(/Rise/.test(edgeText) && /Fall/.test(edgeText) && /width/.test(edgeText), 'the Measure panel shows edge and pulse measurements: ' + edgeText.replace(/\s+/g, ' ').slice(0, 90));
 
+  // --- CSV import (a scope-style export with the unit in the header) ---
+  await p.click('button[title="New project"]').catch(() => {});
+  const csvPath = path.join(out, 'scope.csv');
+  const lines = ['Time (ms),CH1 (V),CH2 (V)'];
+  for (let i = 0; i <= 400; i++) lines.push(`${(i * 0.05).toFixed(2)},${(2 * Math.sin((2 * Math.PI * 50 * i * 0.05) / 1000)).toFixed(5)},${i % 80 < 40 ? 3.3 : 0}`);
+  fs.writeFileSync(csvPath, lines.join('\n') + '\n');
+  const [chooser] = await Promise.all([p.waitForEvent('filechooser'), p.click('.tool:has-text("Import CSV data")')]);
+  await chooser.setFiles(csvPath);
+  await p.waitForSelector('.modal');
+  assert((await p.locator('.modal h2').innerText()).includes('scope.csv'), 'the import dialog opens for the file');
+  assert((await p.locator('.modal select').first().inputValue()) === '0', 'the time column is found automatically');
+  assert((await p.locator('.modal select').nth(1).inputValue()) === 'ms', 'the time unit is read from the header (ms)');
+  assert((await p.locator('.modal .readout').innerText()).includes('401'), 'the dialog states the number of rows');
+  await p.click('.modal footer button.primary');
+  const imported = await p.locator('.signal-list .name').allInnerTexts();
+  assert(imported.length === 2 && imported[0].startsWith('CH1'), 'two signals were created: ' + imported);
+  await p.locator('.signal-list .row').first().click();
+  await p.waitForTimeout(600);
+  const maxText = await p.locator('.measure .m-grid').first().innerText();
+  assert(/Max\s+2 V|Max\s+1\.99/.test(maxText), 'the imported signal measures like the data (peak ≈ 2 V): ' + maxText.replace(/\s+/g, ' ').slice(0, 60));
+  await p.click('.tool:has-text("Absolute value")');
+  assert((await p.locator('.signal-list .row').count()) === 3, 'imported data works with the operations');
+
   assert(errs.length === 0, 'no page errors: ' + errs.join('; '));
   await b.close();
 })().catch((e) => { console.log('FAIL: exception', e.message); process.exit(1); });

@@ -38,6 +38,8 @@ import type { SignalSet } from './builder';
 import { buildModulation, type ModulationConfig } from './modulation';
 import { buildProtocol, type ProtocolConfig } from './protocols';
 import { buildPwm, type PwmConfig } from './pwm';
+import { buildCsvImport, type CsvImportConfig } from './csvImport';
+import type { CsvTable } from '../core/io/csv';
 import { onBudgetExceeded } from '../core/signals/budget';
 import type { AxisStyle, StyleOverrides } from '../core/plot/layout';
 import { phaseForDifference } from '../core/signals/phase';
@@ -827,6 +829,14 @@ export const actions = {
   /** Create an AM / DSB-SC / FM / PM signal set as new groups, in one undo step. */
   createModulation(config: ModulationConfig): void {
     actions.addSignalSet(buildModulation(config, newId, get().project.signals.length), Math.min(2 / config.fm, 1));
+  },
+
+  /** Create editable signals from imported measurement data; returns an error message or null. */
+  createCsvImport(table: CsvTable, config: CsvImportConfig): string | null {
+    const built = buildCsvImport(table, config, newId, get().project.signals.length);
+    if (typeof built === 'string') return built;
+    actions.addSignalSet(built, Math.max(built.duration, 1e-12) * 1.02);
+    return null;
   },
 
   /** Create UART / SPI / I²C frames with decoded-field annotations; returns an error message or null. */
