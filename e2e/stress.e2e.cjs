@@ -2,7 +2,7 @@
 // option combination, view manipulation, layout and a random-action ("monkey") run, and collects
 // FINDINGS instead of stopping at the first failure. Run `npm run build && npx vite preview` first.
 //
-//   node e2e/stress.e2e.cjs [outDir] [area,area,…]     areas: tools waveforms dialogs views export layouts monkey keyboard touch big
+//   node e2e/stress.e2e.cjs [outDir] [area,area,…]     areas: tools waveforms dialogs views export layouts monkey keyboard touch big dialogfuzz
 //
 // Each step is followed by a scan: page errors, console errors, a responsiveness probe (freeze
 // detection), overlapping text in the plot, "NaN"/"undefined"/"Infinity" in the interface, and
@@ -666,9 +666,84 @@ async function areaBig() {
 }
 
 // ---------------------------------------------------------------------------------------------
+/** Every select cycled through all its options, every text/number input given extreme values. */
+async function fuzzOpenDialog(label) {
+  const modal = '.modal';
+  const selects = await p.locator(`${modal} select`).count();
+  for (let i = 0; i < selects; i++) {
+    const values = await p.locator(`${modal} select`).nth(i).evaluate((el) => [...el.options].map((o) => o.value)).catch(() => []);
+    for (const v of values.slice(0, 12)) {
+      await step(`${label}: select ${i} = ${v}`, async () => { await p.locator(`${modal} select`).nth(i).selectOption(v); await p.waitForTimeout(80); });
+    }
+  }
+  const inputs = await p.locator(`${modal} input:not([type=checkbox]):not([type=color]):not([type=range]):not([type=file])`).count();
+  for (let i = 0; i < inputs; i++) {
+    for (const v of ['0', '-1', '1e9', '1e-12', 'abc', '', '1e400', '3.5', '2000']) {
+      await step(`${label}: input ${i} = "${v}"`, async () => {
+        const f = p.locator(`${modal} input:not([type=checkbox]):not([type=color]):not([type=range]):not([type=file])`).nth(i);
+        if (!(await f.isVisible().catch(() => false)) || (await f.isDisabled().catch(() => true))) return;
+        await f.click(); await f.fill(v); await f.press('Enter'); await p.waitForTimeout(60);
+      });
+    }
+  }
+  const checks = await p.locator(`${modal} input[type=checkbox]`).count();
+  for (let i = 0; i < checks; i++) await step(`${label}: toggle checkbox ${i} twice`, async () => { const c = p.locator(`${modal} input[type=checkbox]`).nth(i); if (await c.isDisabled()) return; await c.click(); await c.click(); await p.waitForTimeout(60); });
+}
+
+async function areaDialogFuzz() {
+  await openPage();
+  await step('build a project: PWM, a chain, a square, a sine', async () => {
+    await newProject(); await addTab();
+    await p.click('.tool:has-text("PWM generator")'); await p.waitForSelector('.pwm-dialog'); await p.locator('.pwm-dialog footer button.primary').click(); await p.waitForTimeout(500);
+    await addTab(); await p.locator('.tool', { hasText: /^Square/ }).first().click(); await addTab();
+    await p.locator('.tool', { hasText: /^Sine/ }).first().click(); await addTab();
+    for (const t of ['Low-pass (RC)', 'Absolute value', 'Moving average']) { await p.locator('.tool', { hasText: new RegExp('^' + t.replace(/[()]/g, '\\$&')) }).first().click(); await addTab(); }
+  });
+  const openers = [
+    ['Spectrum', async () => p.click('.measure button:has-text("Spectrum")')],
+    ['XY view', async () => p.click('.measure button:has-text("XY")')],
+    ['Eye view', async () => p.click('.measure button:has-text("Eye")')],
+    ['Figure settings', async () => p.click('.toolbar button[title^="Figure settings"]')],
+    ['Axes', async () => p.click('.toolbar button[title^="Axes"]')],
+    ['Export', async () => p.click('button[aria-label^="Export PNG"]')],
+  ];
+  for (const [name, open] of openers) {
+    await step(`open ${name}`, async () => { await open(); await p.waitForSelector('.modal'); await p.waitForTimeout(500); });
+    await fuzzOpenDialog(name);
+    await step(`close ${name}`, async () => { await closeModals(); });
+  }
+  // Annotations: create each kind by dragging in the plot, then open the editor and fuzz it
+  await step('create annotations by dragging in the plot', async () => {
+    const bx = await p.locator('.plot-host').first().boundingBox();
+    for (const k of ['Text label', 'Arrow', 'Δt dimension', 'ΔV dimension']) {
+      await p.click('.toolbar button[aria-label="Annotations"]');
+      await p.click(`.annotate-menu button:has-text("${k}")`);
+      await p.mouse.move(bx.x + 200, bx.y + 150); await p.mouse.down(); await p.mouse.move(bx.x + 420, bx.y + 200, { steps: 6 }); await p.mouse.up();
+      await p.waitForTimeout(150);
+      if (await p.locator('.modal').count()) await closeModals();
+    }
+  });
+  await step('open the annotation editor', async () => { await p.click('.toolbar button[aria-label="Annotations"]'); await p.click('.annotate-menu button:has-text("Edit annotations")'); await p.waitForSelector('.modal'); });
+  await fuzzOpenDialog('Annotations');
+  await step('close annotations', async () => { await closeModals(); });
+  await step('exports still work after all that (SVG, TikZ)', async () => {
+    await p.click('button[aria-label^="Export PNG"]'); await p.waitForSelector('.modal');
+    for (const fmt of ['svg', 'tikz']) {
+      const opt = await p.locator('.modal select').first().evaluate((s, f) => [...s.options].find((o) => o.value.toLowerCase().includes(f))?.value, fmt);
+      if (!opt) continue;
+      await p.locator('.modal select').first().selectOption(opt);
+      const dl = p.waitForEvent('download', { timeout: 30000 }); await p.locator('.modal footer button.primary').click(); const d = await dl;
+      const f = path.join(out, `fuzz-${fmt}-${d.suggestedFilename()}`); await d.saveAs(f);
+      if (fs.statSync(f).size < 300) note('EXPORT', `${fmt} export is only ${fs.statSync(f).size} bytes`);
+    }
+    await closeModals();
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
 (async () => {
   browser = await chromium.launch();
-  const runs = { tools: areaTools, waveforms: areaWaveforms, dialogs: areaDialogs, views: areaViews, export: areaExport, layouts: areaLayouts, monkey: areaMonkey, keyboard: areaKeyboard, touch: areaTouch, big: areaBig };
+  const runs = { tools: areaTools, waveforms: areaWaveforms, dialogs: areaDialogs, views: areaViews, export: areaExport, layouts: areaLayouts, monkey: areaMonkey, keyboard: areaKeyboard, touch: areaTouch, big: areaBig, dialogfuzz: areaDialogFuzz };
   for (const [name, fn] of Object.entries(runs)) {
     if (!want(name)) continue;
     area = name;

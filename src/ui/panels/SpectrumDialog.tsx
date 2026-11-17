@@ -5,7 +5,7 @@ import { autoFundamental } from '../../state/fundamental';
 import { plainText } from '../../core/plot/mathtext';
 import { useMemo, useState } from 'react';
 import { create } from 'zustand';
-import { harmonicSpectrum, type Spectrum } from '../../core/measure/spectrum';
+import { harmonicSpectrum, unresolvedSpectrum, type Spectrum } from '../../core/measure/spectrum';
 import { formatSI } from '../../core/units/si';
 import { compiled } from '../../state/compiled';
 import { actions, findSignal, orderedSignals, useEditor } from '../../state/store';
@@ -43,7 +43,7 @@ function Dialog() {
   const [showDc, setShowDc] = useState(false);
   const fund = f1 ?? auto.f1;
 
-  const spec = useMemo(() => (ev ? budgeted(ev, 15000, () => harmonicSpectrum(ev, { f1: fund, periods, t0, maxOrder }), () => null) : null), [ev, fund, periods, t0, maxOrder]);
+  const spec = useMemo(() => (ev ? budgeted(ev, 8000, () => harmonicSpectrum(ev, { f1: fund, periods, t0, maxOrder }), () => unresolvedSpectrum({ f1: fund, periods, t0, maxOrder })) : null), [ev, fund, periods, t0, maxOrder]);
   const unit = sig?.unit ?? '';
 
   const value = (s: Spectrum, k: number): number => {
@@ -186,7 +186,7 @@ function Dialog() {
                 </dd>
               </div>
             </dl>
-            {spec.unresolved && <p className="warn">The window holds too many edges to compute exactly. Use a higher fundamental or fewer periods.</p>}
+            {spec.unresolved && <p className="warn">The window holds too many edges to compute exactly, or it takes too long (over 8 s). Use a higher fundamental, fewer periods or a lower max order.</p>}
             {!spec.exactWindow && !spec.unresolved && (
               <p className="warn">
                 The window is not a whole number of the signal's periods
