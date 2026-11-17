@@ -53,6 +53,17 @@ export interface Spectrum {
 const GL_X = [-0.906179845938664, -0.5384693101056831, 0, 0.5384693101056831, 0.906179845938664];
 const GL_W = [0.2369268850561891, 0.4786286704993665, 0.5688888888888889, 0.4786286704993665, 0.2369268850561891];
 
+/** A result without values: the window could not be computed (too many edges, or over the time budget). */
+export function unresolvedSpectrum(o: SpectrumOptions): Spectrum {
+  const N = Math.max(1, Math.round(o.periods));
+  const K = Math.max(1, Math.min(Math.round(o.maxOrder * N), 10_000));
+  const nan = Array.from({ length: K + 1 }, () => NaN);
+  return {
+    f1: o.f1, window: [o.t0, o.t0 + N / o.f1], orders: nan.map((_, k) => k / N), amp: nan, phaseDeg: nan,
+    dc: NaN, rms: NaN, fundamental: NaN, thd: NaN, exactWindow: false, unresolved: true,
+  };
+}
+
 export function harmonicSpectrum(s: SignalEval, o: SpectrumOptions): Spectrum {
   const N = Math.max(1, Math.round(o.periods));
   const T = N / o.f1;
