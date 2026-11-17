@@ -487,8 +487,22 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
 
     for (let i = 1; i < points.length - 1; i++) {
       const t = points[i]!;
-      const L = ev(t, true, null);
-      const R = ev(t, false, null);
+      let L = ev(t, true, null);
+      let R = ev(t, false, null);
+      if (same(L, R)) {
+        // A breakpoint of a delayed input is f.t + shift; evaluating the input at (t − shift)
+        // can land one ulp on the wrong side of its edge, so an exact one-sided limit can
+        // miss a real jump (a delayed gate edge became a "kink" and the step was lost).
+        // Probe a hair on each side as well; a difference beyond rounding noise is a jump.
+        const dlt = Math.max(1e-15, 32 * Number.EPSILON * Math.abs(t));
+        const Lp = ev(t - dlt, false, null);
+        const Rp = ev(t + dlt, false, null);
+        const scale = Math.max(Math.abs(Lp), Math.abs(Rp), 1e-300);
+        if (Number.isFinite(Lp) && Number.isFinite(Rp) && Math.abs(Rp - Lp) > 1e-9 * scale) {
+          L = Lp;
+          R = Rp;
+        }
+      }
       if (!same(L, R)) {
         result.push({ t, kind: 'jump', left: L, right: R });
         continue;
