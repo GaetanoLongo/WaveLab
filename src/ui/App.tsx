@@ -18,6 +18,7 @@ import { Resizer } from './Resizer';
 import { setLayout, useLayout, DEFAULT_LAYOUT } from '../state/layout';
 import { ContextMenu, showContextMenu, type MenuItem } from './ContextMenu';
 import { signalMenuItems } from './signalMenu';
+import { openSharedFromAddress } from './share';
 import { formatSI } from '../core/units/si';
 import { compiled } from '../state/compiled';
 import { useSettings } from '../state/settings';
@@ -43,6 +44,12 @@ export const usePhoneTab = create<{ tab: PhoneTab }>(() => ({ tab: 'add' }));
 export function App() {
   useShortcuts();
   useEffect(startRecovery, []);
+  useEffect(() => {
+    void openSharedFromAddress();
+    const onHash = () => void openSharedFromAddress();
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
   const phone = useMediaQuery(PHONE_QUERY);
   const [dropping, setDropping] = useState(false);
   const hasFile = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files');

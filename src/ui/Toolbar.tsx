@@ -8,6 +8,7 @@ import { openSpectrum } from './panels/SpectrumDialog';
 import { openExportDialog } from './export/ExportDialog';
 import { openAxes, openSettings } from './Modal';
 import { forgetFileHandle, openProject, saveProject } from './fileio';
+import { copyShareLink } from './share';
 import { MathLabel } from './MathLabel';
 import { setLayout, useLayout } from '../state/layout';
 
@@ -121,6 +122,7 @@ function CompactToolbar() {
             {item('newFile', 'New project', newProject)}
             {item('open', 'Open project…', () => void openProject())}
             {item('save', 'Save', () => void saveProject(false))}
+            {item('export', 'Copy share link', () => void copyShareLink())}
             {item('saveAs', 'Save as…', () => void saveProject(true))}
             <hr />
             {item('duplicate', 'Duplicate', () => actions.duplicate(), !hasSel)}
@@ -216,6 +218,9 @@ export function Toolbar({ compact = false }: { compact?: boolean }) {
         <SnapMenu />
         <AnnotateMenu />
         <Btn icon="export" label={`Export PNG / SVG / PDF (${MOD}Shift+S)`} onClick={openExportDialog} />
+        <button className="tb text" title="Copy a link that opens this project (nothing is uploaded: the project is in the link)" onClick={() => void copyShareLink()}>
+          Share
+        </button>
         <Btn icon="settings" label="Figure settings (style, fonts, legend)" onClick={openSettings} />
       </div>
     </header>

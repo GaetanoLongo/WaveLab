@@ -10,7 +10,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   const out = process.argv[2] || fs.mkdtempSync(path.join(os.tmpdir(), 'wavelab-'));
   const url = process.env.WAVELAB_URL || 'http://localhost:4173/WaveLab/';
   const b = await chromium.launch();
-  const ctx = await b.newContext({ viewport: { width: 1400, height: 900 } });
+  const ctx = await b.newContext({ viewport: { width: 1400, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
   await ctx.addInitScript(() => { delete window.showSaveFilePicker; delete window.showOpenFilePicker; });
   const p = await ctx.newPage();
   const errs = []; p.on('pageerror', (e) => errs.push(e.message));
@@ -150,6 +150,27 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   await p.click('.annotations-dialog button:has-text("Done")');
   const wAfter = await p.evaluate(() => { const t = [...document.querySelectorAll('.plot-svg text')].find((e) => e.textContent === 'S'); return t.getBoundingClientRect().width; });
   assert(wAfter > wBefore * 1.5, `annotation text size multiplier works (${wBefore.toFixed(1)} → ${wAfter.toFixed(1)} px)`);
+
+  // --- Share link: copy, open in a fresh page, same project ---
+  await p.click('.toolbar button:has-text("New project"), button[title="New project"]').catch(() => {});
+  await p.click('.tool:has-text("Sine")'); await p.click('.tool:has-text("Square")');
+  const signalsBefore = await names();
+  await p.click('.toolbar button:has-text("Share")');
+  const link = await p.evaluate(() => navigator.clipboard.readText());
+  assert(/#share=d?[A-Za-z0-9_-]+$/.test(link) || /#share=/.test(link), 'Share copies a link: ' + link.slice(0, 60) + '…');
+  assert((await p.locator('.status .notice').innerText()).includes('Link copied'), 'a notice says the link was copied');
+  const p2 = await ctx.newPage();
+  await p2.goto(link);
+  await p2.waitForSelector('.signal-list .row');
+  const signalsAfter = await p2.locator('.signal-list .name').allInnerTexts();
+  assert(JSON.stringify(signalsAfter) === JSON.stringify(signalsBefore), 'the link opens the same signals: ' + signalsAfter);
+  assert(!(await p2.evaluate(() => location.hash)), 'the fragment is removed from the address after opening');
+  const badPage = await ctx.newPage();
+  badPage.on("dialog", (d) => d.accept());
+  await badPage.goto(url + '#share=dAAAAAAAA');
+  await badPage.waitForSelector(".toolbar");
+  assert(await badPage.locator(".toolbar").count() === 1, 'a damaged link does not break the app');
+  await badPage.close(); await p2.close();
 
   assert(errs.length === 0, 'no page errors: ' + errs.join('; '));
   await b.close();
