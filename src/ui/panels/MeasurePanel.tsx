@@ -4,7 +4,7 @@ import { plainText } from '../../core/plot/mathtext';
  * signal (between time cursors 1–2, or over the visible window when they are off).
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { measureInterval } from '../../core/measure/measure';
 import { powerMetrics } from '../../core/measure/power';
 import { autoFundamental } from '../../state/fundamental';
@@ -21,6 +21,17 @@ import { openViews } from './ViewsDialog';
 const fmt = (v: number, unit: string, digits = 5, scale = 0) =>
   Number.isFinite(v) ? formatSI(Math.abs(v) <= 1e-9 * scale ? 0 : v, unit, digits) : '—';
 
+/** The window [x0, x1], updated 250 ms after it stops changing (immediately on first use). */
+function useSettledWindow(x0: number, x1: number): [number, number] {
+  const [w, setW] = useState<[number, number]>([x0, x1]);
+  useEffect(() => {
+    if (w[0] === x0 && w[1] === x1) return;
+    const t = setTimeout(() => setW([x0, x1]), 250);
+    return () => clearTimeout(t);
+  }, [x0, x1, w]);
+  return w;
+}
+
 export function MeasurePanel({ phone = false }: { phone?: boolean }) {
   const project = useEditor((s) => s.project);
   const view = useEditor((s) => s.view);
@@ -36,9 +47,14 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
   const [t1, t2] = c.t;
   const [y1, y2] = c.y;
   const between = t1 != null && t2 != null && t1 !== t2;
-  const a = between ? Math.min(t1, t2) : view.xRange[0];
-  const b = between ? Math.max(t1, t2) : view.xRange[1];
-  const m = useMemo(() => (sig ? measureInterval(sig, a, b) : null), [sig, a, b]);
+  // The visible window changes continuously while zooming; measuring it exactly costs up to seconds
+  // on dense PWM signals, so it follows the view only once the view has settled (cursor intervals
+  // are immediate). Nothing is measured while the panel is collapsed.
+  const settled = useSettledWindow(view.xRange[0], view.xRange[1]);
+  const a = between ? Math.min(t1, t2) : settled[0];
+  const b = between ? Math.max(t1, t2) : settled[1];
+  const active = open || phone;
+  const m = useMemo(() => (sig && active ? measureInterval(sig, a, b) : null), [sig, a, b, active]);
   const v1 = sig && t1 != null ? sig.value(t1) : NaN;
   const v2 = sig && t2 != null ? sig.value(t2) : NaN;
   // Power: the measured signal is the voltage, the chosen signal the current.
@@ -46,11 +62,11 @@ export function MeasurePanel({ phone = false }: { phone?: boolean }) {
   const others = visible.filter((s) => s.id !== target?.id);
   const cur = others.find((s) => s.id === currentId) ?? others.find((s) => s.unit === 'A') ?? null;
   const pw = useMemo(() => {
-    if (!sig || !target || !cur) return null;
+    if (!sig || !target || !cur || !active) return null;
     const ie = compiled(cur, project);
     const fund = autoFundamental(project, target, sig, b - a);
     return { m: powerMetrics(sig, ie, a, b, fund.source === 'span' ? undefined : { f1: fund.f1, periods: fund.periods, t0: a }), f1: fund.f1 };
-  }, [sig, target, cur, project, a, b]);
+  }, [sig, target, cur, project, a, b, active]);
   const timeOn = t1 != null || t2 != null;
   const levelOn = y1 != null || y2 != null;
 
