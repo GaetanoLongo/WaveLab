@@ -290,7 +290,10 @@ export function buildPwm(c: PwmConfig, newId: (prefix: string) => string, colorS
     ...(ref3 ? [{ id: newId('g'), name: 'Sinusoidal references', share: true, collapsed: true, traces: refs.map((s) => ({ signalId: s.id })), yAxis: axis }] : []),
     { id: newId('g'), name: 'Leg commands', share: false, collapsed: true, traces: legs.map((l) => ({ signalId: l.gate.id })), yAxis: axis },
   ];
-  if (hidden.length) groups.push({ id: newId('g'), name: 'Intermediate (ideal)', share: false, collapsed: true, traces: hidden.map((s) => ({ signalId: s.id })), yAxis: axis });
+  // A signal belongs to one group per figure: those already listed in a load group stay there.
+  const inLoadGroups = new Set(loadGroups.flatMap((g) => g.traces.map((t) => t.signalId)));
+  const hiddenOnly = hidden.filter((s) => !inLoadGroups.has(s.id));
+  if (hiddenOnly.length) groups.push({ id: newId('g'), name: 'Intermediate (ideal)', share: false, collapsed: true, traces: hiddenOnly.map((s) => ({ signalId: s.id })), yAxis: axis });
   if (gates.length) groups.push({ id: newId('g'), name: c.deadTime > 0 ? 'Gates (dead time)' : 'Gates', share: false, traces: gates.map((g) => ({ signalId: g.id })), yAxis: axis });
   groups.push({ id: newId('g'), name: c.load && c.deadTime > 0 && c.complementary ? 'Voltages (ideal)' : 'Voltages', share: false, traces: [...poles, ...outputs].map((s) => ({ signalId: s.id })), yAxis: axis });
   groups.push(...loadGroups);

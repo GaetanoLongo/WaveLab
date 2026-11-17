@@ -46,3 +46,15 @@ Still open:
 - **Cosmetic text crowding** with 15+ stacked panels: y tick labels (1 / 0 / −1) and truncated axis titles touch in very small panels; the corner labels of a constant signal (0.90 / 0.0) touch.
 - Long I²C messages (11+ bytes) at the default zoom: the A and P markers sit close together (they separate when zooming in).
 - Non-integer carrier ratio with a load (e.g. fc = 14 Hz, f₁ = 170.37 Hz) was flagged once as a freeze in the harness; run alone it is fast (0.1 s), so the flag was probably carry-over from the previous slow step, but it was not proven.
+
+## Fuzz tests (src/state/fuzz.test.ts) and the second stress pass
+
+- Random expressions (160 per run, seeded), mutated project files (400 per run) and the save → load → save round trip. The mutated files never produced an unexpected error.
+- **Found and fixed:** the three-phase load setup listed three signals in two groups of one figure; reopening a saved file silently dropped them from the second group. A test now checks every builder (all PWM topologies and options, modulation, protocols) for double membership and dangling traces.
+- **Found and fixed:** the automatic vertical range scanned a fixed 1 s window for signals without a period (20 s for the dead-time load currents at fc = 14 Hz, f₁ = 170.37 Hz). It is now bounded by feature count (250), identical for ordinary signals.
+- **Found and fixed:** text collisions: tick labels across short panels and the time/value label corner, long axis titles, I²C markers.
+- Dense PWM (fc ≫ f₁) with dead time or load: the first view is limited to 100 carrier cycles and the dialog warns; creating at fc = 100 kHz still takes ~5 s (single phase) and far longer for three phases (the exact filter integrates thousands of switching cycles).
+
+Still open:
+- Arguments at the allowed extremes can stall the page for 3–10 s: `movavg(x, 1e6)`, `dnum(x, 1e6)`, `integral(movavg(...))`, or a 1 s window over a 1 kHz signal through moving-window operators (~2 ms per feature). A real fix is a compute budget that aborts runaway evaluations (one deadline checked in the scanning and integration loops, caught where traces are drawn) or running the engine in a Web Worker.
+- A user annotation placed on the axis labels overlaps them (by design: annotations are drawn on top).
