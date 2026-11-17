@@ -88,6 +88,10 @@ function haloText(items: SceneItem[], bg: string | undefined, t: Extract<SceneIt
 
 export function drawAnnotations(items: SceneItem[], list: ResolvedAnnotation[], l: FigureLayout, fsBase: number, lineScale = 1, selectedId?: string | null, bg?: string) {
   const baseW = 1.3 * lineScale;
+  // Short markers (1-2 characters: S, A, P of the serial protocols) that would land on a label or
+  // another marker are left out; zooming in makes room for them again.
+  const placed: Array<{ x0: number; x1: number; y0: number; y1: number }> = [];
+  const hit = (r: { x0: number; x1: number; y0: number; y1: number }) => placed.some((p) => r.x0 < p.x1 && p.x0 < r.x1 && r.y0 < p.y1 && p.y0 < r.y1);
   for (const r of list) {
     const { a } = r;
     const w = baseW * (a.width ?? 1);
@@ -99,9 +103,15 @@ export function drawAnnotations(items: SceneItem[], list: ResolvedAnnotation[], 
       items.push({ type: 'path', polylines: [[g.x0, g.y0, g.x1, g.y1]], stroke: '#0b6bcb', width: 8, dash: 'solid', opacity: 0.18 });
     }
     switch (a.kind) {
-      case 'text':
-        haloText(items, bg, { type: 'text', x: g.x0, y: g.y0, text: a.text || 'Text', size: fs, fill: a.color, anchor: 'start', baseline: 'middle' });
+      case 'text': {
+        const label = a.text || 'Text';
+        const box = { x0: g.x0 - 2, x1: g.x0 + textWidthPx(label, fs) + 2, y0: g.y0 - fs * 0.6, y1: g.y0 + fs * 0.6 };
+        const marker = label.length <= 2;
+        if (marker && a.id !== selectedId && hit(box)) break;
+        placed.push(box);
+        haloText(items, bg, { type: 'text', x: g.x0, y: g.y0, text: label, size: fs, fill: a.color, anchor: 'start', baseline: 'middle' });
         break;
+      }
       case 'arrow': {
         items.push({ type: 'line', x1: g.x0, y1: g.y0, x2: g.x1, y2: g.y1, stroke: a.color, width: w });
         head(items, g.x1, g.y1, g.x1 - g.x0, g.y1 - g.y0, hs, a.color, w);
@@ -129,7 +139,12 @@ export function drawAnnotations(items: SceneItem[], list: ResolvedAnnotation[], 
         head(items, g.x0, g.y0, g.x0 - g.x1, 0, hs, a.color, w);
         head(items, g.x1, g.y0, g.x1 - g.x0, 0, hs, a.color, w);
         const room = Math.abs(g.x1 - g.x0) - 2 * hs - 4;
-        haloText(items, bg, { type: 'text', x: (g.x0 + g.x1) / 2, y: g.y0 - 4, text: fitLabel(dimensionLabel(a, r.unit), room, fs * 0.92), size: fs * 0.92, fill: a.color, anchor: 'middle', baseline: 'bottom' });
+        const dl = fitLabel(dimensionLabel(a, r.unit), room, fs * 0.92);
+        if (dl) {
+          const wl = textWidthPx(dl, fs * 0.92);
+          placed.push({ x0: (g.x0 + g.x1) / 2 - wl / 2, x1: (g.x0 + g.x1) / 2 + wl / 2, y0: g.y0 - 4 - fs, y1: g.y0 - 4 });
+        }
+        haloText(items, bg, { type: 'text', x: (g.x0 + g.x1) / 2, y: g.y0 - 4, text: dl, size: fs * 0.92, fill: a.color, anchor: 'middle', baseline: 'bottom' });
         break;
       }
       case 'dim-y': {

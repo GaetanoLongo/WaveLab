@@ -103,6 +103,9 @@ describe('serial protocols decode back to the payload', () => {
     make({ protocol: 'i2c', read: true, data: 'AA', dataFormat: 'hex' });
     const texts = editor.getState().project.figures[0]!.annotations!.map((a) => a.text);
     expect(texts).toContain('0x50 R');
-    expect(texts[texts.length - 2]).toBe('N');
+    expect(texts).toContain('N'); // the last byte is not acknowledged
+    expect(texts.filter((t) => t === 'A').length).toBe(1); // only the address byte is
+    expect(texts).toContain('S');
+    expect(texts).toContain('P');
   });
 });

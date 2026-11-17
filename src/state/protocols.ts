@@ -237,8 +237,8 @@ export function buildProtocol(c: ProtocolConfig, newId: (prefix: string) => stri
   const sSda = line('SDA', sda, qT, 'high');
   const sScl = line('SCL', scl, qT, 'high');
   label(sSda.id, 2 * qT, 'S');
+  label(sSda.id, (sda.length - 1.2) * qT, 'P'); // before the ACK markers: these yield when crowded
   for (const f of fields) dim(sSda.id, (f.at + 1) * qT, (f.at + 1 + 4 * f.n) * qT, f.text);
   for (const a of acks) label(sSda.id, (a.at + 1.6) * qT, a.text, a.text === 'N' ? '#c0392b' : '#5b6577');
-  label(sSda.id, (sda.length - 1.2) * qT, 'P');
   return { signals: B.signals, groups: [B.group('I²C', [sSda, sScl])], annotations: anns, yRanges, duration: sda.length * qT };
 }
