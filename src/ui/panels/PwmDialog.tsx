@@ -32,6 +32,8 @@ export function PwmDialog() {
 function Dialog() {
   const [c, setC] = useState<PwmConfig>(load);
   const set = (patch: Partial<PwmConfig>) => setC((p) => ({ ...p, ...patch }));
+  const dc = c.f1 === 0;
+  const [error, setError] = useState<string | null>(null);
   const mf = c.fc / c.f1;
   const exp = expectedFundamental(c);
   const create = () => {
@@ -40,7 +42,8 @@ function Dialog() {
     } catch {
       /* ignore */
     }
-    actions.createPwm(c);
+    const err = actions.createPwm(c);
+    if (err) return setError(err);
     close();
   };
 
@@ -85,8 +88,16 @@ function Dialog() {
             </div>
           )}
           <NumberField label="Modulation index m" plain min={0} max={2} value={c.m} onCommit={(v) => set({ m: v })} title="Reference peak / carrier peak" />
-          <NumberField label="Reference f₁" unit="Hz" positive value={c.f1} onCommit={(v) => set({ f1: v })} />
-          <NumberField label="Reference phase" unit="°" plain value={c.phaseDeg} onCommit={(v) => set({ phaseDeg: v })} />
+          <NumberField
+            label="Reference f₁"
+            unit="Hz"
+            positive={c.topology === 'three-phase'}
+            min={0}
+            value={c.f1}
+            onCommit={(v) => set({ f1: v })}
+            title="0 = DC reference (single-phase topologies): the modulation index m then sets a constant duty cycle"
+          />
+          {!dc && <NumberField label="Reference phase" unit="°" plain value={c.phaseDeg} onCommit={(v) => set({ phaseDeg: v })} />}
           <div className="field">
             <label>Carrier</label>
             <select value={c.carrier} onChange={(e) => set({ carrier: e.target.value as PwmConfig['carrier'] })}>
@@ -131,12 +142,14 @@ function Dialog() {
           )}
           <h3>Check</h3>
           <dl className="readout">
-            <div>
-              <dt>
-                <MathLabel text="m_f = f_c / f_1" />
-              </dt>
-              <dd>{Number(mf.toPrecision(6))}</dd>
-            </div>
+            {!dc && (
+              <div>
+                <dt>
+                  <MathLabel text="m_f = f_c / f_1" />
+                </dt>
+                <dd>{Number(mf.toPrecision(6))}</dd>
+              </div>
+            )}
             <div>
               <dt>{exp.label}</dt>
               <dd>{c.m <= linearLimit(c) + 1e-12 ? formatSI(exp.value, 'V') : `nonlinear (m > ${Number(linearLimit(c).toFixed(3))})`}</dd>
@@ -155,7 +168,9 @@ function Dialog() {
               Overmodulation (m &gt; {Number(linearLimit(c).toFixed(3))}): pulses are dropped and low-order harmonics appear.
             </p>
           )}
-          {Math.abs(mf - Math.round(mf)) > 1e-9 && (
+          {dc && <p className="hint-text">DC reference: the output is a pulse train of constant duty (1 + m)/2 and the check shows its mean value.</p>}
+          {error && <p className="warn">{error}</p>}
+          {!dc && Math.abs(mf - Math.round(mf)) > 1e-9 && (
             <p className="hint-text">Non-integer m<sub>f</sub>: the pattern repeats only after several reference periods (the spectrum dialog handles this with more periods).</p>
           )}
           <p className="hint-text">

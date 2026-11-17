@@ -21,6 +21,17 @@ describe('PWM generator (checked against textbook results with the exact spectru
     return c;
   };
 
+  it('DC reference (f1 = 0): constant duty, mean value = m·Vdc; refused for three-phase', () => {
+    const c = make({ topology: 'full-bipolar', f1: 0, m: 0.5, fc: 1000 });
+    // Whole carrier periods: mean of v_AB = m·Vdc.
+    const sp = harmonicSpectrum(sig('v_{AB}'), { f1: 1000, periods: 1, t0: 0, maxOrder: 5 });
+    expect(sp.dc).toBeCloseTo(expectedFundamental(c).value, 3);
+    expect(expectedFundamental(c).label).toMatch(/mean/);
+    actions.newProject();
+    expect(actions.createPwm({ ...DEFAULT_PWM, topology: 'three-phase', f1: 0 })).toMatch(/DC reference/);
+    expect(st().project.signals.length).toBe(0);
+  });
+
   it('full bridge bipolar: v_AB fundamental = m·Vdc, two levels ±Vdc', () => {
     const c = make({ topology: 'full-bipolar' });
     const s = spectrumOf('v_{AB}');

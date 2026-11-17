@@ -799,8 +799,13 @@ export const actions = {
   },
 
   /** Create a PWM signal set (carrier, references, gates, voltages) as new groups, in one undo step. */
-  createPwm(config: PwmConfig): void {
-    actions.addSignalSet(buildPwm(config, newId, get().project.signals.length), Math.min(2 / config.f1, 1));
+  createPwm(config: PwmConfig): string | null {
+    if (!(config.f1 >= 0)) return 'The reference frequency must not be negative.';
+    if (config.f1 === 0 && config.topology === 'three-phase') return 'A DC reference (f₁ = 0) is only available for single-phase topologies.';
+    // A DC reference has no period of its own: show a few carrier periods.
+    const span = config.f1 > 0 ? Math.min(2 / config.f1, 1) : Math.min(10 / config.fc, 1);
+    actions.addSignalSet(buildPwm(config, newId, get().project.signals.length), span);
+    return null;
   },
 
   /** Create a rectifier / phase-control signal set as new groups, in one undo step. */

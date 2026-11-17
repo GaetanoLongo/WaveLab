@@ -69,8 +69,11 @@ export function scanSegment(
         if (sigAt(m) === sLo) l = m;
         else h = m;
       }
-      // The sample at the segment end is a left limit, so a genuine switch lies strictly inside.
-      if (h >= hi0) break;
+      // The sample at the segment end is a left limit, so a genuine switch lies strictly inside
+      // the last interval. For an interior interval, a switch that converges onto the next
+      // sample point is genuine: that sample (right-continuous) already shows the new state,
+      // e.g. a comparator crossing exactly on the sampling grid.
+      if (h >= hi0 && i === n - 1) break;
       const L = ev(l, false, null);
       const R = ev(h, false, null);
       if (close(L, R)) {
