@@ -40,17 +40,24 @@ export function parseCsv(text: string): CsvTable | string {
     .filter((l) => l !== '' && !/^(#|\/\/|%)/.test(l));
   if (lines.length < 2) return 'The file needs at least two lines of data.';
 
-  // Delimiter: the candidate that gives the most columns consistently over the first lines.
+  // Delimiter: among the candidates that give several columns consistently over the first lines,
+  // the one that makes the most lines fully numeric (a decimal comma with ";" must not be read as ","
+  // separated), then the one with the most columns.
   const sample = lines.slice(0, 25);
   let delimiter: CsvTable['delimiter'] = '';
-  let bestCols = 1;
+  let best = { numeric: -1, cols: 1 };
+  const decimalCommaFor = (d: string) => d !== ',' && d !== '' && sample.some((l) => /(^|[;\t ])-?\d+,\d+([eE][+-]?\d+)?([;\t ]|$)/.test(l));
   for (const d of DELIMS) {
-    const counts = sample.map((l) => splitLine(l, d).filter((f, i, a) => !(i === a.length - 1 && f === '' && a.length > 1)).length);
+    const parts = sample.map((l) => splitLine(l, d).filter((f, i, a) => !(i === a.length - 1 && f === '' && a.length > 1)));
+    const counts = parts.map((x) => x.length);
     const cols = counts[Math.min(1, counts.length - 1)]!; // the second line is never the header
     const consistent = counts.filter((c) => c === cols).length >= 0.8 * counts.length;
-    if (cols > bestCols && consistent) (delimiter = d), (bestCols = cols);
+    if (!(cols > 1 && consistent)) continue;
+    const dc = decimalCommaFor(d);
+    const numeric = parts.filter((x) => x.length === cols && x.every((f) => !Number.isNaN(toNumber(f, dc)))).length;
+    if (numeric > best.numeric || (numeric === best.numeric && cols > best.cols)) (delimiter = d), (best = { numeric, cols });
   }
-  const decimalComma = delimiter !== ',' && delimiter !== '' && sample.some((l) => /(^|[;\t ])-?\d+,\d+([eE][+-]?\d+)?([;\t ]|$)/.test(l));
+  const decimalComma = decimalCommaFor(delimiter);
 
   const fieldsOf = (l: string) => {
     const f = splitLine(l, delimiter);

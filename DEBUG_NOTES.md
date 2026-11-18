@@ -69,3 +69,10 @@ Still open:
 Still open:
 - Dense PWM with dead time and load at fc ≫ f₁ remains slow to create (5 s at 100 kHz, much more for three phases); the budget now stops it instead of freezing, but the exact filter integration per switching cycle is inherently expensive.
 - Nested operators typed inside ONE expression (e.g. `lowpass(movavg(lowpass(x, …), …), …)`) do not get the per-layer period cache that separate signals get.
+
+## Workflow tests (e2e/workflows.e2e.cjs)
+
+Whole user sessions rather than single features: W1 half-bridge PWM → spectrum → export → save → reopen (identical figure); W2 scope CSV (semicolon, decimal comma, units in the header) → edge measurements checked against the closed form; W3 UART and SPI diagrams at several zooms and widths (no overlapping text); W5 300 random edits with undo/redo; W7 recovery (undo, unsaved-work guard, corrupted files, damaged share link).
+
+- **Found and fixed:** a CSV with `;` separators and decimal commas was rejected ("Fewer than two rows") when the header had no commas, because the comma was judged a consistent delimiter. Detection now prefers the delimiter that gives numeric rows (unit tests added).
+- Not covered / unverified: real phones and other browsers (Chromium only), first-time-user discoverability (needs a person). The W5 memory figure comes from `performance.memory`, which Chromium rounds coarsely, so it only rules out gross leaks.
