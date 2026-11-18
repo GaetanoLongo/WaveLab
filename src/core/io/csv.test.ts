@@ -85,3 +85,24 @@ describe('decimateMinMax', () => {
     expect(d.y).toEqual([5, 6, 7]);
   });
 });
+
+describe('delimiter detection (found by the workflow test)', () => {
+  it('semicolon + decimal comma with a long file and a header without commas', () => {
+    const lines = ['# exported by scope', 'Time [us];Channel A [V];Channel B [mV]'];
+    for (let i = 0; i < 100; i++) lines.push(`${i * 4};${(i / 7).toFixed(5).replace('.', ',')};${(i * 1.5).toFixed(2).replace('.', ',')}`);
+    const t = parseCsv(lines.join('\n'));
+    expect(typeof t).toBe('object');
+    if (typeof t === 'object') {
+      expect(t.delimiter).toBe(';');
+      expect(t.columns).toBe(3);
+      expect(t.rows.length).toBe(100);
+      expect(t.rows[7]![1]).toBeCloseTo(1, 4);
+    }
+  });
+  it('plain comma, tab and space files are unchanged', () => {
+    for (const [d, line] of [[',', '1,0.5'], ['\t', '1\t0.5'], [' ', '1 0.5']] as const) {
+      const t = parseCsv(['t' + d + 'v', line, line.replace('1', '2'), line.replace('1', '3')].join('\n'));
+      expect(typeof t === 'object' && t.rows.length === 3 && t.delimiter === d).toBe(true);
+    }
+  });
+});
