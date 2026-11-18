@@ -1,6 +1,7 @@
 /** Measured data (CSV) → ordinary editable signals (piecewise-linear or stepped), one per column. */
 
 import { decimateMinMax, TIME_UNITS, type CsvTable, type TimeUnitId } from '../core/io/csv';
+import { MAX_ABS, MAX_TIME } from '../core/io/project-file';
 import { setBuilder, type SignalSet } from './builder';
 
 /** Most points one imported trace keeps (more are reduced, keeping every peak). */
@@ -44,6 +45,11 @@ export function buildCsvImport(table: CsvTable, cfg: CsvImportConfig, newId: (p:
   if (cfg.startAtZero && t[0]! !== 0) {
     const t0 = t[0]!;
     t = t.map((x) => x - t0);
+  }
+  // Beyond the limits of the project file the saved project could never be reopened (as 1e999 once did).
+  if (t.some((x) => Math.abs(x) > MAX_TIME)) return `The time axis reaches beyond ±${MAX_TIME.toLocaleString('en')} s, which WaveLab cannot represent exactly. Check the time unit or remove the outlying rows.`;
+  for (const c of cfg.columns) {
+    if (table.rows.some((r) => Math.abs(r[c]!) > MAX_ABS)) return `Column “${clean(table.header?.[c] ?? '') || c + 1}” holds values beyond ±1e15, which WaveLab cannot represent exactly. Remove the outlying rows first.`;
   }
   const B = setBuilder(newId, colorStart);
   let decimated = false;

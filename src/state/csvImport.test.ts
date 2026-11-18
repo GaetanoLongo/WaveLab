@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { parseCsv, type CsvTable } from '../core/io/csv';
+import { parseProjectFile, serializeProject } from '../core/io/project-file';
 import { compiled } from './compiled';
 import { MAX_IMPORT_POINTS, type CsvImportConfig } from './csvImport';
 import { actions, editor } from './store';
@@ -68,4 +69,18 @@ describe('CSV import', () => {
     expect(performance.now() - t0).toBeLessThan(2000);
     expect(Math.max(...q.features.map((x) => x.left), ...q.features.map((x) => x.right))).toBe(50);
   }, 60000);
+});
+
+describe('CSV import limits (found while checking CONVENTIONS.md)', () => {
+  it('refuses values and times the project file could not reopen, instead of creating an unsaveable project', () => {
+    const big = actions.createCsvImport(table('t,v\n0,1\n1,1e20\n2,3\n3,4'), cfg());
+    expect(big).toMatch(/beyond ±1e15/);
+    expect(editor.getState().project.signals).toHaveLength(0);
+    const late = actions.createCsvImport(table('t,v\n0,1\n1e7,2\n2e7,3\n3e7,4'), cfg());
+    expect(late).toMatch(/time axis/);
+    expect(editor.getState().project.signals).toHaveLength(0);
+    // just inside the limits still works and survives a save / reopen
+    expect(actions.createCsvImport(table('t,v\n0,1\n1,9e14\n2,3\n3,4'), cfg())).toBeNull();
+    expect(() => parseProjectFile(serializeProject(editor.getState().project, actions.savedView()))).not.toThrow();
+  });
 });

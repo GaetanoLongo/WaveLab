@@ -477,8 +477,8 @@ function arr(v: unknown, path: string): unknown[] {
 }
 
 /** Sanity limits: beyond these, floating-point precision and computation time run out. */
-const MAX_ABS = 1e15;
-const MAX_TIME = 1e6;
+export const MAX_ABS = 1e15;
+export const MAX_TIME = 1e6;
 const MIN_FREQ = 1e-6;
 const MAX_FREQ = 1e12;
 

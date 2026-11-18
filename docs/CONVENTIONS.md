@@ -8,7 +8,7 @@ These rules are part of the file format: changing them later needs a schema migr
   `f(t) = g(ω·(t − delay) + φ)`. At 50 Hz, +120° = the signal happens 6.667 ms *earlier*.
 - **Delay** (seconds) is the signal's position on the global timeline. Positive = shift right.
   Dragging a signal changes only its delay.
-- Derived signals (from M6 on) follow their inputs and cannot be dragged. To shift one,
+- Derived signals (expressions and operations) follow their inputs and cannot be dragged. To shift one,
   use the explicit Delay operation.
 
 ## Amplitude
@@ -41,6 +41,10 @@ These rules are part of the file format: changing them later needs a schema migr
 - Automatic vertical range = the signal's full range (one period, or its whole window), plus 8 %
   padding. It does **not** follow the visible time window, so zooming in time never rescales the
   vertical axis. Use Shift+wheel or Shift+drag for vertical zoom, and "Auto Y" to reset.
+  For a signal without a period whose window holds more than 250 features (imported data, dense
+  non-repeating switching), the exact scan covers the leading part of the window only; 512 evenly
+  spaced samples of the whole window complete it, so a peak narrower than 1/512 of the window may be
+  slightly cut. Signals that cannot be evaluated within 3 s are left out of the range.
 - When a signal has more than about one feature per two pixels (e.g. 1 MHz viewed over 1 s), it is
   drawn as an exact min/max band (one vertical stroke per pixel column) instead of an aliased line.
 
@@ -84,6 +88,9 @@ These rules are part of the file format: changing them later needs a schema migr
   bisection (~1e-15 relative); peaks by golden-section search. Sampling only limits how close two switching
   events *inside one smooth segment* can be and still both be found: by default 1/64 of the shortest input
   period, configurable per signal ("Computation" → custom step).
+- Switching events closer than 1e-14 s (relative to the time) are merged into one jump: the value before it is
+  the left limit of the first event, the value after it the right limit of the last. A derived signal also
+  probes just after each merged cluster, so a delayed edge 1e-15 s behind a kink is not lost.
 - Period of a derived signal = least common multiple of its inputs' periods (when their ratios are rational
   with denominators ≤ 1000); otherwise it is treated as aperiodic.
 
@@ -109,7 +116,7 @@ These rules are part of the file format: changing them later needs a schema migr
   over same-direction crossings of that level (the direction with more crossings), "—" with fewer than two.
 - Cursors are view state like the zoom: saved in the file, not part of undo, not marking the project unsaved.
 
-## One-shot and table generators (M10)
+## One-shot and table generators
 - These start at the signal's **start time** (stored as the delay, so dragging moves them).
 - Exponential: y = final + (initial − final)·e^(−(t − start)/τ) for t ≥ start, `initial` before.
 - Damped sinusoid: y = offset + A·e^(−u/τ)·sin(2πf·u + φ), u = t − start, `offset` before; peaks are exact
@@ -153,8 +160,14 @@ or the changes are discarded.
 
 τ·y′ + y = x. Periodic x: the exact periodic steady state y(t0) = F / (1 − e^(−T/τ)) (F = response
 over one period from 0). With t0, y0: y = y0 before t0, then the steady state plus
-(y0 − y_ss(t0))·e^(−(t−t0)/τ) (aperiodic x: integrated forward from t0). Constant and linear pieces use
-closed forms; smooth pieces adaptive Gauss–Legendre. Impulses of x are ignored (warning).
+(y0 − y_ss(t0))·e^(−(t−t0)/τ) (aperiodic x: see below). Constant and linear pieces use
+closed forms. A smooth piece is integrated adaptively (Gauss–Legendre) once, at 21 Chebyshev nodes per
+stretch of at most 8τ, and later evaluated by barycentric interpolation (spectral convergence; checked against an independent RK4 integration to 1e-6),
+so a filter fed by another filter costs a few dozen operations per call instead of a nested integration.
+Each piece starts from the feature's *right* limit. **Aperiodic x** is "at rest until t0 (or 0)", but a query
+far from the start is computed from rest 45τ earlier (the older state has decayed below 3·10⁻²⁰ of its
+size), so the result differs from the exact walk from t0 by far less than the display resolution and
+the cost does not grow with t. Impulses of x are ignored (warning).
 
 ## Rectifiers and phase control
 
@@ -170,6 +183,10 @@ closed forms; smooth pieces adaptive Gauss–Legendre. Impulses of x are ignored
 - Three-phase modulating signal v_ref,k = v_k + v₀ with v₀ = (m/6) sin 3θ (third harmonic),
   −(max + min)/2 (space vector), or 1 − max / −1 − min by the sign of max + min (DPWM1; rails at
   ±(1 + 10⁻⁶) so a clamped reference never touches the carrier peak). Linear up to m = 2/√3.
+- A reference frequency of 0 is a DC reference for single-phase topologies (constant duty (1 + m)/2;
+  three-phase refuses it).
+- When the carrier is much faster than the reference *and* dead time or a load is requested, the signals
+  have very many edges: the first view is limited to 100 carrier cycles and the dialog warns.
 - Load currents: single-phase lowpass((v − E)/R, L/R); three-phase balanced star with isolated neutral:
   v_aN = (2v_A0 − v_B0 − v_C0)/3, i_a = lowpass(v_aN/R, L/R).
 - With dead time and a load: v_X0,dt = V_dc·(S_X+ + (1 − S_X+ − S_X−)·[i_X < 0]); the leg current
@@ -204,12 +221,14 @@ Series RLC driven by v: capacitor voltage = LP with f₀ = 1/(2π√(LC)), Q = �
 inductor voltage = HP. Stepping uses the closed-form state transition e^{Ah} (cos/sin, cosh/sinh or critical
 case) and, for constant and linear input pieces, the exact forced response via A⁻¹; smooth pieces use
 Gauss–Legendre sub-steps. Periodic input: periodic steady state x(0) = (I − e^{AT})⁻¹F; aperiodic: at rest
-before t = 0. First-order high-pass: `x − lowpass(x, τ)`.
+before t = 0, with a far query started from rest 45/(slowest decay rate) earlier, as for `lowpass`.
+First-order high-pass: `x − lowpass(x, τ)`.
 
 ## Serial protocols
 
 - Bit sequences may idle low or high outside the frame (UART and I²C idle high).
-- UART: start bit 0, data LSB first, parity (even/odd) over the data bits, 1–2 stop bits, optional idle bits.
+- UART: start bit 0, data LSB first, parity (even/odd) over the data bits, 1–2 stop bits, optional idle bits;
+  optionally a bit clock (CLK, one period per bit, rising edge in the middle of the bit = sampling point).
 - SPI: mode = 2·CPOL + CPHA; CPHA 0 samples on the leading clock edge (data changes on the trailing edge),
   CPHA 1 samples on the trailing edge; CS active low, MSB first unless chosen otherwise; one idle half-period
   of clock before the first and after the last bit.
@@ -224,12 +243,13 @@ t0 + k·UI, k = 0…N − 1; the eye height is (lowest value above the threshold
 centre (1 UI), the threshold being the middle of the signal's range.
 
 ## Edge and pulse measurements
-Computed on the curve drawn in the measured window. The two logic levels come from a two-pass histogram of
-the values (so ringing and noise do not move them); with no two clear levels, 10 % and 90 % of min–max are
-used and the panel says so. Rise and fall time: 10 %–90 % of the swing. Pulse widths: between the 50 %
-crossings. Overshoot and undershoot: excursion beyond the final level, in % of the swing. Settling time:
-from the 50 % edge until the signal enters ±2 % of the final level and stays; the "final level" of a pulse is
-its plateau, which ends at the next 50 % fall.
+Computed on the curve drawn in the measured window. The two levels, *top* and *base*, are the most-occupied
+levels in the upper and lower half of the range (a two-pass histogram, so ringing and noise do not move them);
+with no two clear levels, 10 % and 90 % of min–max are used and the panel says so. The swing is top − base.
+Rise and fall time: 10 %–90 % of the swing. Pulse widths: between 50 % crossings. Overshoot / undershoot:
+excursion beyond top / below base, in % of the swing, shown only above 0.5 % of the swing. Settling time:
+from the first 50 % crossing until the signal enters a band of ±2 % **of the swing** around the top level and
+stays there until the plateau ends (the next fall through 50 %); not reported if it never enters the band.
 
 ## CSV import
 Delimiter: the candidate (`,` `;` tab, space) that gives several columns consistently *and* the most fully
@@ -237,7 +257,9 @@ numeric rows (so `;` with decimal commas is not read as comma-separated). A deci
 when the delimiter is not a comma and a field looks like `1,5`. Only finite numbers are values (`1e999` is
 rejected). The time column is the first strictly increasing column; its unit comes from the header
 (`ms`, `[us]`, …). More than 150 000 rows: each signal is reduced to about 150 000 points, keeping the minimum
-and maximum of every bucket (so no peak is lost). Imported data becomes *piecewise* generators (straight lines or steps).
+and maximum of every bucket (so no peak is lost). Imported data becomes *piecewise* generators (straight lines or steps). Data outside the project file's limits
+(|time| > 10⁶ s, |value| > 10¹⁵) is refused with a message, because such a project could not be reopened.
+A table of more than 200 points is not listed row by row in the Properties panel.
 
 ## Share links
 `#share=` followed by one letter and base64url text. `d` = raw-deflate-compressed project JSON, `r` = the JSON
@@ -249,5 +271,6 @@ a server.
 Signals are evaluated synchronously, so a pathological one would freeze the page. Hot loops call
 `checkBudget()`; the outermost evaluation of a derived signal has 3 s (`setComputeBudget`). On overrun the
 signal is flagged "heavy" for 15 s, answers *undefined* at once, is left out of the drawing, and the status
-bar says why. Drawing a figure shares an 8 s allowance across all traces, a spectrum has 8 s, a measurement
-panel pass has 4 s. Editing the project recompiles the signal and clears the flag.
+bar says why. Drawing a figure shares an 8 s allowance across all traces (each trace at most 4 s), the automatic
+vertical range 3 s per signal, a spectrum 8 s, a measurement-panel pass 4 s. Editing the project recompiles
+the signal and clears the flag.
