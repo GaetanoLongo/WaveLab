@@ -34,10 +34,30 @@ export function rangeOfBounded(s: SignalEval, a: number, b: number, maxFeatures 
   let hi = b;
   for (let i = 0; i < 10; i++) {
     const q = s.features(a, hi, maxFeatures);
-    if (!q.truncated) return rangeFrom(s, a, hi, q.features);
+    if (!q.truncated) return withSamples(s, a, b, hi < b, rangeFrom(s, a, hi, q.features));
     hi = a + (hi - a) / 4;
   }
-  return rangeFrom(s, a, hi, s.features(a, hi, maxFeatures).features);
+  return withSamples(s, a, b, true, rangeFrom(s, a, hi, s.features(a, hi, maxFeatures).features));
+}
+
+/** Samples used to cover the part of the window the bounded feature scan did not look at. */
+const COVER_SAMPLES = 512;
+
+/**
+ * The bounded scan only looks at the start of a window that holds many features, so the peaks of a long
+ * table (imported data) or of a long derived signal were missed and the plot was clipped. When the scan
+ * was cut short, 512 evenly spaced samples of the whole window complete the range.
+ */
+function withSamples(s: SignalEval, a: number, b: number, cut: boolean, r: Range | null): Range | null {
+  if (!cut) return r;
+  let mn = r ? r[0] : Infinity;
+  let mx = r ? r[1] : -Infinity;
+  for (let i = 0; i < COVER_SAMPLES; i++) {
+    const v = s.value(a + ((b - a) * i) / (COVER_SAMPLES - 1));
+    if (v < mn) mn = v;
+    if (v > mx) mx = v;
+  }
+  return mn <= mx ? [mn, mx] : null;
 }
 
 function rangeExact(s: SignalEval, a: number, b: number): Range | null {

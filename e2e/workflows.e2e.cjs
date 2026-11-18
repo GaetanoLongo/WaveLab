@@ -139,6 +139,22 @@ const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const svg = await exportSvg('w2.svg');
     assert(svg.length > 2000, 'exported');
     assert((await overlaps()).length === 0, 'no overlaps: ' + (await overlaps()).join('; '));
+
+    // A long measurement (found while writing the guides: 140 000 rows froze the page, and a 1 200-row table was drawn clipped)
+    await fresh();
+    const big = ['Time (ms),Vout (V)'];
+    for (let i = 0; i < 60000; i++) { const t = i * 0.01; big.push(`${t.toFixed(2)},${(i < 200 ? 0 : 5 * (1 - Math.exp(-(t - 2) / 1.5))).toFixed(5)}`); }
+    const bigCsv = path.join(out, 'scope_big.csv'); fs.writeFileSync(bigCsv, big.join('\n') + '\n');
+    const [c2] = await Promise.all([p.waitForEvent('filechooser'), p.click('.tool:has-text("Import CSV data")')]);
+    await c2.setFiles(bigCsv); await p.waitForSelector('.modal');
+    const tImp = Date.now();
+    await p.click('.modal footer button.primary'); await p.waitForSelector('.signal-list .row');
+    await p.locator('.signal-list .row').first().click(); await p.waitForTimeout(800);
+    const dt = Date.now() - tImp - 800;
+    assert(dt < 4000, `importing and selecting 60 000 rows took ${dt} ms (< 4000)`);
+    assert((await p.locator('.properties input').count()) < 40, 'the point table is not drawn for a long measurement');
+    const yTicks = (await svgText()).filter((x) => /^\d(\.\d)?$/.test(x)).map(Number);
+    assert(yTicks.includes(5), 'the vertical axis fits 0–5 V data (ticks: ' + yTicks.join(' ') + ')');
   }
 
   // ---------------------------------------------------------------------------------------------

@@ -278,6 +278,9 @@ function WaveformParams({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: 
   }
 }
 
+/** A point table longer than this is not listed (see PiecewiseParams). */
+const MAX_LISTED_POINTS = 200;
+
 function PiecewiseParams({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd: Upd; disabled: boolean }) {
   if (sig.generator !== 'piecewise') return null;
   const p = sig.params;
@@ -288,8 +291,15 @@ function PiecewiseParams({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd:
       s.params.points = pts.map((q, i) => [q, i] as const).sort((a, b) => a[0][0] - b[0][0] || a[1] - b[1]).map((x) => x[0]);
     });
   const span = p.points.length ? p.points[p.points.length - 1]![0] - p.points[0]![0] : 0;
+  // One pair of inputs per point freezes the page for imported data (20 000 points took 5 s, 140 000 never finished).
+  const tooMany = p.points.length > MAX_LISTED_POINTS;
   return (
     <Group title="Points">
+      {tooMany ? (
+        <p className="hint-text">
+          {p.points.length.toLocaleString('en')} points: too many to list or edit one by one. Use the operations (filter, moving average, …) to process the data, or import a reduced file.
+        </p>
+      ) : (
       <table className="points">
         <thead>
           <tr>
@@ -321,7 +331,9 @@ function PiecewiseParams({ sig, upd, disabled }: { sig: GeneratorSignalDef; upd:
           ))}
         </tbody>
       </table>
+      )}
       <button
+        hidden={tooMany}
         disabled={disabled}
         onClick={() => {
           const last = p.points[p.points.length - 1] ?? [0, 0];
