@@ -222,3 +222,32 @@ XY: the curve (x(t), y(t)) over the visible window with both signals' feature ti
 jumps as two points); "equal scales" gives both axes the same data span. Eye: windows of 2 UI starting at
 t0 + k·UI, k = 0…N − 1; the eye height is (lowest value above the threshold) − (highest value below it) at the
 centre (1 UI), the threshold being the middle of the signal's range.
+
+## Edge and pulse measurements
+Computed on the curve drawn in the measured window. The two logic levels come from a two-pass histogram of
+the values (so ringing and noise do not move them); with no two clear levels, 10 % and 90 % of min–max are
+used and the panel says so. Rise and fall time: 10 %–90 % of the swing. Pulse widths: between the 50 %
+crossings. Overshoot and undershoot: excursion beyond the final level, in % of the swing. Settling time:
+from the 50 % edge until the signal enters ±2 % of the final level and stays; the "final level" of a pulse is
+its plateau, which ends at the next 50 % fall.
+
+## CSV import
+Delimiter: the candidate (`,` `;` tab, space) that gives several columns consistently *and* the most fully
+numeric rows (so `;` with decimal commas is not read as comma-separated). A decimal comma is assumed only
+when the delimiter is not a comma and a field looks like `1,5`. Only finite numbers are values (`1e999` is
+rejected). The time column is the first strictly increasing column; its unit comes from the header
+(`ms`, `[us]`, …). More than 150 000 rows: each signal is reduced to about 150 000 points, keeping the minimum
+and maximum of every bucket (so no peak is lost). Imported data becomes *piecewise* generators (straight lines or steps).
+
+## Share links
+`#share=` followed by one letter and base64url text. `d` = raw-deflate-compressed project JSON, `r` = the JSON
+uncompressed (used when compression does not help). Decompression is capped at 8 MB. A link longer than
+8 000 characters triggers a warning (some chat tools cut long URLs). The fragment after `#` is never sent to
+a server.
+
+## Compute budget
+Signals are evaluated synchronously, so a pathological one would freeze the page. Hot loops call
+`checkBudget()`; the outermost evaluation of a derived signal has 3 s (`setComputeBudget`). On overrun the
+signal is flagged "heavy" for 15 s, answers *undefined* at once, is left out of the drawing, and the status
+bar says why. Drawing a figure shares an 8 s allowance across all traces, a spectrum has 8 s, a measurement
+panel pass has 4 s. Editing the project recompiles the signal and clears the flag.

@@ -76,3 +76,9 @@ Whole user sessions rather than single features: W1 half-bridge PWM → spectrum
 
 - **Found and fixed:** a CSV with `;` separators and decimal commas was rejected ("Fewer than two rows") when the header had no commas, because the comma was judged a consistent delimiter. Detection now prefers the delimiter that gives numeric rows (unit tests added).
 - Not covered / unverified: real phones and other browsers (Chromium only), first-time-user discoverability (needs a person). The W5 memory figure comes from `performance.memory`, which Chromium rounds coarsely, so it only rules out gross leaks.
+
+## Found while preparing the user guides
+
+- **Freeze on long imported tables (fixed):** the Properties "Points" table drew two inputs per data point. A 20 000-row CSV took 5 s to select and a 140 000-row one froze the page for over 30 s. Tables above 200 points are no longer listed (the panel states the count).
+- **Imported data drawn clipped (fixed):** the automatic vertical range scans at most 250 features; a 1 200-point table was only scanned over its first part, so 0–5 V data was drawn in −1…1. When the scan is cut short, 512 evenly spaced samples of the window now complete the range (test added).
+- Open: with 120 signals, undo/redo costs about 45 ms per step (the stress run flags 300 steps as slow, 13–14 s); it is the same before and after these changes.
