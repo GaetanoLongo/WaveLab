@@ -9,6 +9,7 @@ import { defaultGenerator } from '../core/model/defaults';
 import type { GeneratorDef, GeneratorKind } from '../core/model/signal-defs';
 import { parseProjectFile, ProjectFileError, serializeProject } from '../core/io/project-file';
 import { sampleSignal } from '../core/plot/sampler';
+import { guardSignal } from '../core/signals/budget';
 import { compileDerived } from '../core/signals/derived';
 import { compileGenerator } from '../core/signals/generator';
 import type { SignalEval } from '../core/signals/types';
@@ -72,7 +73,9 @@ describe('expression fuzz', () => {
       }
       const t0 = performance.now();
       try {
-        const s = compileDerived({ root, logicHigh: 1, logicLow: 0, threshold: 0.5, resolution: null }, inputs);
+        // Guarded like every derived signal in the app (state/compiled.ts): a runaway evaluation is abandoned
+        // after the compute budget instead of running for as long as the machine needs (CI is 3-4x slower).
+        const s = guardSignal(compileDerived({ root, logicHigh: 1, logicLow: 0, threshold: 0.5, resolution: null }, inputs));
         for (const t of [0, 1e-4, 0.0123, 0.5, -0.01]) s.value(t);
         // As the app asks: the drawing and the automatic range cap the number of features they want.
         for (const [a, b] of [[0, 0.04], [0.001, 0.0012], [0, 1]] as const) s.features(a, b, 400);
@@ -82,8 +85,8 @@ describe('expression fuzz', () => {
         broken.push(`${src}: ${String(e)}`);
       }
       const dt = performance.now() - t0;
-      // Known: arguments at the allowed extremes (1e6 s windows, 1 s over a 1 kHz signal) cost 3-10 s.
-      // This guards against real hangs, not against those.
+      // Arguments at the allowed extremes (1e6 s windows, 1 s over a 1 kHz signal) can reach the budget
+      // (3 s per evaluation, then the signal answers at once). This guards against real hangs.
       if (dt > 15000) slow.push(`${src}: ${dt.toFixed(0)} ms`);
     }
     expect(broken).toEqual([]);
