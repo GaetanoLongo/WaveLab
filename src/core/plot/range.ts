@@ -4,6 +4,7 @@
  * ends or at feature limits.
  */
 
+import { isHeavySignal } from '../signals/budget';
 import type { Feature, SignalEval } from '../signals/types';
 
 export type Range = readonly [number, number];
@@ -16,7 +17,8 @@ export function rangeOf(s: SignalEval, a: number, b: number): Range | null {
     let r = periodRangeCache.get(s);
     if (r === undefined) {
       r = rangeExact(s, 0, s.period);
-      periodRangeCache.set(s, r);
+      // A signal over its compute budget answers NaN for a while: do not keep that as its range.
+      if (!isHeavySignal(s)) periodRangeCache.set(s, r);
     }
     return r;
   }

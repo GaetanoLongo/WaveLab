@@ -183,9 +183,12 @@ export function integralOf(x: SignalEval, t0: number, y0: number): SignalEval {
       else out.push({ t: f.t, kind: 'kink', left: v, right: v });
     }
     // Extrema of the integral = sign changes of x (zero crossings, incl. sign-changing jumps).
+    // (A Map, not a search of `out` per crossing: that was quadratic, seconds for 10⁴ cycles.)
+    const at = new Map<number, Feature>();
+    for (const f of out) if (!at.has(f.t)) at.set(f.t, f);
     for (const z of zeroCrossings(x, a, b, maxCount)) {
-      if (out.some((f) => f.t === z.t)) {
-        const f = out.find((g) => g.t === z.t)!;
+      const f = at.get(z.t);
+      if (f) {
         if (f.kind === 'kink') f.kind = z.rising ? 'min' : 'max';
         continue;
       }
@@ -403,7 +406,8 @@ export function absOf(x: SignalEval): SignalEval {
       const q = x.features(a, b, maxCount);
       if (q.truncated) return { features: [], truncated: true };
       const out: Feature[] = q.features.map((f) => ({ ...f, left: Math.abs(f.left), right: Math.abs(f.right), kind: f.kind === 'jump' ? 'jump' : 'kink' }));
-      for (const z of zeroCrossings(x, a, b, maxCount)) if (!out.some((f) => f.t === z.t)) out.push({ t: z.t, kind: 'min', left: 0, right: 0 });
+      const ts = new Set(out.map((f) => f.t));
+      for (const z of zeroCrossings(x, a, b, maxCount)) if (!ts.has(z.t)) out.push({ t: z.t, kind: 'min', left: 0, right: 0 });
       out.sort((p, r) => p.t - r.t);
       return { features: out, truncated: false };
     },
@@ -443,7 +447,8 @@ export function squareOf(x: SignalEval): SignalEval {
       const q = x.features(a, b, maxCount);
       if (q.truncated) return { features: [], truncated: true };
       const out: Feature[] = q.features.map((f) => ({ ...f, left: f.left ** 2, right: f.right ** 2, kind: f.kind === 'jump' ? 'jump' : 'kink' }));
-      for (const z of zeroCrossings(x, a, b, maxCount)) if (!out.some((f) => f.t === z.t)) out.push({ t: z.t, kind: 'min', left: 0, right: 0 });
+      const ts = new Set(out.map((f) => f.t));
+      for (const z of zeroCrossings(x, a, b, maxCount)) if (!ts.has(z.t)) out.push({ t: z.t, kind: 'min', left: 0, right: 0 });
       out.sort((p, r) => p.t - r.t);
       return { features: out, truncated: false };
     },

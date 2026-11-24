@@ -6,6 +6,7 @@
  *    sampled exactly; eye height measured at the centre of the eye.
  */
 
+import { budgeted } from '../signals/budget';
 import type { SignalEval } from '../signals/types';
 import { formatSI } from '../units/si';
 import type { PlotTheme } from './layout';
@@ -154,27 +155,38 @@ export function eyeScene(o: EyeInput): EyeResult {
   const th = o.theme;
   const W = 2 * o.ui; // window: 2 UI, eye centred at 1 UI
   const n = Math.max(1, Math.min(2000, Math.round(o.traces)));
-  const r = rangeOf(o.signal, o.t0, o.t0 + (n + 1) * o.ui) ?? [-1, 1];
+  // Like the traces of the main plot, the eye runs within the compute budget: 2000 folded windows of a
+  // derived signal could block the page for many seconds. On overrun the traces are left out (the eye reads
+  // "closed / undefined") and the status bar says the signal was too heavy.
+  const r = budgeted(o.signal, 3000, () => rangeOf(o.signal, o.t0, o.t0 + (n + 1) * o.ui), () => null) ?? [-1, 1];
   const f: Frame = { ...frameFor(th, o.width, o.height, false), xr: [0, 2], yr: pad([r[0], r[1]]) };
   const items: SceneItem[] = [];
   axes(items, th, f, `Time (UI = ${formatSI(o.ui, 's')})`, o.name, '', o.unit, (v) => `${Number(v.toFixed(2))} UI`);
-  const polylines: number[][] = [];
   const cols = Math.max(100, Math.round(f.w));
   const thr = (r[0] + r[1]) / 2;
-  let lowMax = -Infinity;
-  let highMin = Infinity;
-  for (let k = 0; k < n; k++) {
-    const a = o.t0 + k * o.ui;
-    const s = sampleSignal(o.signal, a, a + W, cols);
-    for (const line of s.lines) {
-      const flat: number[] = [];
-      for (let i = 0; i < line.t.length; i++) flat.push(px(f, (line.t[i]! - a) / o.ui), py(f, line.y[i]!));
-      polylines.push(flat);
-    }
-    const c = o.signal.value(a + o.ui);
-    if (c >= thr) highMin = Math.min(highMin, c);
-    else lowMax = Math.max(lowMax, c);
-  }
+  const { polylines, lowMax, highMin } = budgeted(
+    o.signal,
+    4000,
+    () => {
+      const polylines: number[][] = [];
+      let lowMax = -Infinity;
+      let highMin = Infinity;
+      for (let k = 0; k < n; k++) {
+        const a = o.t0 + k * o.ui;
+        const s = sampleSignal(o.signal, a, a + W, cols);
+        for (const line of s.lines) {
+          const flat: number[] = [];
+          for (let i = 0; i < line.t.length; i++) flat.push(px(f, (line.t[i]! - a) / o.ui), py(f, line.y[i]!));
+          polylines.push(flat);
+        }
+        const c = o.signal.value(a + o.ui);
+        if (c >= thr) highMin = Math.min(highMin, c);
+        else lowMax = Math.max(lowMax, c);
+      }
+      return { polylines, lowMax, highMin };
+    },
+    () => ({ polylines: [] as number[][], lowMax: -Infinity, highMin: Infinity }),
+  );
   items.push({ type: 'path', polylines, stroke: o.color, width: 1.1 * th.lineScale, dash: 'solid', clipId: 'eye', opacity: Math.max(0.15, Math.min(0.9, 6 / Math.sqrt(n))) });
   const height = Number.isFinite(highMin) && Number.isFinite(lowMax) ? highMin - lowMax : NaN;
   if (height > 0) {

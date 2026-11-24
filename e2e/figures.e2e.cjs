@@ -82,7 +82,8 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   await p.click('button[aria-label="New project"]');
   const [ch] = await Promise.all([p.waitForEvent('filechooser'), p.click('button[aria-label^="Open project"]')]);
   await ch.setFiles(f);
-  await p.waitForSelector('.fig-tab');
+  // The new, empty project already shows one tab: wait for the opened file's second figure.
+  await p.waitForFunction(() => document.querySelectorAll('.fig-tab').length >= 2, null, { timeout: 5000 }).catch(() => {});
   const tabs = await p.locator('.fig-tab .fig-name').allInnerTexts();
   assert(JSON.stringify(tabs) === JSON.stringify(['Figure 1', 'Gate detail']), 'figures restored: ' + tabs.join(', '));
   assert(await panels() === 2 && await p.locator('.group-head', { hasText: 'Phases' }).count() === 1, 'groups and shared panel restored');

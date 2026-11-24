@@ -13,6 +13,7 @@
  * Undefined (NaN) regions split the output into separate polylines (gaps).
  */
 
+import { isHeavySignal } from '../signals/budget';
 import type { Feature, SignalEval } from '../signals/types';
 import { rangeOf } from './range';
 
@@ -51,6 +52,26 @@ class LineBuilder {
     this.break();
     return this.lines;
   }
+}
+
+/**
+ * Last two samplings of each signal. A redraw that keeps the time window (moving a cursor,
+ * selecting, dragging an annotation, editing another signal, undo/redo of an unrelated change…)
+ * reuses them instead of resampling every trace. Signals are immutable (an edit compiles a new
+ * object), so a hit is always current. Two entries: a signal shown in two figures of the grid view.
+ */
+const sampleCache = new WeakMap<SignalEval, Array<{ t0: number; t1: number; cols: number; res: SampledTrace }>>();
+
+/** `sampleSignal` with reuse of recent results (callers must not modify the result). */
+export function sampleSignalCached(s: SignalEval, t0: number, t1: number, columns: number): SampledTrace {
+  const cols = Math.max(1, Math.floor(columns));
+  const list = sampleCache.get(s);
+  const hit = list?.find((e) => e.t0 === t0 && e.t1 === t1 && e.cols === cols);
+  if (hit) return hit.res;
+  const res = sampleSignal(s, t0, t1, cols);
+  // A signal over its compute budget answers "undefined" for a while: never keep that answer.
+  if (!isHeavySignal(s)) sampleCache.set(s, [{ t0, t1, cols, res }, ...(list ?? []).slice(0, 1)]);
+  return res;
 }
 
 export function sampleSignal(s: SignalEval, t0: number, t1: number, columns: number): SampledTrace {
@@ -124,13 +145,16 @@ function sampleEnvelope(s: SignalEval, t0: number, t1: number, cols: number): Sa
       const c1 = c0 + dt;
       add(s.value(c0));
       while (fi < feats.length && feats[fi]!.t < c0) fi++;
-      let last: number | null = null;
+      // Left limit at the column end: from the first feature exactly there, if any (tracked here
+      // rather than searched for from the start of the list, which was linear per column).
+      let atEnd: Feature | null = null;
       for (let k = fi; k < feats.length && feats[k]!.t <= c1; k++) {
-        add(feats[k]!.left);
-        add(feats[k]!.right);
-        last = feats[k]!.t;
+        const f = feats[k]!;
+        add(f.left);
+        add(f.right);
+        if (f.t === c1 && atEnd === null) atEnd = f;
       }
-      add(last === c1 ? feats.find((f) => f.t === c1)!.left : s.left ? s.left(c1) : s.value(c1));
+      add(atEnd ? atEnd.left : s.left ? s.left(c1) : s.value(c1));
       r = mn <= mx ? [mn, mx] : null;
     } else {
       r = rangeOf(s, c0, c0 + dt);

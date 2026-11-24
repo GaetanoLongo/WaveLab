@@ -1,7 +1,7 @@
 /** Pure helpers for the shared time axis and vertical ranges (zoom, pan, fit). */
 
 import type { SignalEval } from '../signals/types';
-import { budgeted } from '../signals/budget';
+import { budgeted, isHeavySignal } from '../signals/budget';
 import { rangeOfBounded, unionRanges, type Range } from './range';
 
 export const MIN_SPAN = 1e-12;
@@ -44,13 +44,7 @@ export function fitTimeRange(signals: SignalEval[]): Range {
  * so zooming in time never rescales the vertical axis.
  */
 export function autoYRange(signals: SignalEval[]): Range {
-  const r = unionRanges(
-    signals.map((s) => {
-      const [a, b] = fitTimeRange([s]);
-      const m = (b - a) * 0.01;
-      return budgeted(s, 3000, () => rangeOfBounded(s, a - m, b + m), () => null);
-    }),
-  );
+  const r = unionRanges(signals.map(fullRange));
   if (!r) return [-1, 1];
   let [mn, mx] = r;
   if (mx - mn < 1e-12 * Math.max(1, Math.abs(mx))) {
@@ -63,4 +57,27 @@ export function autoYRange(signals: SignalEval[]): Range {
     mx += pad;
   }
   return [mn, mx];
+}
+
+/**
+ * Full range of one signal (what `autoYRange` unites). It depends on the signal alone, and signals are
+ * immutable (an edit compiles a new object), so it is computed once per signal instead of on every
+ * redraw of every panel with an automatic range. An abandoned (over-budget) answer is not kept.
+ */
+const fullRangeCache = new WeakMap<SignalEval, Range | null>();
+function fullRange(s: SignalEval): Range | null {
+  const hit = fullRangeCache.get(s);
+  if (hit !== undefined) return hit;
+  return budgeted(
+    s,
+    3000,
+    () => {
+      const [a, b] = fitTimeRange([s]);
+      const m = (b - a) * 0.01;
+      const r = rangeOfBounded(s, a - m, b + m);
+      if (!isHeavySignal(s)) fullRangeCache.set(s, r);
+      return r;
+    },
+    () => null,
+  );
 }

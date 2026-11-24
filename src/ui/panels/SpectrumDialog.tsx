@@ -236,7 +236,11 @@ function BarChart({ spec, value, scale, showDc, unit }: { spec: Spectrum; value(
   const vals = ks.map((k) => value(k));
   const db = scale === 'db';
   const floor = -80;
-  const top = db ? 5 : Math.max(1e-300, ...vals.filter(Number.isFinite).map(Math.abs)) * 1.08;
+  // A loop, not Math.max(...spread): a long spectrum can exceed the engine's argument limit.
+  let peak = 1e-300;
+  for (const v of vals) if (Number.isFinite(v)) peak = Math.max(peak, Math.abs(v));
+  const top = db ? 5 : peak * 1.08;
+  const fundIndex = Math.round(spec.orders.indexOf(1)); // once, not once per bar
   const bottom = db ? floor : 0;
   const maxH = spec.orders[spec.orders.length - 1]!;
   const minH = showDc ? 0 : (spec.orders[1] ?? 0);
@@ -282,7 +286,7 @@ function BarChart({ spec, value, scale, showDc, unit }: { spec: Spectrum; value(
             y={Math.min(yv, y(bottom))}
             width={bw}
             height={Math.abs(y(bottom) - yv)}
-            className={k === Math.round(spec.orders.indexOf(1)) ? 'bar fund' : 'bar'}
+            className={k === fundIndex ? 'bar fund' : 'bar'}
           >
             <title>
               order {Number(spec.orders[k]!.toPrecision(6))}: {db ? `${v.toFixed(1)} dB` : formatSI(v, scale === 'percent' ? '%' : unit, 4)}

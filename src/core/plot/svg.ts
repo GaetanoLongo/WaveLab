@@ -23,6 +23,26 @@ export function dashArray(dash: Dash, width: number): string | null {
   }
 }
 
+/**
+ * Path text of a set of polylines, remembered per array: trace polylines are reused between redraws
+ * while their pixels are unchanged (see `toPixels` in layout.ts), and writing the text of every trace
+ * was the largest cost of a redraw. Scene polylines are never modified after they are built.
+ */
+const pathCache = new WeakMap<number[][], string>();
+
+function pathData(polylines: number[][]): string {
+  const hit = pathCache.get(polylines);
+  if (hit !== undefined) return hit;
+  let d = '';
+  for (const pl of polylines) {
+    for (let i = 0; i < pl.length; i += 2) {
+      d += (i === 0 ? 'M' : 'L') + r2(pl[i]!) + ' ' + r2(pl[i + 1]!);
+    }
+  }
+  pathCache.set(polylines, d);
+  return d;
+}
+
 function item(it: SceneItem, idPrefix: string): string {
   switch (it.type) {
     case 'rect': {
@@ -47,12 +67,7 @@ function item(it: SceneItem, idPrefix: string): string {
       return `<line ${a.join(' ')}/>`;
     }
     case 'path': {
-      let d = '';
-      for (const pl of it.polylines) {
-        for (let i = 0; i < pl.length; i += 2) {
-          d += (i === 0 ? 'M' : 'L') + r2(pl[i]!) + ' ' + r2(pl[i + 1]!);
-        }
-      }
+      const d = pathData(it.polylines);
       if (!d) return '';
       const a = [
         `d="${d}"`,
