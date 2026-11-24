@@ -67,6 +67,11 @@ export function endFrame(): void {
 /** Signals (guarded objects) abandoned recently, and until when they answer "undefined" at once. */
 const heavy = new WeakMap<object, number>();
 const isHeavy = (ev: object) => (heavy.get(ev) ?? 0) > performance.now();
+/**
+ * True while `ev` is marked heavy (it answers "undefined" at once). Caches of derived results check it,
+ * so a placeholder answer given during that time is never remembered as the signal's real one.
+ */
+export const isHeavySignal = (ev: object): boolean => isHeavy(ev);
 const markHeavy = (ev: object) => {
   heavy.set(ev, performance.now() + HEAVY_FOR_MS);
   for (const l of listeners) l();

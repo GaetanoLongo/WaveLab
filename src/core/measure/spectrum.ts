@@ -17,6 +17,7 @@
 import { measureInterval } from './measure';
 import { DEFAULT_MAX_FEATURES, type SignalEval } from '../signals/types';
 import { leftValue } from '../signals/scan';
+import { checkBudget } from '../signals/budget';
 
 export interface SpectrumOptions {
   /** Fundamental frequency (Hz). */
@@ -83,7 +84,9 @@ export function harmonicSpectrum(s: SignalEval, o: SpectrumOptions): Spectrum {
     };
   }
   const cuts = [a, ...features.map((f) => f.t).filter((t) => t > a && t < b), b];
-  const scale = Math.max(1e-300, ...features.map((f) => Math.max(Math.abs(f.left), Math.abs(f.right))), Math.abs(s.value(a)));
+  // A loop, not Math.max(...spread): a window can hold 10⁵ features, beyond the engine's argument limit.
+  let scale = Math.max(1e-300, Math.abs(s.value(a)));
+  for (const f of features) scale = Math.max(scale, Math.abs(f.left), Math.abs(f.right));
 
   for (let i = 0; i + 1 < cuts.length; i++) {
     const x0 = cuts[i]!;
@@ -105,6 +108,7 @@ export function harmonicSpectrum(s: SignalEval, o: SpectrumOptions): Spectrum {
   for (const imp of s.impulses?.(a, b) ?? []) {
     if (imp.t < a || imp.t >= b) continue;
     for (let k = 0; k <= K; k++) {
+      checkBudget();
       const th = (-2 * Math.PI * k * (imp.t - a)) / T;
       re[k] = re[k]! + imp.weight * Math.cos(th);
       im[k] = im[k]! + imp.weight * Math.sin(th);
@@ -146,6 +150,7 @@ function addLinear(re: Float64Array, im: Float64Array, v0: number, v1: number, u
   const p = v0 - q * u0;
   re[0] = re[0]! + ((v0 + v1) / 2) * (u1 - u0);
   for (let k = 1; k <= K; k++) {
+    checkBudget();
     const w = (2 * Math.PI * k) / T;
     const F = (u: number): [number, number] => {
       const c = Math.cos(w * u);
@@ -173,6 +178,7 @@ function addSmooth(re: Float64Array, im: Float64Array, f: (t: number) => number,
   const ts: number[] = [];
   const ws: number[] = [];
   for (let i = 0; i < n; i++) {
+    checkBudget();
     const m = x0 + (i + 0.5) * h;
     for (let j = 0; j < 5; j++) {
       ts.push(m + (h / 2) * GL_X[j]!);
@@ -181,6 +187,7 @@ function addSmooth(re: Float64Array, im: Float64Array, f: (t: number) => number,
   }
   const xs = ts.map(f);
   for (let k = 0; k <= K; k++) {
+    checkBudget();
     const w = (2 * Math.PI * k) / T;
     let sr = 0;
     let si = 0;

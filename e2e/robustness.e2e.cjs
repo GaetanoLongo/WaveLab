@@ -49,6 +49,15 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   assert((await p.locator('.expr-error').count()) === 0, 'abs() of a constant accepted as a time argument');
   await apply('Square * 1T * 1f');
   assert((await p.locator('.expr-error').count()) === 0, 'T and f prefixes accepted in expressions');
+  // Absurdly deep nesting used to overflow the call stack (uncaught RangeError).
+  const before = errs.length;
+  for (const deep of ['('.repeat(5000) + 'Square' + ')'.repeat(5000), Array(5000).fill('Square').join('+')]) {
+    await apply(deep);
+    assert((await p.locator('.expr-error').innerText().catch(() => '')).includes('nested too deeply'), `deep expression (${deep.length} chars) refused with a message`);
+    await expr.press('Escape');
+  }
+  assert(errs.length === before, 'deep expressions raise no page error');
+  await apply('Square * 1T * 1f');
 
   // --- Enter applies when the typed word is complete (t, e) ---
   await expr.click(); await expr.fill(''); await p.keyboard.type('Y = 0.25*t'); await p.keyboard.press('Enter');

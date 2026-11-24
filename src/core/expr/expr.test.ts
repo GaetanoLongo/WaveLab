@@ -5,7 +5,7 @@ import { rangeOf } from '../plot/range';
 import { compileDerived, commonPeriod, type DerivedSpec } from '../signals/derived';
 import { compileGenerator } from '../signals/generator';
 import type { SignalEval } from '../signals/types';
-import { ExprError, isLogic, nameToken, parseExpr, print, refsOf, splitAssignment, storedRef } from './parse';
+import { depthOf, ExprError, isLogic, MAX_DEPTH, nameToken, parseExpr, print, refsOf, splitAssignment, storedRef, walk } from './parse';
 
 const names: Record<string, string> = { A: 'a', B: 'b', 'Sine 2': 's2', V_out: 'vo' };
 const resolve = (n: string) => names[n] ?? null;
@@ -207,5 +207,57 @@ describe('derived engine details', () => {
     expect(commonPeriod([1 / 50, 1 / 60])).toBeCloseTo(0.1, 12);
     expect(commonPeriod([1, Math.SQRT2])).toBeUndefined();
     expect(commonPeriod([0.02, undefined])).toBeUndefined();
+  });
+});
+
+describe('nesting limit', () => {
+  const deep = (n: number) => ({
+    parens: '('.repeat(n) + 'A' + ')'.repeat(n),
+    sum: Array(n + 1).fill('A').join(' + '),
+    neg: '-'.repeat(n) + 'A',
+    power: Array(n + 1).fill('A').join('^'),
+    calls: 'abs('.repeat(n) + 'A' + ')'.repeat(n),
+  });
+
+  it('accepts expressions up to the limit, and they evaluate', () => {
+    const a = compileGenerator(defaultGenerator('sine'));
+    for (const [k, src] of Object.entries(deep(MAX_DEPTH - 2))) {
+      const root = parseExpr(src, resolve);
+      expect(depthOf(root), k).toBeLessThanOrEqual(MAX_DEPTH);
+      if (k === 'power') continue; // A^A^… overflows to NaN, nothing to compare
+      const ev = compileDerived({ root, logicHigh: 1, logicLow: 0, threshold: 0.5, resolution: null }, new Map([['a', a]]));
+      expect(Number.isFinite(ev.value(0.003)), k).toBe(true);
+      expect(ev.features(0, 0.02).truncated, k).toBe(false);
+    }
+  });
+
+  it('refuses deeper ones with a readable error, never a stack overflow (typed, or from a file or link)', () => {
+    for (const n of [MAX_DEPTH + 5, 20_000, 200_000]) {
+      for (const [k, src] of Object.entries(deep(n))) {
+        let err: unknown;
+        try {
+          parseExpr(src, resolve);
+        } catch (e) {
+          err = e;
+        }
+        expect(err, `${k} ${n}`).toBeInstanceOf(ExprError);
+        expect((err as Error).message).toMatch(/nested too deeply/);
+      }
+    }
+  });
+
+  it('walk lists parents before children, left to right; depthOf counts levels', () => {
+    const n = parseExpr('min(A, -B) + abs(A) * 2', resolve);
+    expect(walk(n).map((x) => (x.k === 'bin' ? x.op : x.k === 'call' ? x.fn : x.k === 'ref' ? x.id : x.k))).toEqual([
+      '+', 'min', 'a', 'neg', 'b', '*', 'abs', 'a', 'num',
+    ]);
+    expect(depthOf(n)).toBe(4);
+    expect(depthOf(parseExpr('A', resolve))).toBe(1);
+    // Linear time on a long chain (the recursive version was quadratic: 0.3 s at 5 000 terms).
+    const long = parseExpr(Array(400).fill('A').join(' + '), resolve);
+    const t0 = performance.now();
+    for (let i = 0; i < 50; i++) walk(long);
+    expect(performance.now() - t0).toBeLessThan(200);
+    expect(refsOf(long)).toEqual(new Set(['a']));
   });
 });

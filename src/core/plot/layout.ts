@@ -5,7 +5,7 @@
 
 import type { SignalEval } from '../signals/types';
 import { rangeOf, type Range } from './range';
-import { sampleSignal } from './sampler';
+import { sampleSignalCached, type SampledTrace } from './sampler';
 import type { Dash, Scene, SceneItem } from './scene';
 import { formatSI } from '../units/si';
 import { estimateWidth, plainText } from './mathtext';
@@ -422,6 +422,38 @@ function autoYRangeRaw(signals: SignalEval[]): Range | null {
   return [mid - span / 2, mid + span / 2];
 }
 
+/**
+ * Pixel polylines of a sampled trace, reused while the sampling and the mapping to pixels are unchanged.
+ * Keeping the same array lets the SVG writer reuse the path text it made for it (see `svg.ts`), so a
+ * redraw that only selects, moves a cursor or undoes an unrelated edit does not re-serialize every trace.
+ * The arrays are shared: nothing may modify them.
+ */
+const pixelCache = new WeakMap<SampledTrace, Array<{ key: string; polylines: number[][] }>>();
+
+function toPixels(sampled: SampledTrace, layout: FigureLayout, pl: PanelLayout): number[][] {
+  const key = `${layout.xRange[0]}|${layout.xRange[1]}|${layout.plotX}|${layout.plotW}|${pl.y}|${pl.h}|${pl.yRange[0]}|${pl.yRange[1]}|${pl.log}`;
+  const list = pixelCache.get(sampled);
+  const hit = list?.find((e) => e.key === key);
+  if (hit) return hit.polylines;
+  const polylines: number[][] = [];
+  for (const line of sampled.lines) {
+    let flat: number[] = [];
+    for (let i = 0; i < line.t.length; i++) {
+      const v = line.y[i]!;
+      if (pl.log && !(v > 0)) {
+        // Non-positive values have no place on a log axis: leave a gap.
+        if (flat.length) polylines.push(flat);
+        flat = [];
+        continue;
+      }
+      flat.push(tToPx(layout, line.t[i]!), yToPx(pl, v));
+    }
+    if (flat.length) polylines.push(flat);
+  }
+  pixelCache.set(sampled, [{ key, polylines }, ...(list ?? []).slice(0, 1)]);
+  return polylines;
+}
+
 /** Draw a figure. All traces share one 8 s allowance (see `beginFrame`); a trace over its share is left out. */
 export function buildFigure(input: FigureInput): { scene: Scene; layout: FigureLayout } {
   beginFrame(8000);
@@ -512,22 +544,8 @@ function buildFigureInner(input: FigureInput): { scene: Scene; layout: FigureLay
     // Traces.
     for (const tr of traces) {
       // One slow trace must not hold up the figure: it is left out (and the user is told).
-      const sampled = budgeted(tr.signal, 4000, () => sampleSignal(tr.signal, t0, t1, layout.plotW), () => ({ mode: 'exact' as const, lines: [] }));
-      const polylines: number[][] = [];
-      for (const line of sampled.lines) {
-        let flat: number[] = [];
-        for (let i = 0; i < line.t.length; i++) {
-          const v = line.y[i]!;
-          if (pl.log && !(v > 0)) {
-            // Non-positive values have no place on a log axis: leave a gap.
-            if (flat.length) polylines.push(flat);
-            flat = [];
-            continue;
-          }
-          flat.push(tToPx(layout, line.t[i]!), yToPx(pl, v));
-        }
-        if (flat.length) polylines.push(flat);
-      }
+      const sampled = budgeted(tr.signal, 4000, () => sampleSignalCached(tr.signal, t0, t1, layout.plotW), () => ({ mode: 'exact' as const, lines: [] }));
+      const polylines = toPixels(sampled, layout, pl);
       const lw = tr.lineWidth * scale;
       if (tr.highlight) {
         items.push({

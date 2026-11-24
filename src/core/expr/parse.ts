@@ -175,6 +175,7 @@ const BIN_PREC: Record<string, number> = { '||': 1, '&&': 2, '>': 3, '<': 3, '>=
 export function parseExpr(src: string, resolve: NameResolver): Node {
   const toks = tokenize(src);
   let p = 0;
+  let nesting = 0;
   const peek = () => toks[p]!;
   const next = () => toks[p++]!;
   const isOp = (v: string) => {
@@ -277,6 +278,16 @@ export function parseExpr(src: string, resolve: NameResolver): Node {
   }
 
   function unary(): Node {
+    // Every recursive path of the parser passes through here: bound it before the call stack overflows.
+    if (++nesting > MAX_DEPTH) throw new ExprError(TOO_DEEP, peek().pos);
+    try {
+      return unaryInner();
+    } finally {
+      nesting--;
+    }
+  }
+
+  function unaryInner(): Node {
     if (isOp('-')) {
       next();
       return { k: 'neg', a: unary() };
@@ -310,8 +321,19 @@ export function parseExpr(src: string, resolve: NameResolver): Node {
   const root = expr(0);
   const rest = peek();
   if (rest.t !== 'end') throw new ExprError(`Unexpected “${'v' in rest ? rest.v : ''}”`, rest.pos);
+  // A long chain such as 1+1+…+1 is built without deep parser recursion but is still a deep tree, and
+  // evaluating it recurses once per level.
+  if (depthOf(root) > MAX_DEPTH) throw new ExprError(TOO_DEEP, 0);
   return root;
 }
+
+/**
+ * Deepest expression accepted. Far beyond anything written by hand or by the builders (at most a few
+ * levels); beyond a few thousand levels parsing and evaluation would overflow the call stack and crash
+ * the page (when typed, or when it arrives in a file or a share link).
+ */
+export const MAX_DEPTH = 500;
+const TOO_DEEP = `The expression is nested too deeply (more than ${MAX_DEPTH} levels)`;
 
 /** Pure math functions usable on constants (e.g. delay(x, abs(-5m))). */
 const CONST_FNS: Record<string, (...a: number[]) => number> = {
@@ -371,21 +393,53 @@ function usesSignalOrTime(n: Node): boolean {
   return refsOf(n).size > 0 || walk(n).some((x) => x.k === 'time');
 }
 
+/**
+ * All nodes, parent before children, children left to right. Iterative: the recursive version copied
+ * every subtree's list into its parent's, quadratic in the depth (and it runs on every dependency lookup).
+ */
 export function walk(n: Node): Node[] {
-  const out: Node[] = [n];
-  switch (n.k) {
-    case 'neg':
-    case 'not':
-      out.push(...walk(n.a));
-      break;
-    case 'bin':
-      out.push(...walk(n.a), ...walk(n.b));
-      break;
-    case 'call':
-      for (const a of n.args) out.push(...walk(a));
-      break;
+  const out: Node[] = [];
+  const stack: Node[] = [n];
+  while (stack.length) {
+    const x = stack.pop()!;
+    out.push(x);
+    switch (x.k) {
+      case 'neg':
+      case 'not':
+        stack.push(x.a);
+        break;
+      case 'bin':
+        stack.push(x.b, x.a);
+        break;
+      case 'call':
+        for (let i = x.args.length - 1; i >= 0; i--) stack.push(x.args[i]!);
+        break;
+    }
   }
   return out;
+}
+
+/** Nesting depth of an expression tree (a single number or name is 1). Iterative. */
+export function depthOf(n: Node): number {
+  let max = 0;
+  const stack: Array<[Node, number]> = [[n, 1]];
+  while (stack.length) {
+    const [x, d] = stack.pop()!;
+    if (d > max) max = d;
+    switch (x.k) {
+      case 'neg':
+      case 'not':
+        stack.push([x.a, d + 1]);
+        break;
+      case 'bin':
+        stack.push([x.a, d + 1], [x.b, d + 1]);
+        break;
+      case 'call':
+        for (const a of x.args) stack.push([a, d + 1]);
+        break;
+    }
+  }
+  return max;
 }
 
 /** Ids of all signals an expression references. */

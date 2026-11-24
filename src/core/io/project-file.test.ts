@@ -149,6 +149,15 @@ describe('derived signals in project files', () => {
     expect(back.signals[3]).toEqual(withDerived().signals[3]);
   });
 
+  it('rejects absurdly deep expressions with a message instead of overflowing the call stack', () => {
+    for (const expr of ['('.repeat(20000) + '#{b}' + ')'.repeat(20000), Array(20000).fill('#{b}').join(' + '), '-'.repeat(20000) + '#{b}']) {
+      const f = JSON.parse(serializeProject(withDerived()));
+      f.project.signals[3].expr = expr;
+      expect(() => parseProjectFile(JSON.stringify(f))).toThrow(ProjectFileError);
+      expect(() => parseProjectFile(JSON.stringify(f))).toThrow(/nested too deeply/);
+    }
+  });
+
   it('rejects references to missing signals', () => {
     const f = JSON.parse(serializeProject(withDerived()));
     f.project.signals[3].expr = '#{zzz} + 1';

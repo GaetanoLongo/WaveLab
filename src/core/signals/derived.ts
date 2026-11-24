@@ -36,6 +36,7 @@ import {
   numericDerivativeOf,
 } from './operators';
 import { checkBudget } from './budget';
+import { withPeriodicCache } from './periodic-cache';
 import { leftValue, MAX_SAMPLES, same, scanSegment } from './scan';
 import { DEFAULT_MAX_FEATURES, type Feature, type FeatureQuery, type Impulse, type SignalEval } from './types';
 
@@ -68,10 +69,14 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
     const cached = opCache.get(n);
     if (cached) return cached;
     const argNode = n.args[0]!;
+    // An operator asks its argument for the features of a different window on every evaluation.
+    // Separate signals get a per-period feature cache (state/compiled); an argument written inline
+    // (lowpass(movavg(x, …), …)) gets the same here, so nesting inside one expression costs no more
+    // than chaining separate signals.
     const x =
       argNode.k === 'ref'
         ? (inputs.get(argNode.id) ?? NAN_SIGNAL)
-        : compileDerived({ ...spec, root: argNode, logicHigh: 1, logicLow: 0 }, inputs);
+        : withPeriodicCache(compileDerived({ ...spec, root: argNode, logicHigh: 1, logicLow: 0 }, inputs));
     for (const w of x.warnings ?? []) warnings.add(w);
     const c = (i: number, dflt: number) => (n.args[i] ? constValue(n.args[i]!) : dflt);
     let sig: SignalEval;
@@ -109,6 +114,7 @@ export function compileDerived(spec: DerivedSpec, inputs: Map<string, SignalEval
         sig = NAN_SIGNAL;
     }
     for (const w of sig.warnings ?? []) warnings.add(w);
+    sig = withPeriodicCache(sig);
     opCache.set(n, sig);
     return sig;
   };

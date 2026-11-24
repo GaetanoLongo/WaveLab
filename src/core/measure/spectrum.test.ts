@@ -4,6 +4,7 @@ import { defaultGenerator } from '../model/defaults';
 import type { GeneratorDef } from '../model/signal-defs';
 import { compileDerived } from '../signals/derived';
 import { compileGenerator } from '../signals/generator';
+import { budgeted } from '../signals/budget';
 import { harmonicSpectrum } from './spectrum';
 
 const gen = (kind: GeneratorDef['generator'], patch: (d: GeneratorDef) => void = () => {}) => {
@@ -73,5 +74,25 @@ describe('exact harmonic spectrum', () => {
 
   it('flags windows that are not a whole number of periods', () => {
     expect(harmonicSpectrum(gen('sine', (d) => (d.timing.frequency = 60)), opts).exactWindow).toBe(false);
+  });
+});
+
+describe('spectrum within the compute budget', () => {
+  it('the largest allowed request (1000 periods × order 2000) is abandoned within its budget instead of freezing', () => {
+    // A 1050 Hz square seen through 1000 periods of 50 Hz: 42 000 edges × 2·10⁶ harmonics. The per-harmonic
+    // loops had no budget check, so the 8 s budget of the dialog could not stop them (minutes of frozen page).
+    const sq = gen('square', (d) => (d.timing.frequency = 1050));
+    const t0 = performance.now();
+    const r = budgeted(sq, 300, () => harmonicSpectrum(sq, { f1: 50, periods: 1000, t0: 0, maxOrder: 2000 }), () => null);
+    expect(performance.now() - t0).toBeLessThan(3000);
+    expect(r).toBeNull();
+  }, 20000);
+
+  it('a window with more features than the argument limit of Math.max still works', () => {
+    // 90 000 edges in the window (the feature cap is 10⁵): the scale used to be Math.max(...features).
+    const sq = gen('square', (d) => (d.timing.frequency = 45_000));
+    const s = harmonicSpectrum(sq, { f1: 1, periods: 1, t0: 0, maxOrder: 3 });
+    expect(s.unresolved).toBeUndefined();
+    expect(s.dc).toBeCloseTo(0, 6);
   });
 });
